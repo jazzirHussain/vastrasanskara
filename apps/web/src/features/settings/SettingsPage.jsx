@@ -17,19 +17,37 @@ const SETTINGS_TABS = [
   ['numbering', 'Numbering', NumberingTab],
 ];
 
+// Structural equality for settings values (plain JSON; key order does not matter).
+function sameValue(a, b) {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((k) => sameValue(a[k], b[k]));
+}
+
+/** The top-level settings in `values` that differ from `saved`. */
+function changedSettings(values, saved) {
+  return Object.fromEntries(Object.entries(values).filter(([key, value]) => !sameValue(value, saved[key])));
+}
+
 /**
  * Drafts live here (not in the tabs) so edits survive switching tabs. Business details save
- * to /v1/branch from their own tab; everything else saves together to /v1/settings.
+ * to /v1/branch from their own tab; everything else saves to /v1/settings, sending only the
+ * settings changed since they were loaded or last saved.
  */
 function SettingsForm({ settings, branch }) {
   const [tab, setTab] = useState('business');
   const [values, setValues] = useState(settings);
+  const [saved, setSaved] = useState(settings);
+  const [noChanges, setNoChanges] = useState(false);
   const [branchDraft, setBranchDraft] = useState(branch);
   const saveSettings = useSaveSettings();
   const errors = fieldErrors(saveSettings.error);
 
   const set = (key, value) => {
     saveSettings.reset();
+    setNoChanges(false);
     setValues((v) => ({ ...v, [key]: value }));
   };
 
@@ -63,11 +81,26 @@ function SettingsForm({ settings, branch }) {
               </Alert>
             )}
             {saveSettings.isSuccess && <Alert color="green">Settings saved.</Alert>}
+            {noChanges && <Alert color="gray">No changes to save.</Alert>}
             <TabComponent values={values} set={set} errors={errors} />
             <Group justify="flex-end">
               <Button
                 loading={saveSettings.isPending}
-                onClick={() => saveSettings.mutate(values, { onSuccess: (saved) => setValues(saved) })}
+                onClick={() => {
+                  const changes = changedSettings(values, saved);
+                  if (Object.keys(changes).length === 0) {
+                    saveSettings.reset();
+                    setNoChanges(true);
+                    return;
+                  }
+                  saveSettings.mutate(changes, {
+                    onSuccess: (result) => {
+                      const next = { ...values, ...result };
+                      setValues(next);
+                      setSaved(next);
+                    },
+                  });
+                }}
               >
                 Save
               </Button>

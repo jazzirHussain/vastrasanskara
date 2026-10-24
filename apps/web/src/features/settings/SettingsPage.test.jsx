@@ -56,3 +56,21 @@ test('business: branch details save to /v1/branch', async () => {
   await expect.poll(() => sent?.gstin).toBe('29ABCDE1234F1Z5');
   expect(sent.prefixes.invoice).toBe('INV');
 });
+test('saves only changed settings', async () => {
+  asAdmin(); withBranch(); const bodies = [];
+  server.use(http.put('/v1/settings', async ({ request }) => { const body = await request.json(); bodies.push(body); return HttpResponse.json({ ...defaultSettings, ...body }); }));
+  renderApp('/settings');
+  await userEvent.click(await screen.findByRole('tab', { name: 'Money' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(await screen.findByText('No changes to save.')).toBeInTheDocument();
+  expect(bodies).toHaveLength(0);
+  const input = screen.getByLabelText('Bill due days');
+  await userEvent.clear(input); await userEvent.type(input, '5');
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await expect.poll(() => bodies.length).toBe(1);
+  expect(bodies[0]).toEqual({ billDueDays: 5 });
+  expect(await screen.findByText('Settings saved.')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(await screen.findByText('No changes to save.')).toBeInTheDocument();
+  expect(bodies).toHaveLength(1);
+});
