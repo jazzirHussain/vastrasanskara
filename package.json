@@ -1,0 +1,29 @@
+{
+  "name": "vastrasanskara",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:tz": "cross-env TZ=America/New_York vitest run --project shared",
+    "lint": "eslint .",
+    "dev:db": "node apps/api/scripts/dev-db.js",
+    "dev:api": "npm run dev --workspace @vs/api",
+    "dev:worker": "npm run dev:worker --workspace @vs/api",
+    "dev:web": "npm run dev --workspace @vs/web"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "cross-env": "^7.0.3",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "prettier": "^3.0.0",
+    "vitest": "^3.0.0"
+  }
+}
