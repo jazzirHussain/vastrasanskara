@@ -1,7 +1,50 @@
 import { useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { Alert, Anchor, Button, Center, Paper, PasswordInput, Stack, TextInput, Title } from '@mantine/core';
+import { Alert, Anchor, Button, PasswordInput, Stack, Text, TextInput } from '@mantine/core';
+import { STAGES } from '@vs/shared/stages.js';
+import { BrandStitch } from '../layout/Sidebar.jsx';
 import { useAuth } from './AuthContext.js';
+
+// The 14 stages as one long running stitch across the brand panel, knots filled to Tailors.
+function ThreadMotif() {
+  const step = 30;
+  const done = 6;
+  return (
+    <svg width="100%" height="64" viewBox={`0 0 ${step * 13 + 16} 64`} preserveAspectRatio="xMinYMid meet" aria-hidden="true">
+      <line x1="8" y1="32" x2={8 + step * done} y2="32" stroke="var(--vs-chalk)" strokeWidth="2" strokeDasharray="7 5" />
+      <line x1={8 + step * done} y1="32" x2={8 + step * 13} y2="32" stroke="rgba(244,245,249,0.35)" strokeWidth="2" strokeDasharray="7 5" />
+      {STAGES.map((s, i) =>
+        i < done ? (
+          <circle key={s.key} cx={8 + step * i} cy="32" r="5" fill="var(--vs-chalk)" />
+        ) : i === done ? (
+          <circle key={s.key} cx={8 + step * i} cy="32" r="8" fill="var(--vs-indigo)" stroke="var(--vs-haldi)" strokeWidth="3" />
+        ) : (
+          <circle key={s.key} cx={8 + step * i} cy="32" r="4" fill="var(--vs-indigo)" stroke="rgba(244,245,249,0.45)" strokeWidth="1.5" />
+        ),
+      )}
+    </svg>
+  );
+}
+
+function BrandPanel() {
+  return (
+    <div className="vs-login-brand">
+      <div style={{ fontFamily: 'var(--vs-display)', fontSize: 22 }}>
+        Vastrasanskara
+        <BrandStitch />
+      </div>
+      <div>
+        <ThreadMotif />
+        <p className="vs-display" style={{ fontSize: 34, lineHeight: 1.2, margin: '28px 0 0', maxWidth: '16ch' }}>
+          Every garment, every stage, on time.
+        </p>
+      </div>
+      <Text size="sm" c="rgba(244,245,249,0.7)">
+        Orders, production and billing for the house.
+      </Text>
+    </div>
+  );
+}
 
 export function LoginPage() {
   const { user, login } = useAuth();
@@ -29,11 +72,19 @@ export function LoginPage() {
   }
 
   return (
-    <Center mih="100vh" p="md">
-      <Paper withBorder shadow="sm" p="xl" w="100%" maw={400}>
-        <form onSubmit={handleSubmit}>
+    <div className="vs-login">
+      <BrandPanel />
+      <div className="vs-login-form">
+        <form onSubmit={handleSubmit} style={{ width: '100%', maxWidth: 360 }}>
           <Stack>
-            <Title order={2}>Vastrasanskara</Title>
+            <div>
+              <h1 className="vs-display" style={{ margin: 0, fontSize: 30, color: 'var(--vs-indigo)' }}>
+                Vastrasanskara
+              </h1>
+              <Text c="var(--vs-muted)" mt={4}>
+                Log in to the workshop.
+              </Text>
+            </div>
             {error && <Alert color="red">{error}</Alert>}
             <TextInput
               label="Email"
@@ -60,7 +111,7 @@ export function LoginPage() {
             </Anchor>
           </Stack>
         </form>
-      </Paper>
-    </Center>
+      </div>
+    </div>
   );
 }

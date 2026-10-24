@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Alert, Button, Group, Loader, Stack, Tabs, Title } from '@mantine/core';
+import { Alert, Button, Group, Loader, Stack, Tabs } from '@mantine/core';
+import { PageHeader } from '../../components/PageHeader.jsx';
 import { fieldErrors } from '../../lib/fieldErrors.js';
 import { AppointmentsTab } from './AppointmentsTab.jsx';
 import { BusinessTab } from './BusinessTab.jsx';
@@ -117,8 +118,8 @@ export function SettingsPage() {
   const branch = useBranch();
 
   return (
-    <Stack>
-      <Title order={2}>Settings</Title>
+    <Stack gap={0}>
+      <PageHeader title="Settings" />
       {(settings.isPending || branch.isPending) && <Loader />}
       {settings.error && <Alert color="red">{settings.error.message}</Alert>}
       {settings.data && !branch.isPending && <SettingsForm settings={settings.data} branch={branch.data ?? null} />}

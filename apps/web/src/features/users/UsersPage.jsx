@@ -1,5 +1,8 @@
 import { useState } from 'react';
-import { Alert, Badge, Button, Group, Loader, Stack, Table, Title } from '@mantine/core';
+import { Alert, Button, Loader, Stack, Text } from '@mantine/core';
+import { PageHeader } from '../../components/PageHeader.jsx';
+import { ResponsiveTable } from '../../components/ResponsiveTable.jsx';
+import { StatusBadge } from '../../components/StatusBadge.jsx';
 import { AddUserModal } from './AddUserModal.jsx';
 import { EditUserModal } from './EditUserModal.jsx';
 import { ROLE_LABELS } from './roles.jsx';
@@ -11,52 +14,32 @@ export function UsersPage() {
   const [editing, setEditing] = useState(null);
 
   return (
-    <Stack>
-      <Group justify="space-between">
-        <Title order={2}>Users</Title>
-        <Button onClick={() => setAdding(true)}>Add user</Button>
-      </Group>
+    <Stack gap={0}>
+      <PageHeader title="Users" action={<Button onClick={() => setAdding(true)}>Add user</Button>} />
       {isPending && <Loader />}
       {error && <Alert color="red">{error.message}</Alert>}
       {data && (
-        <Table.ScrollContainer minWidth={560}>
-          <Table striped>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Email</Table.Th>
-                <Table.Th>Roles</Table.Th>
-                <Table.Th>Status</Table.Th>
-                <Table.Th />
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {data.items.map((user) => (
-                <Table.Tr key={user.id}>
-                  <Table.Td>{user.name}</Table.Td>
-                  <Table.Td>{user.email}</Table.Td>
-                  <Table.Td>
-                    <Group gap={4}>
-                      {user.roles.map((role) => (
-                        <Badge key={role} variant="light">
-                          {ROLE_LABELS[role] ?? role}
-                        </Badge>
-                      ))}
-                    </Group>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge color={user.active ? 'green' : 'gray'}>{user.active ? 'Active' : 'Inactive'}</Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Button size="xs" variant="subtle" aria-label={`Edit ${user.name}`} onClick={() => setEditing(user)}>
-                      Edit
-                    </Button>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
+        <ResponsiveTable
+          label="Users"
+          rows={data.items}
+          rowKey={(u) => u.id}
+          columns={[
+            { key: 'name', header: 'Name', primary: true, render: (u) => <Text fw={600}>{u.name}</Text> },
+            { key: 'email', header: 'Email', render: (u) => u.email },
+            { key: 'roles', header: 'Roles', render: (u) => u.roles.map((r) => ROLE_LABELS[r] ?? r).join(', ') },
+            { key: 'status', header: 'Status', render: (u) => <StatusBadge status={u.active ? 'active' : 'inactive'} /> },
+            {
+              key: 'edit',
+              header: '',
+              align: 'right',
+              render: (u) => (
+                <Button size="xs" variant="subtle" aria-label={`Edit ${u.name}`} onClick={() => setEditing(u)}>
+                  Edit
+                </Button>
+              ),
+            },
+          ]}
+        />
       )}
       <AddUserModal opened={adding} onClose={() => setAdding(false)} />
       {editing && <EditUserModal user={editing} onClose={() => setEditing(null)} />}

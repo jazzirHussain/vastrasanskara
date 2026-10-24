@@ -5,6 +5,7 @@ import { createElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { MantineProvider } from '@mantine/core';
+import { Notifications } from '@mantine/notifications';
 import App from '../App.jsx';
 import { createQueryClient } from '../lib/queryClient.js';
 import { ROUTER_FUTURE } from '../lib/router.js';
@@ -46,6 +47,7 @@ export function renderApp(path = '/') {
       createElement(
         MantineProvider,
         { theme },
+        createElement(Notifications),
         createElement(MemoryRouter, { initialEntries: [path], future: ROUTER_FUTURE }, createElement(App)),
       ),
     ),

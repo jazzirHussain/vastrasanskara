@@ -1,5 +1,5 @@
-import { test, expect } from 'vitest';
-import { screen } from '@testing-library/react';
+import { test, expect, vi } from 'vitest';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../test/server.js';
@@ -42,4 +42,43 @@ test('logout returns to the login page', async () => {
   renderApp('/');
   await userEvent.click(await screen.findByRole('button', { name: 'Log out' }));
   expect(await screen.findByRole('button', { name: 'Log in' })).toBeInTheDocument();
+});
+
+function phoneWidth() {
+  vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+    matches: /max-width/.test(query),
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+const operations = { id: '3', name: 'Kavya', email: 'k@x.com', roles: ['operations'], permissions: ['orders.read.own', 'orders.read.all', 'orders.write', 'customers.read', 'customers.write', 'money.view'] };
+const designer = { id: '2', name: 'Riya', email: 'r@x.com', roles: ['designer'], permissions: ['orders.read.own', 'production.update', 'customers.read'] };
+
+test('phone width shows the bottom bar with New order for operations, not for designers', async () => {
+  phoneWidth();
+  server.use(http.get('/v1/auth/me', () => HttpResponse.json(operations)));
+  const { unmount } = renderApp('/');
+  const bar = await screen.findByRole('navigation', { name: 'Main' });
+  expect(within(bar).getByRole('link', { name: 'New order' })).toHaveAttribute('href', '/orders/new');
+  expect(within(bar).getByRole('link', { name: 'Orders' })).toBeInTheDocument();
+  expect(within(bar).getByRole('button', { name: 'More' })).toBeInTheDocument();
+  unmount();
+
+  server.use(http.get('/v1/auth/me', () => HttpResponse.json(designer)));
+  renderApp('/');
+  const designerBar = await screen.findByRole('navigation', { name: 'Main' });
+  expect(within(designerBar).queryByRole('link', { name: 'New order' })).toBeNull();
+  expect(within(designerBar).getByRole('link', { name: 'Customers' })).toBeInTheDocument();
+  vi.restoreAllMocks();
+});
+test('desktop sidebar lists the pages the user may open', async () => {
+  server.use(http.get('/v1/auth/me', () => HttpResponse.json(operations)));
+  renderApp('/');
+  const nav = await screen.findByRole('navigation', { name: 'Main' });
+  expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['Home', 'Orders', 'New order', 'Customers']);
 });

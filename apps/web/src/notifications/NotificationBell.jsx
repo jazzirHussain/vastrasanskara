@@ -20,8 +20,11 @@ function BellIcon() {
   );
 }
 
-/** The bell in the header: polls every minute, opening an item marks it read. */
-export function NotificationBell() {
+/**
+ * The bell: polls every minute, opening an item marks it read. `tone="light"` for the indigo
+ * sidebar.
+ */
+export function NotificationBell({ tone = 'dark' }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { data } = useQuery({
@@ -50,8 +53,13 @@ export function NotificationBell() {
   return (
     <Menu position="bottom-end" width={320} shadow="md">
       <Menu.Target>
-        <Indicator label={unread} size={16} disabled={unread === 0} offset={4}>
-          <ActionIcon variant="subtle" size="lg" aria-label={unreadLabel(unread)}>
+        <Indicator label={unread} size={16} disabled={unread === 0} offset={4} color="kumkum">
+          <ActionIcon
+            variant="subtle"
+            size="lg"
+            color={tone === 'light' ? 'gray.0' : 'indigo'}
+            aria-label={unreadLabel(unread)}
+          >
             <BellIcon />
           </ActionIcon>
         </Indicator>
