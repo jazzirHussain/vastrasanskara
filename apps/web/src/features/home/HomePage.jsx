@@ -4,6 +4,7 @@ import { addDaysYmd } from '@vs/shared/fy.js';
 import { useAuth } from '../../auth/AuthContext.js';
 import { todayYmd } from '../../components/DateLabel.jsx';
 import { EmptyState } from '../../components/EmptyState.jsx';
+import { LoadMore } from '../../components/LoadMore.jsx';
 import { PageHeader } from '../../components/PageHeader.jsx';
 import { ResponsiveTable } from '../../components/ResponsiveTable.jsx';
 import { orderColumns } from '../orders/OrdersPage.jsx';
@@ -22,16 +23,17 @@ function OrdersSection({ title, query, empty }) {
       {rows.length > 0 && (
         <ResponsiveTable label={title} rows={rows} rowKey={(o) => o.id} onRowClick={(o) => navigate(`/orders/${o.id}`)} columns={orderColumns()} />
       )}
+      <LoadMore query={query} />
     </section>
   );
 }
 
-/** Greeting, the next two weeks of pickups and what is on hold. */
+/** Greeting, the next two weeks of pickups (overdue ones first) and what is on hold. */
 export function HomePage() {
   const { user, can } = useAuth();
   const canRead = can('orders.read.own');
   const today = todayYmd();
-  const upcoming = useOrders({ status: 'active', pickupFrom: today, pickupTo: addDaysYmd(today, 14) }, { enabled: canRead });
+  const upcoming = useOrders({ status: 'active', pickupTo: addDaysYmd(today, 14) }, { enabled: canRead });
   const onHold = useOrders({ status: 'on_hold' }, { enabled: canRead });
 
   return (
