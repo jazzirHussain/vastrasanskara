@@ -1,0 +1,41 @@
+import { test, expect } from 'vitest';
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { mockClient } from 'aws-sdk-client-mock';
+import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
+import { createSesEmailAdapter } from '../src/core/notify/adapters/emailSes.js';
+import { createFileEmailAdapter } from '../src/core/notify/adapters/emailFile.js';
+import { registerConfiguredAdapters } from '../src/core/notify/adapters/configure.js';
+import { getAdapter, getAdapterByProvider, resetAdapters } from '../src/core/notify/adapters/registry.js';
+import { loadConfig } from '../src/config.js';
+test('sends raw MIME through SESv2', async () => {
+  const ses = mockClient(SESv2Client); ses.on(SendEmailCommand).resolves({ MessageId: 'abc' });
+  const a = createSesEmailAdapter({ region: 'ap-south-1', from: 'no-reply@x.com', storage: {} });
+  expect(await a.send({ to: 'a@b.c', subject: 'S', text: 'T', html: '<p>T</p>', attachments: [] })).toEqual({ providerMessageId: 'abc', status: 'sent' });
+  expect(ses.commandCalls(SendEmailCommand)[0].args[0].input.Content.Raw).toBeDefined();
+});
+test('startup registers in-app plus the configured email adapter', () => {
+  resetAdapters();
+  const base = loadConfig({ NODE_ENV: 'test' });
+  registerConfiguredAdapters(base, {});
+  expect(getAdapter('in_app').provider).toBe('in_app');
+  expect(getAdapter('email').provider).toBe('file');
+  registerConfiguredAdapters({ ...base, mail: { ...base.mail, adapter: 'ses' } }, {});
+  expect(getAdapter('email').provider).toBe('ses');
+  expect(getAdapterByProvider('ses')).toBe(getAdapter('email'));
+  resetAdapters();
+});
+test('file adapter writes an .eml for development', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'vs-mail-'));
+  const a = createFileEmailAdapter({ dir, from: 'Shop <no-reply@localhost>' });
+  const { providerMessageId, status } = await a.send({ to: 'a@b.c', subject: 'Hello', text: 'T', html: '<p>T</p>', attachments: [] });
+  expect(status).toBe('sent');
+  const files = readdirSync(dir);
+  expect(files).toHaveLength(1);
+  expect(files[0]).toMatch(/\.eml$/);
+  const eml = readFileSync(path.join(dir, files[0]), 'utf8');
+  expect(eml).toContain('Subject: Hello');
+  expect(eml).toContain('To: a@b.c');
+  expect(providerMessageId).toBeTruthy();
+});
