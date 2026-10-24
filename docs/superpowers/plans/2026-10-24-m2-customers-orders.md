@@ -65,7 +65,6 @@ apps/api/src/
   modules/customers/{model.js,service.js,routes.js}
   modules/measurements/{model.js,service.js,routes.js}
   modules/orders/{model.js,service.js,lifecycle.js,garments.js,routes.js}
-deploy/scripts/wait-ssm-command.sh  deploy/test/*.test.js  .gitattributes   (Task 3)
 apps/web/src/
   theme.js  styles/fonts.js
   components/{PageHeader.jsx,EmptyState.jsx,StatusBadge.jsx,StageThread.jsx,Money.jsx,DateLabel.jsx,ResponsiveTable.jsx,LoadMore.jsx}
@@ -132,20 +131,9 @@ test('new users get an invite email, not a reset email', async () => {
 
 ---
 
-### Task 3: Deployment hardening
+### Task 3: Deployment hardening — moved to go-live (M9)
 
-**Files:**
-- Create: `deploy/scripts/wait-ssm-command.sh`, `deploy/test/deploy-scripts.test.js`, `deploy/vitest.config.js`, `.gitattributes`
-- Modify: `.github/workflows/deploy.yml`, `deploy/scripts/remote-deploy.sh`, `deploy/nginx/api.conf`, `docs/ops/infrastructure.md`, `vitest.config.js` (add project `deploy`)
-
-**Interfaces:**
-- Produces: `wait-ssm-command.sh <command-id> <instance-id> [timeout-seconds=900]` — polls `aws ssm get-command-invocation` every 10 s until `Status` is terminal; prints stdout/stderr; exit 0 only for `Success`. `remote-deploy.sh` writes `.env` values single-quoted (dotenv keeps single-quoted values literal) and rejects values containing `'` or a newline; removes its temp file on any exit (`trap`).
-
-- [ ] **Step 1: Write the failing tests** (vitest runs the scripts with a fake `aws` first on `PATH`; skipped when `bash` is unavailable): `waits past 100 s worth of polls until Success` (fake returns `InProgress` 12 times then `Success`, with sleep stubbed via `SLEEP=true`), `fails on Failed and prints the remote output`, `writes single-quoted .env values that dotenv reads back exactly` (value `a\nb$c "d"` round-trips byte for byte), `leaves no temp file when a value is rejected`.
-- [ ] **Step 2: Run** `npx vitest run --project deploy` → FAIL.
-- [ ] **Step 3: Implement** the scripts; `deploy.yml` calls `deploy/scripts/wait-ssm-command.sh "$command_id" "$INSTANCE_ID"` instead of `aws ssm wait`. Also: `.gitattributes` with `* text=auto eol=lf` and `*.sh text eol=lf`; nginx `listen 443 ssl http2;` (works on every nginx version, replaces `http2 on;`); runbook adds `pm2 install pm2-logrotate` (max 10 MB × 14 files), `frame-ancestors 'none'` in the CSP, and `s3:AbortMultipartUpload` on the backups bucket.
-- [ ] **Step 4: Run** `npx vitest run --project deploy && bash -n deploy/scripts/*.sh` → PASS.
-- [ ] **Step 5: Commit** `fix(deploy): wait for SSM properly, literal .env values, nginx and runbook fixes (M2 Task 3)`
+Dropped from M2: deployment is set up once, at the end, when the whole app is built. The items are listed under "Not in M2". Task numbers are kept so commit subjects and the ledger stay aligned.
 
 ---
 
@@ -477,4 +465,5 @@ test('rejects pickup in the past, due after pickup, non-designer designer', asyn
 - Stage events, vendors, workers, QC/rework/alteration, late digest and pickup-risk jobs (M3) — M2 garments stay at `order_taken`; `late` in M2 comes from planned dates only.
 - "Order confirmed + advance paid" notification, advances and refunds as money (M4) — M2 records the refund percent only.
 - Garment `materials[]` and catalog items (M4/M6) — fields exist, unused.
-- Deferred M1 minors (ledger `Final: minor (deferred)` lines) other than those folded into Tasks 1–3.
+- Deferred M1 minors (ledger `Final: minor (deferred)` lines) other than those folded into Tasks 1–2.
+- Deployment hardening (M9 go-live, from M1 review): wait for SSM commands past 100 s instead of `aws ssm wait`; single-quoted `.env` values in `remote-deploy.sh`; `.gitattributes` LF line endings; nginx `listen 443 ssl http2`; pm2-logrotate; CSP `frame-ancestors 'none'`; `s3:AbortMultipartUpload` on the backups bucket.
