@@ -225,12 +225,17 @@ const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  * order number (e.g. '0012' or the whole number) or the start of the customer's name. Each item
  * is { order, garments, customerName, designerName }.
  */
-export async function listOrders(branchId, user, { status, designerId, priority, pickupFrom, pickupTo, q, cursor, limit } = {}) {
+export async function listOrders(
+  branchId,
+  user,
+  { status, designerId, customerId, priority, pickupFrom, pickupTo, q, cursor, limit } = {},
+) {
   // Both the requested designer and the user's scope must hold, so a designer cannot widen it.
   const filter = {
     branchId,
     ...(status && { status }),
     ...(priority && { priority }),
+    ...(customerId && { customerId: new ObjectId(customerId) }),
     $and: [orderScope(user), designerId ? { designerId: new ObjectId(designerId) } : {}],
   };
   if (pickupFrom || pickupTo) {

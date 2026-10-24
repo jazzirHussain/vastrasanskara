@@ -36,6 +36,7 @@ export const server = setupServer(
   http.get('/v1/notifications', () => HttpResponse.json({ items: [], unreadCount: 0 })),
   http.get('/v1/settings', () => HttpResponse.json(defaultSettings)),
   http.get('/v1/branch', () => HttpResponse.json(defaultBranch)),
+  http.get('/v1/orders', () => HttpResponse.json({ items: [], nextCursor: null })),
 );
 
 export function asAdmin() {

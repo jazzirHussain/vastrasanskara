@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { stageIndex } from '@vs/shared/stages.js';
 import { objectId } from '@vs/shared/schemas/common.js';
 import {
   addGarmentsSchema,
@@ -33,6 +34,25 @@ export function isGarmentLate(garment, order, day) {
   return (garment.dueDate ?? order.pickupDate) < day;
 }
 
+const planJson = (plan) =>
+  plan.map(({ stage, plannedDate, originalPlannedDate, skipped, skipReason }) => ({
+    stage,
+    plannedDate: plannedDate ?? null,
+    originalPlannedDate: originalPlannedDate ?? null,
+    skipped: Boolean(skipped),
+    skipReason: skipReason ?? null,
+  }));
+
+/** The garment furthest behind (lowest stage among unfinished ones), for the list's thread. */
+function slowestGarment(garments) {
+  const open = garments.filter((g) => !DONE.has(g.status));
+  const pool = open.length ? open : garments;
+  const slowest = pool.reduce((a, g) => (stageIndex(g.currentStage) < stageIndex(a.currentStage) ? g : a), pool[0]);
+  if (!slowest) return null;
+  const { currentStage, status, tightSchedule, stagePlan } = slowest;
+  return { currentStage, status, tightSchedule, stagePlan: planJson(stagePlan) };
+}
+
 // Paise fields are left out entirely (not nulled) for users without money.view.
 const withMoney = (user, fields) => (user.permissions.has('money.view') ? fields : {});
 
@@ -49,6 +69,7 @@ export function toOrderSummary({ order, garments, customerName, designerName }, 
     garmentCount: garments.length,
     tight: garments.some((g) => g.tightSchedule && !DONE.has(g.status)),
     late: garments.some((g) => isGarmentLate(g, order, day)),
+    thread: slowestGarment(garments),
     ...withMoney(user, { expectedBudget: order.expectedBudget ?? null }),
     version: order.__v,
   };
@@ -70,13 +91,7 @@ export function toGarmentJson(g, user) {
     stageState: g.stageState,
     status: g.status,
     tightSchedule: g.tightSchedule,
-    stagePlan: g.stagePlan.map(({ stage, plannedDate, originalPlannedDate, skipped, skipReason }) => ({
-      stage,
-      plannedDate: plannedDate ?? null,
-      originalPlannedDate: originalPlannedDate ?? null,
-      skipped: Boolean(skipped),
-      skipReason: skipReason ?? null,
-    })),
+    stagePlan: planJson(g.stagePlan),
     referenceKeys: [...g.referenceKeys],
     measurementId: g.measurementId ? String(g.measurementId) : null,
     ...withMoney(user, { agreedPrice: g.agreedPrice }),
@@ -117,6 +132,7 @@ export async function orderDetailResponse(req, orderId) {
 const listQuery = z.strictObject({
   status: z.enum(['active', 'on_hold', 'completed', 'cancelled']).optional(),
   designerId: objectId.optional(),
+  customerId: objectId.optional(),
   priority: z.enum(['normal', 'rush']).optional(),
   pickupFrom: ymd.optional(),
   pickupTo: ymd.optional(),

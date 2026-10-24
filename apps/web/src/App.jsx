@@ -9,6 +9,8 @@ import { CustomerPage } from './features/customers/CustomerPage.jsx';
 import { CustomersPage } from './features/customers/CustomersPage.jsx';
 import { HomePage } from './features/home/HomePage.jsx';
 import { NewOrderPage } from './features/orders/NewOrderPage.jsx';
+import { OrderPage } from './features/orders/OrderPage.jsx';
+import { OrdersPage } from './features/orders/OrdersPage.jsx';
 import { SettingsPage } from './features/settings/SettingsPage.jsx';
 import { UsersPage } from './features/users/UsersPage.jsx';
 import { AppLayout } from './layout/AppLayout.jsx';
@@ -27,6 +29,10 @@ export default function App() {
             <Route element={<RequirePermission permission="customers.read" />}>
               <Route path="/customers" element={<CustomersPage />} />
               <Route path="/customers/:id" element={<CustomerPage />} />
+            </Route>
+            <Route element={<RequirePermission permission="orders.read.own" />}>
+              <Route path="/orders" element={<OrdersPage />} />
+              <Route path="/orders/:id" element={<OrderPage />} />
             </Route>
             <Route element={<RequirePermission permission="orders.write" />}>
               <Route path="/orders/new" element={<NewOrderPage />} />

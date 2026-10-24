@@ -11,6 +11,7 @@ const STATUSES = {
   late: ['Late', 'kumkum'],
   tight: ['Tight schedule', 'haldi'],
   inactive: ['Inactive', 'muted'],
+  batch: ['Batch', 'indigo'],
 };
 
 const TINTS = {

@@ -284,7 +284,8 @@ body {
 }
 
 .vs-thread-draw {
-  animation: vs-draw 300ms ease-out both;
+  /* No fill mode: if the animation never runs (hidden tab), the thread is simply shown. */
+  animation: vs-draw 300ms ease-out;
 }
 
 @keyframes vs-draw {

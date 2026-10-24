@@ -50,6 +50,8 @@ test('operations sees all with money', async () => {
   await take({ designer: d2 });
   const list = await ops.agent.get('/v1/orders');
   expect(list.body.items).toHaveLength(2);
+  expect(list.body.items[0].thread).toMatchObject({ currentStage: 'order_taken', status: 'in_progress', tightSchedule: false, stagePlan: expect.any(Array) });
+  expect(list.body.items[0].thread.stagePlan).toHaveLength(14);
   expect(list.body.items[0]).toMatchObject({ expectedBudget: 5000000, customer: { name: 'Asha Rao' }, designer: { name: 'Meera' }, garmentCount: 1, late: false, tight: false });
   const detail = await ops.agent.get(`/v1/orders/${list.body.items[0].id}`);
   expect(detail.body.garments[0].agreedPrice).toBe(450000);
@@ -67,6 +69,7 @@ test('filters by status, pickup range and search', async () => {
   expect(await ids({ designerId: String(d2.user._id) })).toEqual([later.id]);
   expect(await ids({ pickupFrom: addDaysYmd(today(), 1), pickupTo: addDaysYmd(today(), 7) })).toEqual([soon.id]);
   expect(await ids({ q: 'bha' })).toEqual([later.id]);
+  expect(await ids({ customerId: bhavna })).toEqual([later.id]);
   expect(await ids({ q: later.orderNo.slice(-4) })).toEqual([later.id]);
   expect(await ids({ q: later.orderNo })).toEqual([later.id]);
   expect((await ops.agent.get('/v1/orders').query({ status: 'lost' })).status).toBe(400);
