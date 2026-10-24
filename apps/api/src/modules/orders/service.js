@@ -6,11 +6,12 @@ import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
 import { businessRule, notFound, validationError } from '../../core/errors.js';
 import { nextDocumentNumber } from '../../core/numbering.js';
+import { paginate } from '../../core/pagination.js';
 import { getBranch } from '../branches/service.js';
-import { getCustomer } from '../customers/service.js';
+import { customerIdsByNamePrefix, getCustomer, getCustomerNames } from '../customers/service.js';
 import { getMeasurement } from '../measurements/service.js';
 import { readSettings } from '../settings/service.js';
-import { isActiveDesigner } from '../users/service.js';
+import { getUserNames, isActiveDesigner } from '../users/service.js';
 import { Garment, Order } from './model.js';
 
 const { ObjectId } = mongoose.Types;
@@ -184,4 +185,45 @@ export async function canReadGarmentFile(user, key) {
   const garment = await Garment.findOne({ branchId: user.branchId, referenceKeys: key }, { orderId: 1 }).lean();
   if (!garment) return user.permissions.has('orders.write');
   return Boolean(await Order.exists({ _id: garment.orderId, branchId: user.branchId, ...orderScope(user) }));
+}
+
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * A page of the branch's orders in the user's scope, by pickup date. `q` matches the end of the
+ * order number (e.g. '0012' or the whole number) or the start of the customer's name. Each item
+ * is { order, garments, customerName, designerName }.
+ */
+export async function listOrders(branchId, user, { status, designerId, priority, pickupFrom, pickupTo, q, cursor, limit } = {}) {
+  // Both the requested designer and the user's scope must hold, so a designer cannot widen it.
+  const filter = {
+    branchId,
+    ...(status && { status }),
+    ...(priority && { priority }),
+    $and: [orderScope(user), designerId ? { designerId: new ObjectId(designerId) } : {}],
+  };
+  if (pickupFrom || pickupTo) {
+    filter.pickupDate = { ...(pickupFrom && { $gte: pickupFrom }), ...(pickupTo && { $lte: pickupTo }) };
+  }
+  const term = q?.trim();
+  if (term) {
+    const customerIds = await customerIdsByNamePrefix(branchId, term);
+    filter.$or = [{ orderNo: { $regex: `${escapeRegex(term)}$`, $options: 'i' } }, { customerId: { $in: customerIds } }];
+  }
+
+  const { items: orders, nextCursor } = await paginate(Order, filter, { sort: ['pickupDate', 1], limit, cursor });
+  const ids = orders.map((o) => o._id);
+  const [garments, customerNames, designerNames] = await Promise.all([
+    Garment.find({ orderId: { $in: ids } }).sort({ index: 1 }).lean(),
+    getCustomerNames(branchId, orders.map((o) => o.customerId)),
+    getUserNames(orders.map((o) => o.designerId)),
+  ]);
+  const byOrder = Map.groupBy(garments, (g) => String(g.orderId));
+  const items = orders.map((order) => ({
+    order,
+    garments: byOrder.get(String(order._id)) ?? [],
+    customerName: customerNames.get(String(order.customerId)),
+    designerName: designerNames.get(String(order.designerId)),
+  }));
+  return { items, nextCursor };
 }

@@ -1,10 +1,12 @@
 import { Router } from 'express';
-import { orderCreateSchema } from '@vs/shared/schemas/orders.js';
+import { z } from 'zod';
+import { objectId } from '@vs/shared/schemas/common.js';
+import { orderCreateSchema, ymd } from '@vs/shared/schemas/orders.js';
 import { actorFrom, requirePermission } from '../../core/auth/middleware.js';
 import { idempotent } from '../../core/idempotency.js';
 import { validate } from '../../core/validate.js';
 import { getUserNames } from '../users/service.js';
-import { createOrder, getOrder, today } from './service.js';
+import { createOrder, getOrder, listOrders, today } from './service.js';
 
 const DONE = new Set(['ready', 'picked_up', 'rejected', 'cancelled']);
 
@@ -101,8 +103,29 @@ export async function orderDetailResponse(req, orderId) {
   );
 }
 
+const listQuery = z.strictObject({
+  status: z.enum(['active', 'on_hold', 'completed', 'cancelled']).optional(),
+  designerId: objectId.optional(),
+  priority: z.enum(['normal', 'rush']).optional(),
+  pickupFrom: ymd.optional(),
+  pickupTo: ymd.optional(),
+  q: z.string().max(100).optional(),
+  cursor: z.string().max(500).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
 export function ordersRouter() {
   const router = Router();
+
+  router.get('/', requirePermission('orders.read.own'), validate({ query: listQuery }), async (req, res) => {
+    const { items, nextCursor } = await listOrders(req.user.branchId, req.user, req.validatedQuery);
+    const day = today();
+    res.json({ items: items.map((item) => toOrderSummary(item, req.user, day)), nextCursor });
+  });
+
+  router.get('/:id', requirePermission('orders.read.own'), async (req, res) => {
+    res.json(await orderDetailResponse(req, req.params.id));
+  });
 
   router.post(
     '/',
