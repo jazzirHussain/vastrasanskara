@@ -1035,7 +1035,7 @@ git add apps/api && git commit -m "feat(api): notification catalog, recipients a
 - Produces:
   - Adapter shape: `{ channel, provider, capabilities: { attachments: boolean, templatesOnly: boolean, maxLength?: number }, send(message) → Promise<{ providerMessageId, status: 'sent'|'delivered' }>, parseWebhook?(req) → Promise<Array<{ providerMessageId, status, at }>> }`; `message = { to, subject?, text, html?, attachments: [{ filename, content: Readable }], event, vars }`.
   - `registerAdapter(adapter)`, `getAdapter(channel)`, `getAdapterByProvider(provider)`, `resetAdapters()` (tests).
-  - `createInAppAdapter()` — channel `in_app`, provider `in_app`; creates `Notification { branchId, userId, event, message, link, read: false, createdAt }` (model in `inApp.js`; `link` from `vars.link`).
+  - `createInAppAdapter()` — channel `in_app`, provider `in_app`; creates `Notification { branchId, userId, event, message, link, read: false, createdAt }` (model `Notification` in `core/notify/models.js`; `link` from `vars.link`).
   - `createSesEmailAdapter({ region, from, storage })` — nodemailer SES transport with `SESv2Client` + `SendEmailCommand`; returns the SES `MessageId`. `createFileEmailAdapter({ dir, from })` — writes `.eml` files (dev).
   - `deliverDue({ now = clock.now(), limit = 50 } = {}) → Promise<{ sent, retried, failed }>` — atomically claims `pending` entries due by `now` (or `sending` with `lockedAt` older than 10 minutes) by setting `sending`; renders the template (DB template override, else the catalog default; email goes through `renderEmail` with the branch); sends; success → `sent`, `sentAt`, `providerMessageId`; failure → `attempts + 1`, `lastError`, back to `pending` with `scheduledFor = now + [1, 5, 15, 60][attempts - 1]` minutes; at 5 attempts → `failed`, and when the rule has a `fallback` and the entry is not itself a fallback, a new entry for the fallback channel (`dedupeKey + ':fallback'`, `isFallback: true`, `scheduledFor: now`).
 
@@ -1051,7 +1051,8 @@ import { defineEvent } from '../src/core/notify/catalog.js';
 import { Outbox } from '../src/core/notify/models.js';
 import { deliverDue } from '../src/core/notify/deliver.js';
 import { registerAdapter, resetAdapters } from '../src/core/notify/adapters/registry.js';
-import { createInAppAdapter, Notification } from '../src/core/notify/adapters/inApp.js';
+import { createInAppAdapter } from '../src/core/notify/adapters/inApp.js';
+import { Notification } from '../src/core/notify/models.js';
 useTestDb();
 defineEvent('test.fb', { recipients: ['owner'], channels: ['email'], fallback: 'in_app', templates: { email: { subject: 'S {n}', body: 'B {n}' }, in_app: { body: 'B {n}' } } });
 const fake = { channel: 'email', provider: 'fake', capabilities: { attachments: true, templatesOnly: false }, send: vi.fn() };
@@ -1146,7 +1147,7 @@ import { test, expect } from 'vitest';
 import request from 'supertest';
 import { useTestDb } from './helpers/db.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
-import { Notification } from '../src/core/notify/adapters/inApp.js';
+import { Notification } from '../src/core/notify/models.js';
 import { Outbox } from '../src/core/notify/models.js';
 import { registerAdapter } from '../src/core/notify/adapters/registry.js';
 useTestDb();

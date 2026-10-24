@@ -57,6 +57,22 @@ const outboxSchema = new mongoose.Schema(
 );
 outboxSchema.index({ status: 1, scheduledFor: 1 });
 
+// The in-app bell: one document per message to a staff user.
+const notificationSchema = new mongoose.Schema(
+  {
+    branchId: { type: ObjectId, ref: 'Branch', required: true },
+    userId: { type: ObjectId, ref: 'User', required: true },
+    event: { type: String, required: true },
+    message: { type: String, required: true },
+    link: { type: String, default: null },
+    read: { type: Boolean, default: false },
+  },
+  { timestamps: { createdAt: true, updatedAt: false } },
+);
+notificationSchema.index({ userId: 1, read: 1, createdAt: -1 });
+
+export const Notification =
+  mongoose.models.Notification ?? mongoose.model('Notification', notificationSchema);
 export const NotificationRule =
   mongoose.models.NotificationRule ?? mongoose.model('NotificationRule', ruleSchema);
 export const NotificationTemplate =
