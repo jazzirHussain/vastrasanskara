@@ -56,9 +56,10 @@ const zodErrors = (error) => Object.fromEntries(error.issues.map((i) => [i.path.
 
 /**
  * Add or edit a customer. Checks the shared rules before sending (consent needs a note, a GSTIN
- * fixes the state); edits send only the changed fields. A phone already on file links to them.
+ * fixes the state); edits send only the changed fields. A phone already on file links to them,
+ * or offers them through `onUseExisting(customerId)` when the form is part of another flow.
  */
-export function CustomerForm({ customer, mutation, onSaved }) {
+export function CustomerForm({ customer, mutation, onSaved, onUseExisting }) {
   const editing = Boolean(customer);
   const original = editing ? fromCustomer(customer) : BLANK;
   const [draft, setDraft] = useState(original);
@@ -98,9 +99,15 @@ export function CustomerForm({ customer, mutation, onSaved }) {
         {duplicate && (
           <Alert color="yellow">
             A customer with this phone already exists.{' '}
-            <Anchor component={Link} to={`/customers/${duplicate}`}>
-              Open their page
-            </Anchor>
+            {onUseExisting ? (
+              <Anchor component="button" type="button" onClick={() => onUseExisting(duplicate)}>
+                Use this customer
+              </Anchor>
+            ) : (
+              <Anchor component={Link} to={`/customers/${duplicate}`}>
+                Open their page
+              </Anchor>
+            )}
           </Alert>
         )}
         {mutation.error && !duplicate && mutation.error.code !== 'VALIDATION_FAILED' && (

@@ -3,6 +3,7 @@ import { Button, Chip, Drawer, Group, NumberInput, Stack, Switch, Text, TextInpu
 import { useDebouncedValue } from '@mantine/hooks';
 import { IconSearch } from '@tabler/icons-react';
 import { useAuth } from '../../../auth/AuthContext.js';
+import { apiFetch } from '../../../lib/api.js';
 import { CustomerForm } from '../../customers/CustomerForm.jsx';
 import { displayPhone } from '../../customers/CustomersPage.jsx';
 import { useCreateCustomer, useCustomers } from '../../customers/customersApi.js';
@@ -23,6 +24,21 @@ export function CustomerStep({ draft, update, designers }) {
   const results = useCustomers(q);
   const create = useCreateCustomer();
   const [adding, setAdding] = useState(false);
+  const [existingError, setExistingError] = useState(null);
+  const closeDrawer = () => {
+    setAdding(false);
+    setExistingError(null);
+    create.reset();
+  };
+
+  async function pickExisting(customerId) {
+    try {
+      update(forCustomer(draft, await apiFetch(`/v1/customers/${customerId}`)));
+      closeDrawer();
+    } catch (error) {
+      setExistingError(error.message);
+    }
+  }
   const found = q ? (results.data?.pages[0]?.items ?? []).slice(0, 6) : [];
 
   return (
@@ -122,10 +138,16 @@ export function CustomerStep({ draft, update, designers }) {
         )}
       </Group>
 
-      <Drawer opened={adding} onClose={() => { setAdding(false); create.reset(); }} title="Add customer" position="right" size="md">
+      <Drawer opened={adding} onClose={closeDrawer} title="Add customer" position="right" size="md">
+        {existingError && (
+          <Text c="red" size="sm" mb="sm" role="alert">
+            {existingError}
+          </Text>
+        )}
         {adding && (
           <CustomerForm
             mutation={create}
+            onUseExisting={pickExisting}
             onSaved={(c) => {
               update(forCustomer(draft, c));
               setAdding(false);

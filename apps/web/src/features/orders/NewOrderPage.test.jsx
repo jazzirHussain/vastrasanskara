@@ -1,5 +1,5 @@
 import { test, expect, beforeEach } from 'vitest';
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { addDaysYmd, istDate } from '@vs/shared';
@@ -141,4 +141,23 @@ test('changing the customer drops measurements taken for the previous one', asyn
   await userEvent.click(await screen.findByRole('button', { name: 'Take order' }));
   await expect.poll(() => body?.customerId).toBe('c2');
   expect(body.garments[0].measurementId).toBeNull();
+});
+test('a phone already on file in the add-customer drawer offers that customer', async () => {
+  asOperations(); designers(); latest();
+  server.use(
+    http.post('/v1/customers', () => HttpResponse.json({ error: { code: 'PHONE_TAKEN', message: 'x', details: { customerId: 'c2' } } }, { status: 409 })),
+    http.get('/v1/customers', () => HttpResponse.json({ items: [], nextCursor: null })),
+    http.get('/v1/customers/c2', () => HttpResponse.json(customerFixture({ id: 'c2', name: 'Bhavna Iyer', phone: '+919000011111' }))),
+  );
+  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft({ step: 0, customer: null })));
+  renderApp('/orders/new');
+  await userEvent.click(await screen.findByRole('button', { name: 'Add new customer' }));
+  const drawer = await screen.findByRole('dialog');
+  await userEvent.type(within(drawer).getByLabelText('Name'), 'Bhavna');
+  await userEvent.type(within(drawer).getByLabelText('Phone'), '9000011111');
+  await userEvent.click(within(drawer).getByRole('button', { name: 'Save customer' }));
+  expect(within(drawer).queryByRole('link', { name: 'Open their page' })).toBeNull();
+  await userEvent.click(await within(drawer).findByRole('button', { name: 'Use this customer' }));
+  expect(await screen.findByText('Bhavna Iyer')).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 });
