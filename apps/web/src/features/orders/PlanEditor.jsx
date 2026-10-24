@@ -25,7 +25,7 @@ export function PlanEditor({ orderId, garment, opened, onClose }) {
     <Modal opened={opened} onClose={onClose} title={`Adjust plan for ${garment.description}`} size="md">
       <Stack gap="xs">
         <Text size="sm" c="var(--vs-muted)">
-          Dates must follow the stage order and fall between the order date and the due date.
+          Dates must follow the stage order and fall between today and the due date.
         </Text>
         {EDITABLE.map((s) => {
           const entry = planned[s.key];

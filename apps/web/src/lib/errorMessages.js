@@ -20,7 +20,7 @@ export const errorMessages = {
   DUE_AFTER_PICKUP: 'A garment cannot be due after the pickup date.',
   DUE_IN_PAST: 'A garment cannot be due in the past.',
   INVALID_STATUS: 'This order cannot be changed in its current status.',
-  PLAN_OUT_OF_RANGE: 'Planned dates must fall between the order date and the due date.',
+  PLAN_OUT_OF_RANGE: 'Planned dates must fall between today and the due date.',
   STAGE_ORDER_VIOLATION: 'Planned dates must follow the stage order.',
   PHONE_TAKEN: 'A customer with this phone already exists.',
   NETWORK_ERROR: 'Cannot reach the server. Check your connection and try again.',

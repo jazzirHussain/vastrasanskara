@@ -73,7 +73,7 @@ export const garmentPatchSchema = z
 /** PUT /v1/garments/:id/plan (with `version`). */
 export const garmentPlanSchema = z.strictObject({
   changes: z
-    .array(z.strictObject({ stage: z.enum(STAGE_KEYS.filter((s) => s !== 'picked_up')), plannedDate: ymd }))
+    .array(z.strictObject({ stage: z.enum(STAGE_KEYS.filter((s) => s !== 'order_taken' && s !== 'picked_up')), plannedDate: ymd }))
     .min(1)
     .max(13)
     .refine((changes) => new Set(changes.map((c) => c.stage)).size === changes.length, 'Each stage once'),

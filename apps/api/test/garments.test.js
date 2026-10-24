@@ -1,10 +1,11 @@
-import { test, expect } from 'vitest';
+import { test, expect, vi, afterEach } from 'vitest';
 import { addDaysYmd, istDate } from '@vs/shared';
 import { useTestDb } from './helpers/db.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { clock } from '../src/clock.js';
 import { AuditLog } from '../src/core/audit/model.js';
 useTestDb();
+afterEach(() => vi.restoreAllMocks());
 const app = buildTestApp();
 
 let keys = 0;
@@ -58,6 +59,19 @@ test('planned date edits keep originals and reject out-of-order dates', async ()
   expect((await designer.agent.put(`/v1/garments/${garment.id}/plan`).send({ version: 1, changes: [{ stage: 'packaging', plannedDate: addDaysYmd(order.pickupDate, 1) }] })).body.error.code).toBe('PLAN_OUT_OF_RANGE');
   expect((await designer.agent.put(`/v1/garments/${garment.id}/plan`).send({ version: 1, changes: [{ stage: 'materials_ready', plannedDate: addDaysYmd(today(), -1) }] })).body.error.code).toBe('PLAN_OUT_OF_RANGE');
   expect(await AuditLog.countDocuments({ entityType: 'garment', action: 'plan' })).toBe(1);
+});
+test('planned dates cannot be moved before today, even on an older order', async () => {
+  const { designer, garment, order } = await world();
+  const later = new Date(clock.now().getTime() + 3 * 86400000);
+  vi.spyOn(clock, 'now').mockReturnValue(later);
+  const put = (changes) => designer.agent.put(`/v1/garments/${garment.id}/plan`).send({ version: 0, changes });
+  expect((await put([{ stage: 'materials_ready', plannedDate: addDaysYmd(order.orderDate, 1) }])).body.error.code).toBe('PLAN_OUT_OF_RANGE');
+  expect((await put([{ stage: 'materials_ready', plannedDate: today() }])).status).toBe(200);
+});
+test('the order-taken date cannot be planned by hand', async () => {
+  const { designer, garment } = await world();
+  const r = await designer.agent.put(`/v1/garments/${garment.id}/plan`).send({ version: 0, changes: [{ stage: 'order_taken', plannedDate: today() }] });
+  expect(r.status).toBe(400);
 });
 test('fixing a tight plan by hand clears the flag', async () => {
   const { ops, order: taken } = await world();

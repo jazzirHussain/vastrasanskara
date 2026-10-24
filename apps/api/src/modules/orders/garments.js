@@ -5,7 +5,7 @@ import { withTransaction } from '../../core/db.js';
 import { businessRule, conflict, forbidden, notFound } from '../../core/errors.js';
 import { readSettings } from '../settings/service.js';
 import { Garment, Order } from './model.js';
-import { assertStatus, buildGarments, checkGarmentInputs, orderScope, replanGarment } from './service.js';
+import { assertStatus, buildGarments, checkGarmentInputs, orderScope, replanGarment, today } from './service.js';
 
 const OPEN = ['active', 'on_hold'];
 // Designers (production.update without orders.write) may change only these.
@@ -71,7 +71,7 @@ export async function updateGarment(branchId, user, garmentId, { version, patch 
 }
 
 /**
- * Sets planned dates by hand. Dates must lie between the order date and the garment's due date
+ * Sets planned dates by hand. Dates must lie between today and the garment's due date
  * and follow the stage order; the original dates are kept. A plan fixed this way is no longer
  * flagged tight.
  */
@@ -82,8 +82,8 @@ export function updateGarmentPlan(branchId, user, garmentId, { version, patch: {
     const due = garment.dueDate ?? order.pickupDate;
     const before = planDates(garment);
     for (const { stage, plannedDate } of changes) {
-      if (plannedDate < order.orderDate || plannedDate > due) {
-        throw businessRule('PLAN_OUT_OF_RANGE', 'Planned dates must fall between the order date and the due date');
+      if (plannedDate < today() || plannedDate > due) {
+        throw businessRule('PLAN_OUT_OF_RANGE', 'Planned dates must fall between today and the due date');
       }
       garment.stagePlan[stageIndex(stage)].plannedDate = plannedDate;
     }
