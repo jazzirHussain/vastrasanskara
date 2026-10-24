@@ -48,13 +48,20 @@ export function useOrderChange(id) {
   });
 }
 
-/** Planned-date changes to one garment of order `orderId`; the order is re-read after. */
-export function useGarmentPlan(orderId, garmentId) {
+/** A change to one garment of order `orderId`; the order is re-read after (or on `reloadOrder`). */
+function useGarmentChange(orderId, request) {
   const queryClient = useQueryClient();
   const reloadOrder = () => queryClient.invalidateQueries({ queryKey: [...ORDERS_KEY, orderId] });
-  const mutation = useMutation({
-    mutationFn: (body) => apiFetch(`/v1/garments/${garmentId}/plan`, { method: 'PUT', body }),
-    onSuccess: reloadOrder,
-  });
+  const mutation = useMutation({ mutationFn: request, onSuccess: reloadOrder });
   return { ...mutation, reloadOrder };
+}
+
+/** Planned-date changes to one garment (PUT /v1/garments/:id/plan). */
+export function useGarmentPlan(orderId, garmentId) {
+  return useGarmentChange(orderId, (body) => apiFetch(`/v1/garments/${garmentId}/plan`, { method: 'PUT', body }));
+}
+
+/** Field changes to one garment (PATCH /v1/garments/:id). */
+export function useGarmentUpdate(orderId, garmentId) {
+  return useGarmentChange(orderId, (body) => apiFetch(`/v1/garments/${garmentId}`, { method: 'PATCH', body }));
 }

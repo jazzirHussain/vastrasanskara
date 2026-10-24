@@ -67,7 +67,7 @@ export function orderBody(draft, latest) {
   };
 }
 
-const garmentsReady = (garments) =>
+export const garmentsReady = (garments) =>
   garments.length <= MAX_GARMENT_LINES &&
   garments.every((g) => g.type && g.description.trim() && g.price !== '' && g.price >= 0 && g.quantity >= 1 && g.quantity <= MAX_PIECES);
 

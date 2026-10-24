@@ -5,7 +5,8 @@ import { http, HttpResponse } from 'msw';
 import { addDaysYmd, istDate } from '@vs/shared';
 import { server, asOperations, asDesigner, customerFixture } from '../../test/server.js';
 import { renderApp } from '../../test/setup.js';
-import { DRAFT_KEY } from './NewOrderPage.jsx';
+import { DRAFT_KEY, garmentsReady } from './NewOrderPage.jsx';
+import { canAddGarment } from './new/GarmentsStep.jsx';
 
 const today = () => istDate(new Date());
 const designers = () => server.use(http.get('/v1/designers', () => HttpResponse.json({ items: [{ id: 'd1', name: 'Meera' }, { id: 'd2', name: 'Nila' }] })));
@@ -168,12 +169,12 @@ test('a batch above 200 pieces cannot go on to dates', async () => {
   expect(await screen.findByRole('button', { name: 'Next: dates' })).toBeDisabled();
   expect(screen.getByText('At most 200 identical pieces per garment.')).toBeInTheDocument();
 });
-test('an order stops offering more garments at 50', async () => {
-  asOperations(); designers(); latest();
+test('an order holds at most 50 garment lines', () => {
+  // Fifty rendered garment panels take over 30 s in jsdom under the full suite, so the rule is tested directly.
   const g = draft().garments[0];
-  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft({ step: 1, garments: Array.from({ length: 50 }, (_, i) => ({ ...g, uid: `g${i}` })) })));
-  renderApp('/orders/new');
-  expect(await screen.findByRole('button', { name: 'Next: dates' })).toBeEnabled();
-  expect(screen.queryByRole('button', { name: 'Add another garment' })).toBeNull();
-  expect(screen.getByText('An order can hold up to 50 garments.')).toBeInTheDocument();
-}, 30000); // fifty garment panels render slowly in jsdom
+  const lines = (n) => Array.from({ length: n }, (_, i) => ({ ...g, uid: `g${i}` }));
+  expect(canAddGarment(lines(49))).toBe(true);
+  expect(canAddGarment(lines(50))).toBe(false);
+  expect(garmentsReady(lines(50))).toBe(true);
+  expect(garmentsReady(lines(51))).toBe(false);
+});

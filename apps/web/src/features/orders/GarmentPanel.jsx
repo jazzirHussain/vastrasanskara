@@ -6,6 +6,7 @@ import { Money } from '../../components/Money.jsx';
 import { StageThread } from '../../components/StageThread.jsx';
 import { StatusBadge } from '../../components/StatusBadge.jsx';
 import { apiFetch } from '../../lib/api.js';
+import { GarmentEditor } from './GarmentEditor.jsx';
 import { isOpen } from './orderStatus.js';
 import { PlanEditor } from './PlanEditor.jsx';
 
@@ -42,6 +43,7 @@ function Fact({ label, children }) {
 export function GarmentPanel({ order, garment, typeLabel, late }) {
   const { can } = useAuth();
   const [adjusting, setAdjusting] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [fileError, setFileError] = useState(null);
   const canAdjust = isOpen(order) && (can('production.update') || can('orders.write'));
 
@@ -127,11 +129,14 @@ export function GarmentPanel({ order, garment, typeLabel, late }) {
             </div>
           )}
           {canAdjust && (
-            <div>
+            <Group gap="xs">
+              <Button variant="default" size="xs" onClick={() => setEditing(true)}>
+                Edit garment
+              </Button>
               <Button variant="default" size="xs" onClick={() => setAdjusting(true)}>
                 Adjust plan
               </Button>
-            </div>
+            </Group>
           )}
         </Stack>
         <StageThread
@@ -143,6 +148,9 @@ export function GarmentPanel({ order, garment, typeLabel, late }) {
           late={late}
         />
       </div>
+      {editing && (
+        <GarmentEditor order={order} garment={garment} opened onClose={() => setEditing(false)} />
+      )}
       {adjusting && (
         <PlanEditor
           orderId={order.id}

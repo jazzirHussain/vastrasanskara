@@ -87,7 +87,8 @@ function Measurements({ garment, latest, customerId, garmentTypes, onChosen }) {
   );
 }
 
-function References({ garment, onChange }) {
+/** Reference photo uploads; `garment.referenceKeys` holds stored keys or `{ key, name }` for new ones. */
+export function References({ garment, onChange }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -137,6 +138,7 @@ function References({ garment, onChange }) {
 // The API's limits: pieces per batch and garment lines per order.
 export const MAX_PIECES = 200;
 export const MAX_GARMENT_LINES = 50;
+export const canAddGarment = (garments) => garments.length < MAX_GARMENT_LINES;
 
 /** Step 2: what is being made. A quantity above 1 is a batch of identical garments. */
 export function GarmentsStep({ draft, update, garmentTypes, latest }) {
@@ -209,7 +211,7 @@ export function GarmentsStep({ draft, update, garmentTypes, latest }) {
           </Stack>
         </section>
       ))}
-      {draft.garments.length < MAX_GARMENT_LINES ? (
+      {canAddGarment(draft.garments) ? (
         <div>
           <Button variant="light" onClick={() => update({ garments: [...draft.garments, newGarment()] })}>
             Add another garment
