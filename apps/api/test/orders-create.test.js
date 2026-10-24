@@ -134,3 +134,13 @@ test('garment reference uploads: operations may upload; designers read only thei
   expect((await agent.get('/v1/files/url').query({ key: upload.body.key })).status).toBe(200);
   expect(designer).toBeTruthy();
 });
+test('a failed read after the order is saved still answers 201, so a retry never makes a second order', async () => {
+  const { take } = await setup();
+  vi.spyOn(Garment, 'find').mockImplementationOnce(() => { throw new Error('transient read failure'); });
+  const first = await take(undefined, 'after-commit');
+  expect(first.status).toBe(201);
+  expect(first.body).toMatchObject({ id: expect.any(String), orderNo: expect.stringMatching(/^VS\/ORD\//) });
+  const retry = await take(undefined, 'after-commit');
+  expect(retry.body.orderNo).toBe(first.body.orderNo);
+  expect(await Order.countDocuments({})).toBe(1);
+});

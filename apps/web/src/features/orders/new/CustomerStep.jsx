@@ -9,6 +9,12 @@ import { useCreateCustomer, useCustomers } from '../../customers/customersApi.js
 
 const pick = (c) => ({ id: c.id, name: c.name, phone: c.phone });
 
+// Measurements belong to a customer: a new customer starts from their own latest sets.
+const forCustomer = (draft, c) => ({
+  customer: pick(c),
+  garments: draft.garments.map((g) => ({ ...g, measurementId: undefined, chosenMeasurement: undefined })),
+});
+
 /** Step 1: who the order is for, which designer leads it, and whether it is a rush. */
 export function CustomerStep({ draft, update, designers }) {
   const { can } = useAuth();
@@ -50,7 +56,7 @@ export function CustomerStep({ draft, update, designers }) {
             {found.length > 0 && (
               <div className="vs-stack" style={{ maxWidth: 420 }}>
                 {found.map((c) => (
-                  <UnstyledButton key={c.id} className="vs-stack-row" onClick={() => update({ customer: pick(c) })}>
+                  <UnstyledButton key={c.id} className="vs-stack-row" onClick={() => update(forCustomer(draft, c))}>
                     <Text fw={600}>{c.name}</Text>
                     <Text size="sm" c="var(--vs-muted)" className="vs-figures">
                       {displayPhone(c.phone)}
@@ -121,7 +127,7 @@ export function CustomerStep({ draft, update, designers }) {
           <CustomerForm
             mutation={create}
             onSaved={(c) => {
-              update({ customer: pick(c) });
+              update(forCustomer(draft, c));
               setAdding(false);
             }}
           />

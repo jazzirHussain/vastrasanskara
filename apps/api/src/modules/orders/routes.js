@@ -14,6 +14,7 @@ import {
 } from '@vs/shared/schemas/orders.js';
 import { actorFrom, requireAnyPermission, requirePermission } from '../../core/auth/middleware.js';
 import { idempotent } from '../../core/idempotency.js';
+import { logger } from '../../logger.js';
 import { validate, versioned } from '../../core/validate.js';
 import { addGarments, updateGarment, updateGarmentPlan } from './garments.js';
 import { cancelOrder, holdOrder, resumeOrder, updateOrder } from './lifecycle.js';
@@ -141,6 +142,22 @@ const listQuery = z.strictObject({
   limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
+/**
+ * Answers 201 for a change that has committed. If reading the order back fails, the reply is
+ * still a success ({ id, orderNo }), because an error would free the Idempotency-Key and the
+ * client's retry would save everything a second time.
+ */
+async function respondCommitted(req, res, order) {
+  let body;
+  try {
+    body = await orderDetailResponse(req, order._id);
+  } catch (err) {
+    logger.warn({ err, orderId: String(order._id), requestId: req.id }, 'order saved; reading it back failed');
+    body = { id: String(order._id), orderNo: order.orderNo };
+  }
+  res.status(201).json(body);
+}
+
 export function ordersRouter() {
   const router = Router();
 
@@ -172,7 +189,7 @@ export function ordersRouter() {
     idempotent(),
     async (req, res) => {
       const order = await addGarments(req.user.branchId, req.user, req.params.id, req.body, actorFrom(req));
-      res.status(201).json(await orderDetailResponse(req, order._id));
+      await respondCommitted(req, res, order);
     },
   );
 
@@ -183,7 +200,7 @@ export function ordersRouter() {
     idempotent(),
     async (req, res) => {
       const { order } = await createOrder(req.user.branchId, req.body, actorFrom(req));
-      res.status(201).json(await orderDetailResponse(req, order._id));
+      await respondCommitted(req, res, order);
     },
   );
 

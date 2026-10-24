@@ -14,6 +14,8 @@ export const errorMessages = {
   LAST_ADMIN: 'At least one active admin is required.',
   CANNOT_DEACTIVATE_SELF: 'You cannot deactivate your own account.',
   RESET_TOKEN_INVALID: 'This reset link is invalid or has expired.',
+  IDEMPOTENCY_KEY_REUSED: 'This order may already have been taken. Check Orders before trying again.',
+  IDEMPOTENCY_IN_PROGRESS: 'This order is still being saved. Wait a moment, then check Orders.',
   PICKUP_IN_PAST: 'Pickup date cannot be in the past.',
   DUE_AFTER_PICKUP: 'A garment cannot be due after the pickup date.',
   DUE_IN_PAST: 'A garment cannot be due in the past.',

@@ -116,3 +116,29 @@ test('designers cannot open new order', async () => {
   renderApp('/orders/new');
   expect(await screen.findByText('You do not have access to this.')).toBeInTheDocument();
 });
+test('a retry with a changed order warns that it may already be taken', async () => {
+  asOperations(); designers(); latest();
+  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft()));
+  server.use(http.post('/v1/orders', () => HttpResponse.json({ error: { code: 'IDEMPOTENCY_KEY_REUSED', message: 'This Idempotency-Key was used for a different request' } }, { status: 422 })));
+  renderApp('/orders/new');
+  await userEvent.click(await screen.findByRole('button', { name: 'Take order' }));
+  expect(await screen.findByText('This order may already have been taken. Check Orders before trying again.')).toBeInTheDocument();
+  expect(screen.queryByText(/Idempotency-Key/)).toBeNull();
+});
+test('changing the customer drops measurements taken for the previous one', async () => {
+  asOperations(); designers(); latest(); let body;
+  taken((b) => { body = b; });
+  server.use(http.get('/v1/customers', () => HttpResponse.json({ items: [customerFixture({ id: 'c2', name: 'Bhavna Iyer', phone: '+919000011111' })], nextCursor: null })));
+  const g = draft().garments[0];
+  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft({ step: 0, garments: [{ ...g, measurementId: 'm-old', chosenMeasurement: { id: 'm-old', values: [], takenAt: '2026-10-24T06:00:00Z' } }] })));
+  renderApp('/orders/new');
+  await userEvent.click(await screen.findByRole('button', { name: 'Change customer' }));
+  await userEvent.type(screen.getByLabelText('Find a customer'), 'Bha');
+  await userEvent.click(await screen.findByRole('button', { name: /Bhavna Iyer/ }));
+  await userEvent.click(screen.getByRole('button', { name: 'Next: garments' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Next: dates' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Next: review' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Take order' }));
+  await expect.poll(() => body?.customerId).toBe('c2');
+  expect(body.garments[0].measurementId).toBeNull();
+});
