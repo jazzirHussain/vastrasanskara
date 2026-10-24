@@ -2,7 +2,7 @@ import { test, expect } from 'vitest';
 import { istDate, istTime, periodOf, financialYear, istDayBounds, atIstTime, addDaysYmd } from '../src/fy.js';
 
 test('financial year boundary at IST midnight 1 April', () => {
-  expect(financialYear(new Date('2028-03-31T18:29:59.999Z'))).toEqual({ startYear: 2027, label: '2027-28', code: '2728' });
+  expect(financialYear(new Date('2027-03-31T18:29:59.999Z'))).toEqual({ startYear: 2026, label: '2026-27', code: '2627' });
   expect(financialYear(new Date('2027-03-31T18:30:00.000Z'))).toEqual({ startYear: 2027, label: '2027-28', code: '2728' });
 });
 test('IST date, time and period', () => {
