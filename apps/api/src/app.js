@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import express from 'express';
 import { errorHandler, notFound } from './core/errors.js';
+import { healthRouter } from './modules/health/routes.js';
 
 /** Builds the Express app. `mount(app)` adds routers before the 404 handler. */
 export function createApp({ config, storage, mount } = {}) {
@@ -16,6 +17,8 @@ export function createApp({ config, storage, mount } = {}) {
     next();
   });
   app.use(express.json({ limit: '1mb' }));
+
+  app.use('/v1/health', healthRouter);
 
   mount?.(app);
 
