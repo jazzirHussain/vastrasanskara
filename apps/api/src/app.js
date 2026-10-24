@@ -9,6 +9,8 @@ import { filesRouter } from './core/files/routes.js';
 import { adminOutboxRouter, notificationsRouter, webhooksRouter } from './core/notify/routes.js';
 import { healthRouter } from './modules/health/routes.js';
 import { authRouter } from './modules/auth/routes.js';
+import { branchRouter, settingsRouter } from './modules/settings/routes.js';
+import { passwordResetRouter, usersRouter } from './modules/users/routes.js';
 
 /** Builds the Express app. `mount(app)` adds routers before the 404 handler. */
 export function createApp({ config, storage = createStorage(config), mount } = {}) {
@@ -38,7 +40,11 @@ export function createApp({ config, storage = createStorage(config), mount } = {
   app.use(loadUser);
   app.use(requireAppHeader);
 
+  app.use('/v1/auth/password-reset', passwordResetRouter(config));
   app.use('/v1/auth', authRouter(config));
+  app.use('/v1/settings', settingsRouter());
+  app.use('/v1/branch', branchRouter());
+  app.use('/v1/users', usersRouter(config));
   app.use('/v1/files', filesRouter(storage));
   app.use('/v1/notifications', notificationsRouter());
   app.use('/v1/admin/outbox', adminOutboxRouter());

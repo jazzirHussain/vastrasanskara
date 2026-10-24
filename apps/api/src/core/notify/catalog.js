@@ -1,3 +1,4 @@
+import { readSettings } from '../../modules/settings/service.js';
 import { NotificationRule } from './models.js';
 
 export { registerRecipientResolver } from './recipients.js';
@@ -26,11 +27,14 @@ export async function getRule(branchId, event, session) {
   return { recipients, channels, fallback, enabled: true };
 }
 
-const DEFAULT_QUIET = { start: '21:00', end: '09:00' };
+/** Client quiet hours per channel from the branch settings (defaults if none are saved). */
+export async function getQuietHours(branchId, session) {
+  return (await readSettings(branchId, session)).quietHours;
+}
 
-/** Client quiet hours per channel. Task 17 replaces this fallback with the settings lookup. */
-export async function getQuietHours() {
-  return { email: DEFAULT_QUIET, whatsapp: DEFAULT_QUIET, sms: DEFAULT_QUIET, in_app: null };
+/** Every defined event with its defaults (bootstrap saves them as the branch's rules). */
+export function listEvents() {
+  return [...events.values()];
 }
 
 const SYSTEM_TEMPLATES = (subject, body) => ({ in_app: { body }, email: { subject, body } });
@@ -41,7 +45,7 @@ defineEvent('auth.password_reset', {
   templates: {
     email: {
       subject: 'Reset your password',
-      body: 'Hello {userName},\n\nUse this link to set a new password. It expires in {expiresInMinutes} minutes:\n{resetUrl}\n\nIf you did not ask for this, ignore this email.',
+      body: 'Hello {name},\n\nUse this link to set your password. It expires in {expiresIn}:\n{resetUrl}\n\nIf you did not ask for this, you can ignore this email.',
     },
   },
 });

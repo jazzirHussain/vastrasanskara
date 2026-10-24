@@ -1,6 +1,7 @@
 import { validationError } from './errors.js';
 
-function parse(schema, value) {
+/** Parses with a zod schema; failures become 400 VALIDATION_FAILED with field paths. */
+export function parseOrThrow(schema, value) {
   const result = schema.safeParse(value);
   if (!result.success) {
     throw validationError(
@@ -16,9 +17,9 @@ function parse(schema, value) {
  */
 export function validate({ body, query, params } = {}) {
   return (req, res, next) => {
-    if (params) req.params = parse(params, req.params);
-    if (query) req.validatedQuery = parse(query, req.query);
-    if (body) req.body = parse(body, req.body ?? {});
+    if (params) req.params = parseOrThrow(params, req.params);
+    if (query) req.validatedQuery = parseOrThrow(query, req.query);
+    if (body) req.body = parseOrThrow(body, req.body ?? {});
     next();
   };
 }
