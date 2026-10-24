@@ -59,7 +59,7 @@ defineEvent('system.storage_warning', {
   channels: ['in_app', 'email'],
   templates: SYSTEM_TEMPLATES(
     'Database storage is filling up',
-    'Database storage is at {percent}% of the plan limit ({usedMb} MB of {limitMb} MB).',
+    'Database storage is at {percent}% of the plan limit ({usedMb} MB of {quotaMb} MB).',
   ),
 });
 defineEvent('system.job_failed', {

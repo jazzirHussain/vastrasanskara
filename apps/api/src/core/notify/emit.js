@@ -1,5 +1,6 @@
 import { clock } from '../../clock.js';
 import { CHANNEL_ADDRESS, getQuietHours, getRule } from './catalog.js';
+import { Branch } from '../../modules/branches/model.js';
 import { Outbox } from './models.js';
 import { nextAllowedTime } from './quietHours.js';
 import { resolveRecipients } from './recipients.js';
@@ -75,4 +76,10 @@ export async function emit(
     }
   }
   return created;
+}
+
+/** Emits a system event to every branch (e.g. backup or job failures, which have no branch). */
+export async function emitToAllBranches(event, { refId, vars = {} }) {
+  const branches = await Branch.find({}, { _id: 1 }).lean();
+  for (const { _id: branchId } of branches) await emit(event, { branchId, refId, vars });
 }

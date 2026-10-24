@@ -60,7 +60,7 @@ apps/api/
   src/core/files/{storage.js,storage-s3.js,storage-local.js,devFilesRoutes.js,purposes.js,service.js,routes.js}
   src/core/notify/{render.js,quietHours.js,emailLayout.js,catalog.js,recipients.js,models.js,emit.js,deliver.js,service.js,routes.js,adapters/{registry.js,configure.js,inApp.js,emailSes.js,emailFile.js}}
   src/core/jobs/{model.js,service.js,registry.js,runJob.js,worker.js,routes.js}
-  src/core/backup/{backup.js,storageCheck.js}
+  src/core/backup/{backup.js,storageCheck.js,mongodump.js,jobs.js}
   src/modules/branches/{model.js,service.js,routes.js}
   src/modules/settings/{model.js,service.js,routes.js}
   src/modules/users/{model.js,service.js,passwordReset.js,routes.js}   (PasswordReset model lives in model.js)
