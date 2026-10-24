@@ -73,5 +73,7 @@ export function loadConfig(env = process.env) {
       localDir: path.resolve(REPO_ROOT, env.STORAGE_LOCAL_DIR ?? '.dev-files/storage'),
     },
     quotaBytes: 536870912,
+    // Login attempts per IP per 15 minutes; generous in tests so suites can log in freely.
+    loginRateLimit: nodeEnv === 'test' ? 1000 : 20,
   };
 }

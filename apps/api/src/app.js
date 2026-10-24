@@ -2,7 +2,10 @@ import { randomUUID } from 'node:crypto';
 import express from 'express';
 import { errorHandler, notFound } from './core/errors.js';
 import { requireAppHeader, securityMiddleware } from './core/security.js';
+import { sessionMiddleware } from './core/auth/sessions.js';
+import { loadUser } from './core/auth/middleware.js';
 import { healthRouter } from './modules/health/routes.js';
+import { authRouter } from './modules/auth/routes.js';
 
 /** Builds the Express app. `mount(app)` adds routers before the 404 handler. */
 export function createApp({ config, storage, mount } = {}) {
@@ -21,9 +24,13 @@ export function createApp({ config, storage, mount } = {}) {
   app.use(express.json({ limit: '1mb' }));
 
   app.use('/v1/health', healthRouter);
-  // Task 15 mounts /v1/webhooks here; Task 10 adds the session middleware here.
+  // Task 15 mounts /v1/webhooks here.
 
+  app.use(sessionMiddleware(config));
+  app.use(loadUser);
   app.use(requireAppHeader);
+
+  app.use('/v1/auth', authRouter(config));
 
   mount?.(app);
 
