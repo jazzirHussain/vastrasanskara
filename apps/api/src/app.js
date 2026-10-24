@@ -4,11 +4,13 @@ import { errorHandler, notFound } from './core/errors.js';
 import { requireAppHeader, securityMiddleware } from './core/security.js';
 import { sessionMiddleware } from './core/auth/sessions.js';
 import { loadUser } from './core/auth/middleware.js';
+import { createStorage } from './core/files/purposes.js';
+import { filesRouter } from './core/files/routes.js';
 import { healthRouter } from './modules/health/routes.js';
 import { authRouter } from './modules/auth/routes.js';
 
 /** Builds the Express app. `mount(app)` adds routers before the 404 handler. */
-export function createApp({ config, storage, mount } = {}) {
+export function createApp({ config, storage = createStorage(config), mount } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
@@ -24,6 +26,9 @@ export function createApp({ config, storage, mount } = {}) {
   app.use(express.json({ limit: '1mb' }));
 
   app.use('/v1/health', healthRouter);
+  // Stands in for S3 in development: browsers PUT/GET raw files with signed URLs,
+  // so it sits before sessions and the JSON-only app-header check.
+  if (config.storage.adapter === 'local') app.use('/v1/dev-files', storage.router());
   // Task 15 mounts /v1/webhooks here.
 
   app.use(sessionMiddleware(config));
@@ -31,6 +36,7 @@ export function createApp({ config, storage, mount } = {}) {
   app.use(requireAppHeader);
 
   app.use('/v1/auth', authRouter(config));
+  app.use('/v1/files', filesRouter(storage));
 
   mount?.(app);
 

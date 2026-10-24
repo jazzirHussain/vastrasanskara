@@ -1,3 +1,6 @@
+import { mkdtempSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import request from 'supertest';
 import { createApp } from '../../src/app.js';
 import { loadConfig } from '../../src/config.js';
@@ -5,12 +8,34 @@ import { Branch } from '../../src/modules/branches/model.js';
 import { User } from '../../src/modules/users/model.js';
 import { hashPassword } from '../../src/modules/auth/service.js';
 
-/** App with test config (appOrigin https://app.test); `overrides.config` merges into it. */
+/**
+ * App with test config (appOrigin https://app.test) and local file storage in a fresh
+ * temp folder; `overrides.config` merges into the config.
+ */
 export function buildTestApp({ config, ...overrides } = {}) {
+  const base = loadConfig({ NODE_ENV: 'test' });
   return createApp({
-    config: { ...loadConfig({ NODE_ENV: 'test' }), appOrigin: 'https://app.test', ...config },
+    config: {
+      ...base,
+      appOrigin: 'https://app.test',
+      storage: { adapter: 'local', localDir: mkdtempSync(path.join(os.tmpdir(), 'vs-files-')) },
+      ...config,
+    },
     ...overrides,
   });
+}
+
+/** Sends a request to an absolute URL issued by the app (e.g. a signed file link); body is a Buffer. */
+export function fetchLike(app, method, absoluteUrl, body, headers = {}) {
+  const { pathname, search } = new URL(absoluteUrl);
+  let req = request(app)[method.toLowerCase()](pathname + search).set('X-Requested-With', 'vs-app');
+  for (const [name, value] of Object.entries(headers)) req = req.set(name, value);
+  req = req.buffer(true).parse((res, done) => {
+    const chunks = [];
+    res.on('data', (c) => chunks.push(c));
+    res.on('end', () => done(null, Buffer.concat(chunks)));
+  });
+  return body === undefined ? req : req.send(body);
 }
 
 const WRITE_METHODS = ['post', 'put', 'patch', 'delete'];
