@@ -1,0 +1,18 @@
+// Friendly text for the API's error codes; anything not listed shows the server's message.
+export const errorMessages = {
+  INVALID_CREDENTIALS: 'Email or password is incorrect.',
+  ACCOUNT_LOCKED: 'Too many failed attempts. Try again in 15 minutes.',
+  RATE_LIMITED: 'Too many attempts. Please wait and try again.',
+  SESSION_EXPIRED: 'Your session has expired. Please log in again.',
+  NOT_AUTHENTICATED: 'Please log in.',
+  FORBIDDEN: 'You do not have access to this.',
+  CONFLICT: 'Someone else changed this. Reload and try again.',
+  PERIOD_LOCKED: 'This month is locked for filing and cannot be changed.',
+  FILE_TYPE_NOT_ALLOWED: 'Only JPG, PNG, WebP, HEIC or PDF files can be uploaded.',
+  FILE_TOO_LARGE: 'Files must be 10 MB or smaller.',
+  EMAIL_TAKEN: 'A user with this email already exists.',
+  LAST_ADMIN: 'At least one active admin is required.',
+  CANNOT_DEACTIVATE_SELF: 'You cannot deactivate your own account.',
+  RESET_TOKEN_INVALID: 'This reset link is invalid or has expired.',
+  NETWORK_ERROR: 'Cannot reach the server. Check your connection and try again.',
+};
