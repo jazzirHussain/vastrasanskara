@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { objectId } from '@vs/shared/schemas/common.js';
-import { orderCreateSchema, ymd } from '@vs/shared/schemas/orders.js';
+import { orderCreateSchema, orderPatchSchema, orderReasonSchema, orderResumeSchema, ymd } from '@vs/shared/schemas/orders.js';
 import { actorFrom, requirePermission } from '../../core/auth/middleware.js';
 import { idempotent } from '../../core/idempotency.js';
-import { validate } from '../../core/validate.js';
+import { validate, versioned } from '../../core/validate.js';
+import { cancelOrder, holdOrder, resumeOrder, updateOrder } from './lifecycle.js';
 import { getUserNames } from '../users/service.js';
 import { createOrder, getOrder, listOrders, today } from './service.js';
 
@@ -126,6 +127,17 @@ export function ordersRouter() {
   router.get('/:id', requirePermission('orders.read.own'), async (req, res) => {
     res.json(await orderDetailResponse(req, req.params.id));
   });
+
+  // Each change answers with the order as the user now sees it.
+  const change = (path, method, schema, action) =>
+    router[method](path, requirePermission('orders.write'), validate({ body: versioned(schema) }), async (req, res) => {
+      const order = await action(req.user.branchId, req.params.id, req.body, actorFrom(req));
+      res.json(await orderDetailResponse(req, order._id));
+    });
+  change('/:id', 'patch', orderPatchSchema, updateOrder);
+  change('/:id/hold', 'post', orderReasonSchema, holdOrder);
+  change('/:id/resume', 'post', orderResumeSchema, resumeOrder);
+  change('/:id/cancel', 'post', orderReasonSchema, cancelOrder);
 
   router.post(
     '/',

@@ -35,3 +35,22 @@ export const orderCreateSchema = z.strictObject({
   notes: z.string().trim().max(2000).default(''),
   garments: z.array(garmentInputSchema).min(1).max(50),
 });
+
+/** PATCH /v1/orders/:id (with `version`): any subset of these. */
+export const orderPatchSchema = z
+  .strictObject({
+    designerId: objectId,
+    priority: z.enum(['normal', 'rush']),
+    expectedBudget: paise.nullable(),
+    notes: z.string().trim().max(2000),
+    occasionDate: ymd.nullable(),
+    pickupDate: ymd,
+  })
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, 'Nothing to update');
+
+/** POST /v1/orders/:id/hold and /cancel (with `version`). */
+export const orderReasonSchema = z.strictObject({ reason: z.string().trim().min(1).max(300) });
+
+/** POST /v1/orders/:id/resume (with `version`). */
+export const orderResumeSchema = z.strictObject({});

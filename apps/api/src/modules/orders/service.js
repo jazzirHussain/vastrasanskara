@@ -1,10 +1,11 @@
 import mongoose from 'mongoose';
 import { durationsFor, planStages } from '@vs/shared/planning.js';
+import { stageIndex } from '@vs/shared/stages.js';
 import { financialYear, istDate } from '@vs/shared/fy.js';
 import { clock } from '../../clock.js';
 import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
-import { businessRule, notFound, validationError } from '../../core/errors.js';
+import { businessRule, conflict, notFound, validationError } from '../../core/errors.js';
 import { nextDocumentNumber } from '../../core/numbering.js';
 import { paginate } from '../../core/pagination.js';
 import { getBranch } from '../branches/service.js';
@@ -33,6 +34,36 @@ export function stagePlanFor({ orderDate, dueDate, settings, type }) {
     stagePlan: stagePlan.map((s) => ({ ...s, originalPlannedDate: s.plannedDate, skipped: false, skipReason: null })),
     tightSchedule,
   };
+}
+
+/**
+ * Re-plans the stages after the garment's current stage towards a new due date, planning from
+ * today; earlier stages and every original planned date are kept. Mutates the garment document.
+ */
+export function replanGarment(garment, { dueDate, settings }) {
+  const { stagePlan, tightSchedule } = stagePlanFor({ orderDate: today(), dueDate, settings, type: garment.type });
+  const current = stageIndex(garment.currentStage);
+  for (const entry of garment.stagePlan) {
+    const index = stageIndex(entry.stage);
+    if (index > current && !entry.skipped) entry.plannedDate = stagePlan[index].plannedDate;
+  }
+  garment.tightSchedule = tightSchedule;
+}
+
+/** Throws 422 INVALID_STATUS unless the order is in one of `statuses`. */
+export function assertStatus(order, statuses) {
+  if (!statuses.includes(order.status)) {
+    throw businessRule('INVALID_STATUS', 'This order cannot be changed in its current status');
+  }
+}
+
+/** Loads an order document of the branch for a change at `version` (404, then 409). */
+export async function loadOrderForChange(branchId, orderId, version, session) {
+  if (!mongoose.isValidObjectId(orderId)) throw notFound();
+  const order = await Order.findOne({ _id: orderId, branchId }).session(session);
+  if (!order) throw notFound();
+  if (order.__v !== version) throw conflict();
+  return order;
 }
 
 /**
