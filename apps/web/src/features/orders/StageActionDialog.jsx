@@ -37,9 +37,9 @@ const keysOf = (photos) => photos.map((p) => p.key ?? p);
 
 /**
  * Records one stage action on `garments` (one, or several at the same stage from the
- * production board), asking only for what the action needs.
+ * production board), asking only for what the action needs. `onDone` runs after it is saved.
  */
-export function StageActionDialog({ action, garments, onClose }) {
+export function StageActionDialog({ action, garments, onClose, onDone }) {
   const { can } = useAuth();
   const [first] = garments;
   const run = useStageAction();
@@ -96,6 +96,7 @@ export function StageActionDialog({ action, garments, onClose }) {
     if (!check()) return;
     try {
       await run.mutateAsync(body());
+      onDone?.();
       onClose();
     } catch {
       // Shown below from run.error.

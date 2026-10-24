@@ -11,6 +11,7 @@ import { HomePage } from './features/home/HomePage.jsx';
 import { NewOrderPage } from './features/orders/NewOrderPage.jsx';
 import { OrderPage } from './features/orders/OrderPage.jsx';
 import { OrdersPage } from './features/orders/OrdersPage.jsx';
+import { ProductionPage } from './features/production/ProductionPage.jsx';
 import { SettingsPage } from './features/settings/SettingsPage.jsx';
 import { UsersPage } from './features/users/UsersPage.jsx';
 import { WorkshopPage } from './features/workshop/WorkshopPage.jsx';
@@ -34,6 +35,7 @@ export default function App() {
             <Route element={<RequirePermission permission="orders.read.own" />}>
               <Route path="/orders" element={<OrdersPage />} />
               <Route path="/orders/:id" element={<OrderPage />} />
+              <Route path="/production" element={<ProductionPage />} />
             </Route>
             <Route element={<RequirePermission permission="orders.write" />}>
               <Route path="/orders/new" element={<NewOrderPage />} />

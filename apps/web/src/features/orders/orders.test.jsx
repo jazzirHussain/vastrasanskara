@@ -160,3 +160,15 @@ test('a plan conflict offers a reload', async () => {
   await userEvent.click(await within(dialog).findByRole('button', { name: 'Reload' }));
   await expect.poll(() => gets).toBeGreaterThan(before);
 });
+test('late filter asks the server', async () => {
+  asOperations(); const queries = [];
+  const late = orderSummary(orderDetailFixture({ late: true }));
+  server.use(http.get('/v1/orders', ({ request }) => {
+    queries.push(Object.fromEntries(new URL(request.url).searchParams));
+    return HttpResponse.json({ items: [late], nextCursor: null });
+  }));
+  renderApp('/orders');
+  await screen.findByText('VS/ORD/2627/0007');
+  await userEvent.click(screen.getByRole('radio', { name: 'Late' }));
+  await expect.poll(() => queries.at(-1)).toEqual({ status: 'active', late: 'true' });
+});

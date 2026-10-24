@@ -18,7 +18,7 @@ const FILTERS = [
   { value: 'active', label: 'Active', query: () => ({ status: 'active' }) },
   { value: 'on_hold', label: 'On hold', query: () => ({ status: 'on_hold' }) },
   { value: 'rush', label: 'Rush', query: () => ({ status: 'active', priority: 'rush' }) },
-  { value: 'late', label: 'Late', query: () => ({ status: 'active' }), keep: (o) => o.late },
+  { value: 'late', label: 'Late', query: () => ({ status: 'active', late: true }) },
   {
     value: 'week',
     label: 'Pickup this week',
@@ -87,7 +87,7 @@ export function OrdersPage() {
   const [q] = useDebouncedValue(search.trim(), 250);
   const chosen = FILTERS.find((f) => f.value === filter);
   const orders = useOrders({ ...chosen.query(todayYmd()), ...(q && { q }) });
-  const rows = (orders.data?.pages.flatMap((p) => p.items) ?? []).filter(chosen.keep ?? (() => true));
+  const rows = orders.data?.pages.flatMap((p) => p.items) ?? [];
 
   return (
     <Stack gap={0}>

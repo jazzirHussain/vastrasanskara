@@ -2,6 +2,7 @@ import {
   IconAddressBook,
   IconAdjustmentsHorizontal,
   IconHome2,
+  IconLayoutKanban,
   IconNeedleThread,
   IconPlus,
   IconTool,
@@ -15,6 +16,7 @@ import {
 export const navItems = [
   { label: 'Home', path: '/', icon: IconHome2, phone: 'bar' },
   { label: 'Orders', path: '/orders', permission: 'orders.read.own', icon: IconNeedleThread, phone: 'bar' },
+  { label: 'Production', path: '/production', permission: 'orders.read.own', icon: IconLayoutKanban, phone: 'bar' },
   { label: 'New order', path: '/orders/new', permission: 'orders.write', icon: IconPlus, phone: 'primary' },
   { label: 'Customers', path: '/customers', permission: 'customers.read', icon: IconAddressBook, phone: 'bar' },
   { label: 'Workshop', path: '/workshop', permission: 'workshop.manage', icon: IconTool, phone: 'more' },

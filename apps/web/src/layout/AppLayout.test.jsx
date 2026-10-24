@@ -80,5 +80,5 @@ test('desktop sidebar lists the pages the user may open', async () => {
   server.use(http.get('/v1/auth/me', () => HttpResponse.json(operations)));
   renderApp('/');
   const nav = await screen.findByRole('navigation', { name: 'Main' });
-  expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['Home', 'Orders', 'New order', 'Customers']);
+  expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['Home', 'Orders', 'Production', 'New order', 'Customers']);
 });

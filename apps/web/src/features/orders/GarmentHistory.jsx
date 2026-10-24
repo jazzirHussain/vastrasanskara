@@ -94,7 +94,7 @@ export function GarmentHistory({ garmentId }) {
   const { data, error } = useGarmentEvents(garmentId, { enabled: open });
 
   return (
-    <Stack gap="xs">
+    <Stack gap="xs" align="flex-start">
       <Anchor component="button" type="button" size="sm" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         History
       </Anchor>
