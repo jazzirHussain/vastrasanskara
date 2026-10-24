@@ -15,12 +15,15 @@ const RETRY_MINUTES = [1, 5, 15];
 export async function runJob(name, ctx = {}) {
   const definition = getJobDefinition(name);
   const attempt = ctx.attempt ?? 1;
+  const started = Date.now();
   try {
     await definition.handler(ctx);
+    const ms = Date.now() - started;
+    logger[definition.quiet ? 'debug' : 'info']({ job: name, attempt, ms }, `job ${name} done in ${ms}ms`);
     return { ok: true };
   } catch (err) {
     const now = clock.now();
-    logger.error({ err, job: name, attempt }, 'job failed');
+    logger.error({ err, job: name, attempt, ms: Date.now() - started }, `job ${name} failed: ${err.message}`);
     try {
       await recordJobFailure({ job: name, error: err.message, attempt });
       await emitToAllBranches('system.job_failed', {

@@ -7,6 +7,7 @@ import { registerConfiguredAdapters } from './core/notify/adapters/configure.js'
 import { logger } from './logger.js';
 
 const config = loadConfig();
+if (config.logLevel) logger.level = config.logLevel;
 await connectDb(config.mongoUri, { dnsServers: config.dnsServers });
 await ensureSessionIndexes();
 const storage = createStorage(config);

@@ -27,3 +27,8 @@ test('DNS_SERVERS is an optional comma-separated list (for SRV lookups on machin
   expect(loadConfig({ NODE_ENV: 'test' }).dnsServers).toEqual([]);
   expect(loadConfig({ NODE_ENV: 'test', DNS_SERVERS: '1.1.1.1, 8.8.8.8' }).dnsServers).toEqual(['1.1.1.1', '8.8.8.8']);
 });
+test('LOG_LEVEL from .env reaches the logger through config (the logger starts before .env loads)', () => {
+  expect(loadConfig({ NODE_ENV: 'test' }).logLevel).toBeNull();
+  expect(loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'debug' }).logLevel).toBe('debug');
+  expect(() => loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'loud' })).toThrow(/LOG_LEVEL/);
+});

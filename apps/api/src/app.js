@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import express from 'express';
 import { errorHandler, notFound } from './core/errors.js';
+import { requestLogger } from './core/requestLogger.js';
+import { logger as defaultLogger } from './logger.js';
 import { requireAppHeader, securityMiddleware } from './core/security.js';
 import { sessionMiddleware } from './core/auth/sessions.js';
 import { loadUser } from './core/auth/middleware.js';
@@ -16,7 +18,7 @@ import { settingsRouter } from './modules/settings/routes.js';
 import { passwordResetRouter, usersRouter } from './modules/users/routes.js';
 
 /** Builds the Express app. `mount(app)` adds routers before the 404 handler. */
-export function createApp({ config, storage = createStorage(config), mount } = {}) {
+export function createApp({ config, storage = createStorage(config), mount, logger = defaultLogger } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
@@ -28,6 +30,7 @@ export function createApp({ config, storage = createStorage(config), mount } = {
     res.set('X-Request-Id', req.id);
     next();
   });
+  app.use(requestLogger(logger));
   app.use(securityMiddleware(config));
   // rawBody keeps the exact bytes so webhook adapters can verify provider signatures.
   app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf; } }));

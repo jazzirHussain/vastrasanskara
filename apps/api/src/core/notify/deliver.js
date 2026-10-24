@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { clock } from '../../clock.js';
+import { logger } from '../../logger.js';
 import { Branch } from '../../modules/branches/model.js';
 import { getAdapter } from './adapters/registry.js';
 import { CHANNEL_ADDRESS, getEventDefinition, getRule } from './catalog.js';
@@ -123,6 +124,13 @@ export async function deliverDue({ now = clock.now(), limit = 50, storage } = {}
     if (!entry) break;
     const attempts = entry.attempts + 1;
     const mine = { _id: entry._id, status: 'sending', lockedAt: now };
+    // Who and what, never the address (personal data).
+    const about = {
+      outboxId: String(entry._id),
+      channel: entry.channel,
+      event: entry.event,
+      recipient: `${entry.recipient.kind}:${entry.recipient.id}`,
+    };
 
     try {
       const adapter = getAdapter(entry.channel);
@@ -141,8 +149,11 @@ export async function deliverDue({ now = clock.now(), limit = 50, storage } = {}
         },
       });
       result.sent += 1;
+      const outcome = status === 'delivered' ? 'delivered' : 'sent';
+      logger.info({ ...about, providerMessageId }, `${outcome} ${entry.channel} ${entry.event} → ${about.recipient}`);
     } catch (err) {
       const finalFailure = err instanceof RenderError || attempts >= MAX_ATTEMPTS;
+      const retryAt = new Date(now.getTime() + BACKOFF_MINUTES[attempts - 1] * 60_000);
       await Outbox.updateOne(mine, {
         $set: finalFailure
           ? { status: 'failed', attempts, lastError: err.message, lockedAt: null }
@@ -151,13 +162,21 @@ export async function deliverDue({ now = clock.now(), limit = 50, storage } = {}
               attempts,
               lastError: err.message,
               lockedAt: null,
-              scheduledFor: new Date(now.getTime() + BACKOFF_MINUTES[attempts - 1] * 60_000),
+              scheduledFor: retryAt,
             },
       });
       if (!finalFailure) {
         result.retried += 1;
+        logger.warn(
+          { ...about, attempts, error: err.message, retryAt },
+          `${entry.channel} ${entry.event} failed (attempt ${attempts}), retrying at ${retryAt.toISOString()}`,
+        );
       } else {
         result.failed += 1;
+        logger.error(
+          { ...about, attempts, error: err.message },
+          `${entry.channel} ${entry.event} failed permanently after ${attempts} attempt(s): ${err.message}`,
+        );
         if (!(err instanceof RenderError)) await queueFallback(entry, now);
       }
     }

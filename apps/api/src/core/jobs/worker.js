@@ -1,6 +1,7 @@
 import { Agenda } from 'agenda';
 import { MongoBackend } from '@agendajs/mongo-backend';
 import mongoose from 'mongoose';
+import { logger } from '../../logger.js';
 import { getJobDefinitions } from './registry.js';
 import { runJob } from './runJob.js';
 
@@ -27,6 +28,8 @@ export async function startWorker({ config, storage } = {}) {
     }
   }
   await agenda.start();
+  const jobs = [...getJobDefinitions().keys()];
+  logger.info({ jobs }, `worker started: ${jobs.length} jobs scheduled (${jobs.join(', ')})`);
 
   // The connection belongs to Mongoose; Agenda must not close it.
   return { agenda, stop: () => agenda.drain({ timeout: DRAIN_TIMEOUT_MS, closeConnection: false }) };

@@ -48,6 +48,10 @@ export function loadConfig(env = process.env) {
     env: nodeEnv,
     port,
     mongoUri: env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/vastrasanskara',
+    // Applied by server.js/worker.js after loading .env; null keeps the logger's default.
+    logLevel: env.LOG_LEVEL
+      ? oneOf('LOG_LEVEL', env.LOG_LEVEL, ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
+      : null,
     // Optional DNS servers for mongodb+srv lookups, for machines whose resolver Node cannot use.
     dnsServers: (env.DNS_SERVERS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
     appOrigin: env.APP_ORIGIN ?? 'http://localhost:5173',

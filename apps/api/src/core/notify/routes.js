@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, requirePermission } from '../auth/middleware.js';
 import { notFound } from '../errors.js';
+import { logger } from '../../logger.js';
 import { validate } from '../validate.js';
 import { getAdapterByProvider } from './adapters/registry.js';
 import { OUTBOX_STATUSES } from './models.js';
@@ -64,6 +65,8 @@ export function webhooksRouter() {
     if (!adapter?.parseWebhook) throw notFound();
     const events = (await adapter.parseWebhook(req)) ?? [];
     await applyDeliveryStatuses(events);
+    const n = events.length;
+    logger.info({ provider: req.params.provider, events: n }, `webhook from ${req.params.provider}: ${n} status update${n === 1 ? '' : 's'}`);
     res.status(200).json({ received: events.length });
   });
 

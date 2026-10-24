@@ -7,11 +7,11 @@ import { registerConfiguredAdapters } from './core/notify/adapters/configure.js'
 import { logger } from './logger.js';
 
 const config = loadConfig();
+if (config.logLevel) logger.level = config.logLevel;
 await connectDb(config.mongoUri, { dnsServers: config.dnsServers });
 const storage = createStorage(config);
 registerConfiguredAdapters(config, storage);
 const { stop } = await startWorker({ config, storage });
-logger.info({ env: config.env }, 'worker started');
 
 async function shutdown(signal) {
   logger.info({ signal }, 'worker shutting down');

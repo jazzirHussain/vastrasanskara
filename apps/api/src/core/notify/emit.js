@@ -1,4 +1,5 @@
 import { clock } from '../../clock.js';
+import { logger } from '../../logger.js';
 import { CHANNEL_ADDRESS, getQuietHours, getRule } from './catalog.js';
 import { Branch } from '../../modules/branches/model.js';
 import { Outbox } from './models.js';
@@ -74,6 +75,12 @@ export async function emit(
       );
       created += result.upsertedCount;
     }
+  }
+  if (created > 0) {
+    logger.info(
+      { event, refId, queued: created },
+      `queued ${created} notification${created === 1 ? '' : 's'} for ${event}`,
+    );
   }
   return created;
 }
