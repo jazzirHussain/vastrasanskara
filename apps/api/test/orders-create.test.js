@@ -35,6 +35,19 @@ test('order number follows the IST financial year', async () => {
   vi.spyOn(clock, 'now').mockReturnValue(new Date('2027-03-31T18:31:00Z')); // 00:01 IST, new FY
   expect((await take(body)).body.orderNo).toBe('VS/ORD/2728/0001');
 });
+test('an order taken across the FY midnight is dated and numbered in the same FY', async () => {
+  vi.spyOn(clock, 'now').mockReturnValue(new Date('2027-03-31T18:29:00Z'));
+  const { take, order } = await setup();
+  const body = order({ pickupDate: '2027-04-30' });
+  // Each clock read moves 100 ms on; starting k reads before midnight puts the crossing at every point of the request.
+  for (let k = 1; k <= 8; k++) {
+    let t = new Date('2027-03-31T18:30:00Z').getTime() - k * 100;
+    vi.spyOn(clock, 'now').mockImplementation(() => new Date((t += 100) - 100));
+    const r = await take(body);
+    expect(r.status).toBe(201);
+    expect(r.body.orderNo.split('/')[2]).toBe(financialYear(new Date(`${r.body.orderDate}T12:00:00+05:30`)).code);
+  }
+});
 test('concurrent orders get consecutive numbers', async () => {
   const { take } = await setup();
   const results = await Promise.all([1, 2, 3, 4, 5].map(() => take()));

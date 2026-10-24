@@ -144,7 +144,9 @@ async function checkParties(branchId, { customerId, designerId }) {
  * the audit entry are saved in one transaction.
  */
 export async function createOrder(branchId, input, actor) {
-  const orderDate = today();
+  // One clock read dates and numbers the order, so both fall in the same financial year.
+  const now = clock.now();
+  const orderDate = istDate(now);
   if (input.pickupDate < orderDate) throw businessRule('PICKUP_IN_PAST', 'The pickup date cannot be in the past');
   await checkParties(branchId, input);
   const settings = await readSettings(branchId);
@@ -152,7 +154,6 @@ export async function createOrder(branchId, input, actor) {
   const branch = await getBranch(branchId);
 
   return withTransaction(async (session) => {
-    const now = clock.now();
     const fyCode = financialYear(now).code;
     const { number, fy } = await nextDocumentNumber(
       { branchId, docType: 'order', now, start: settings.numberSeries[`order:${fyCode}`] ?? 1 },
