@@ -1,7 +1,7 @@
 import { loadConfig } from './config.js';
 import { createApp } from './app.js';
 import { connectDb, disconnectDb } from './core/db.js';
-import { createStorage } from './core/files/purposes.js';
+import { createStorage } from './core/files/storage.js';
 import { registerConfiguredAdapters } from './core/notify/adapters/configure.js';
 import { logger } from './logger.js';
 

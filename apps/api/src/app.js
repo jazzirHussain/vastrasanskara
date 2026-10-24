@@ -4,7 +4,8 @@ import { errorHandler, notFound } from './core/errors.js';
 import { requireAppHeader, securityMiddleware } from './core/security.js';
 import { sessionMiddleware } from './core/auth/sessions.js';
 import { loadUser } from './core/auth/middleware.js';
-import { createStorage } from './core/files/purposes.js';
+import { createStorage } from './core/files/storage.js';
+import { devFilesRouter } from './core/files/devFilesRoutes.js';
 import { filesRouter } from './core/files/routes.js';
 import { adminOutboxRouter, notificationsRouter, webhooksRouter } from './core/notify/routes.js';
 import { healthRouter } from './modules/health/routes.js';
@@ -33,7 +34,7 @@ export function createApp({ config, storage = createStorage(config), mount } = {
   app.use('/v1/health', healthRouter);
   // Stands in for S3 in development: browsers PUT/GET raw files with signed URLs,
   // so it sits before sessions and the JSON-only app-header check.
-  if (config.storage.adapter === 'local') app.use('/v1/dev-files', storage.router());
+  if (config.storage.adapter === 'local') app.use('/v1/dev-files', devFilesRouter(storage));
   // Provider callbacks: no session or app header; each adapter authenticates its provider.
   app.use('/v1/webhooks', webhooksRouter());
 

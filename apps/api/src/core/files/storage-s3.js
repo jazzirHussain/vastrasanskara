@@ -45,7 +45,7 @@ export function createS3Storage({ region, bucket, client = new S3Client({ region
     async headObject(key) {
       try {
         const result = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
-        return { size: result.ContentLength, sha256: result.Metadata?.sha256 };
+        return { size: result.ContentLength, sha256: result.Metadata?.sha256, contentType: result.ContentType };
       } catch (err) {
         if (err?.name === 'NotFound' || err?.$metadata?.httpStatusCode === 404) return null;
         throw err;
