@@ -51,8 +51,10 @@ export function useOrderChange(id) {
 /** Planned-date changes to one garment of order `orderId`; the order is re-read after. */
 export function useGarmentPlan(orderId, garmentId) {
   const queryClient = useQueryClient();
-  return useMutation({
+  const reloadOrder = () => queryClient.invalidateQueries({ queryKey: [...ORDERS_KEY, orderId] });
+  const mutation = useMutation({
     mutationFn: (body) => apiFetch(`/v1/garments/${garmentId}/plan`, { method: 'PUT', body }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [...ORDERS_KEY, orderId] }),
+    onSuccess: reloadOrder,
   });
+  return { ...mutation, reloadOrder };
 }

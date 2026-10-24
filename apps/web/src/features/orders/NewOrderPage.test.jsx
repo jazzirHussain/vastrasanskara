@@ -161,3 +161,19 @@ test('a phone already on file in the add-customer drawer offers that customer', 
   expect(await screen.findByText('Bhavna Iyer')).toBeInTheDocument();
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 });
+test('a batch above 200 pieces cannot go on to dates', async () => {
+  asOperations(); designers(); latest();
+  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft({ step: 1, garments: [{ ...draft().garments[0], quantity: 201 }] })));
+  renderApp('/orders/new');
+  expect(await screen.findByRole('button', { name: 'Next: dates' })).toBeDisabled();
+  expect(screen.getByText('At most 200 identical pieces per garment.')).toBeInTheDocument();
+});
+test('an order stops offering more garments at 50', async () => {
+  asOperations(); designers(); latest();
+  const g = draft().garments[0];
+  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft({ step: 1, garments: Array.from({ length: 50 }, (_, i) => ({ ...g, uid: `g${i}` })) })));
+  renderApp('/orders/new');
+  expect(await screen.findByRole('button', { name: 'Next: dates' })).toBeEnabled();
+  expect(screen.queryByRole('button', { name: 'Add another garment' })).toBeNull();
+  expect(screen.getByText('An order can hold up to 50 garments.')).toBeInTheDocument();
+}, 30000); // fifty garment panels render slowly in jsdom

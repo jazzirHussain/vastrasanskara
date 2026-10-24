@@ -8,7 +8,7 @@ import { useLatestMeasurements } from '../customers/customersApi.js';
 import { useSettings } from '../settings/settingsApi.js';
 import { CustomerStep } from './new/CustomerStep.jsx';
 import { DatesStep, datesProblem } from './new/DatesStep.jsx';
-import { GarmentsStep, newGarment } from './new/GarmentsStep.jsx';
+import { GarmentsStep, MAX_GARMENT_LINES, MAX_PIECES, newGarment } from './new/GarmentsStep.jsx';
 import { ReviewStep } from './new/ReviewStep.jsx';
 import { useCreateOrder, useDesigners } from './ordersApi.js';
 
@@ -68,7 +68,8 @@ export function orderBody(draft, latest) {
 }
 
 const garmentsReady = (garments) =>
-  garments.every((g) => g.type && g.description.trim() && g.price !== '' && g.price >= 0 && g.quantity >= 1);
+  garments.length <= MAX_GARMENT_LINES &&
+  garments.every((g) => g.type && g.description.trim() && g.price !== '' && g.price >= 0 && g.quantity >= 1 && g.quantity <= MAX_PIECES);
 
 /** The four steps as a short running stitch: knots for steps done, a ring for this one. */
 function StepThread({ step, onPick }) {

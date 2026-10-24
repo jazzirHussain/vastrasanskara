@@ -143,3 +143,20 @@ test('a reference photo that cannot be opened says so', async () => {
   expect(await screen.findByText(/photo could not be opened/i)).toBeInTheDocument();
   expect(tab.close).toHaveBeenCalled();
 });
+test('a plan conflict offers a reload', async () => {
+  asDesigner(); let gets = 0;
+  const order = orderDetailFixture({ money: false });
+  const handwork = order.garments[0].stagePlan.find((s) => s.stage === 'handwork').plannedDate;
+  server.use(
+    http.get('/v1/orders/o1', () => { gets += 1; return HttpResponse.json(order); }),
+    http.put('/v1/garments/g1/plan', () => HttpResponse.json({ error: { code: 'CONFLICT', message: 'x' } }, { status: 409 })),
+  );
+  renderApp('/orders/o1');
+  await userEvent.click(await screen.findByRole('button', { name: 'Adjust plan' }));
+  const dialog = await screen.findByRole('dialog');
+  fireEvent.change(within(dialog).getByLabelText('Handwork'), { target: { value: addDaysYmd(handwork, 1) } });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Save plan' }));
+  const before = gets;
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Reload' }));
+  await expect.poll(() => gets).toBeGreaterThan(before);
+});

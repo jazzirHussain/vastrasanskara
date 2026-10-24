@@ -134,6 +134,10 @@ function References({ garment, onChange }) {
   );
 }
 
+// The API's limits: pieces per batch and garment lines per order.
+export const MAX_PIECES = 200;
+export const MAX_GARMENT_LINES = 50;
+
 /** Step 2: what is being made. A quantity above 1 is a batch of identical garments. */
 export function GarmentsStep({ draft, update, garmentTypes, latest }) {
   const setGarment = (uid, changes) =>
@@ -171,10 +175,11 @@ export function GarmentsStep({ draft, update, garmentTypes, latest }) {
               <NumberInput
                 label="Identical pieces"
                 min={1}
-                max={200}
+                max={MAX_PIECES}
                 allowDecimal={false}
                 value={g.quantity}
                 onChange={(v) => setGarment(g.uid, { quantity: v === '' ? '' : Number(v) })}
+                error={g.quantity > MAX_PIECES ? `At most ${MAX_PIECES} identical pieces per garment.` : undefined}
               />
               <TextInput label="Fabric" value={g.fabric} onChange={(e) => setGarment(g.uid, { fabric: e.currentTarget.value })} />
               <TextInput
@@ -204,11 +209,17 @@ export function GarmentsStep({ draft, update, garmentTypes, latest }) {
           </Stack>
         </section>
       ))}
-      <div>
-        <Button variant="light" onClick={() => update({ garments: [...draft.garments, newGarment()] })}>
-          Add another garment
-        </Button>
-      </div>
+      {draft.garments.length < MAX_GARMENT_LINES ? (
+        <div>
+          <Button variant="light" onClick={() => update({ garments: [...draft.garments, newGarment()] })}>
+            Add another garment
+          </Button>
+        </div>
+      ) : (
+        <Text size="sm" c="var(--vs-muted)">
+          An order can hold up to {MAX_GARMENT_LINES} garments.
+        </Text>
+      )}
     </Stack>
   );
 }

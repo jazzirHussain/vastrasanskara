@@ -47,7 +47,17 @@ export function PlanEditor({ orderId, garment, opened, onClose }) {
             </Group>
           );
         })}
-        {plan.error && <Alert color="red">{plan.error.message}</Alert>}
+        {plan.error?.code === 'CONFLICT' && (
+          <Alert color="haldi">
+            <Group justify="space-between">
+              <Text size="sm">Someone else changed this garment. Reload to see their changes.</Text>
+              <Button size="xs" variant="white" color="haldi" onClick={() => { plan.reloadOrder(); onClose(); }}>
+                Reload
+              </Button>
+            </Group>
+          </Alert>
+        )}
+        {plan.error && plan.error.code !== 'CONFLICT' && <Alert color="red">{plan.error.message}</Alert>}
         <Group justify="flex-end" mt="sm">
           <Button variant="default" onClick={onClose}>
             Close
