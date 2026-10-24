@@ -30,7 +30,7 @@ test('unexpected error hides detail', async () => {
   expect(r.body.error.requestId).toBe(r.headers['x-request-id']);
 });
 test('strict validation rejects unknown keys', async () => {
-  const r = await request(app).post('/t/v').send({ n: 1, extra: true });
+  const r = await request(app).post('/t/v').set('X-Requested-With', 'vs-app').send({ n: 1, extra: true });
   expect(r.status).toBe(400);
   expect(r.body.error.code).toBe('VALIDATION_FAILED');
 });
