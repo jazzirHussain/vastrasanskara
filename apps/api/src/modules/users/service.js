@@ -90,3 +90,10 @@ export async function updateUser(branchId, userId, patch, actor) {
   if (signOut) await revokeUserSessions(user._id);
   return user;
 }
+
+/** Names by user id (any branch's users; ids from the caller's own records). */
+export async function getUserNames(ids) {
+  const unique = [...new Set(ids.filter(Boolean).map(String))].filter((id) => mongoose.isValidObjectId(id));
+  const users = await User.find({ _id: { $in: unique } }, { name: 1 }).lean();
+  return new Map(users.map((u) => [String(u._id), u.name]));
+}

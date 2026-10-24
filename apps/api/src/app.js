@@ -15,6 +15,7 @@ import { healthRouter } from './modules/health/routes.js';
 import { authRouter } from './modules/auth/routes.js';
 import { branchRouter } from './modules/branches/routes.js';
 import { customersRouter } from './modules/customers/routes.js';
+import { measurementsRouter } from './modules/measurements/routes.js';
 import { settingsRouter } from './modules/settings/routes.js';
 import { passwordResetRouter, usersRouter } from './modules/users/routes.js';
 
@@ -52,6 +53,7 @@ export function createApp({ config, storage = createStorage(config), mount, logg
   app.use('/v1/settings', settingsRouter());
   app.use('/v1/branch', branchRouter());
   app.use('/v1/users', usersRouter(config));
+  app.use('/v1/customers/:id/measurements', measurementsRouter());
   app.use('/v1/customers', customersRouter());
   app.use('/v1/files', filesRouter(storage));
   app.use('/v1/notifications', notificationsRouter());
