@@ -1,10 +1,20 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { objectId } from '@vs/shared/schemas/common.js';
-import { orderCreateSchema, orderPatchSchema, orderReasonSchema, orderResumeSchema, ymd } from '@vs/shared/schemas/orders.js';
-import { actorFrom, requirePermission } from '../../core/auth/middleware.js';
+import {
+  addGarmentsSchema,
+  garmentPatchSchema,
+  garmentPlanSchema,
+  orderCreateSchema,
+  orderPatchSchema,
+  orderReasonSchema,
+  orderResumeSchema,
+  ymd,
+} from '@vs/shared/schemas/orders.js';
+import { actorFrom, requireAnyPermission, requirePermission } from '../../core/auth/middleware.js';
 import { idempotent } from '../../core/idempotency.js';
 import { validate, versioned } from '../../core/validate.js';
+import { addGarments, updateGarment, updateGarmentPlan } from './garments.js';
 import { cancelOrder, holdOrder, resumeOrder, updateOrder } from './lifecycle.js';
 import { getUserNames } from '../users/service.js';
 import { createOrder, getOrder, listOrders, today } from './service.js';
@@ -140,6 +150,17 @@ export function ordersRouter() {
   change('/:id/cancel', 'post', orderReasonSchema, cancelOrder);
 
   router.post(
+    '/:id/garments',
+    requirePermission('orders.write'),
+    validate({ body: addGarmentsSchema }),
+    idempotent(),
+    async (req, res) => {
+      const order = await addGarments(req.user.branchId, req.user, req.params.id, req.body, actorFrom(req));
+      res.status(201).json(await orderDetailResponse(req, order._id));
+    },
+  );
+
+  router.post(
     '/',
     requirePermission('orders.write'),
     validate({ body: orderCreateSchema }),
@@ -149,6 +170,24 @@ export function ordersRouter() {
       res.status(201).json(await orderDetailResponse(req, order._id));
     },
   );
+
+  return router;
+}
+
+/** Garment edits and planned dates; designers may edit their own orders' garments (design side only). */
+export function garmentsRouter() {
+  const router = Router();
+  const canEdit = requireAnyPermission('orders.write', 'production.update');
+
+  router.patch('/:id', canEdit, validate({ body: versioned(garmentPatchSchema) }), async (req, res) => {
+    const garment = await updateGarment(req.user.branchId, req.user, req.params.id, req.body, actorFrom(req));
+    res.json(toGarmentJson(garment, req.user));
+  });
+
+  router.put('/:id/plan', canEdit, validate({ body: versioned(garmentPlanSchema) }), async (req, res) => {
+    const garment = await updateGarmentPlan(req.user.branchId, req.user, req.params.id, req.body, actorFrom(req));
+    res.json(toGarmentJson(garment, req.user));
+  });
 
   return router;
 }
