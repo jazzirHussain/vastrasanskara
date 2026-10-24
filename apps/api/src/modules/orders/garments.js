@@ -139,6 +139,52 @@ export async function saveStageChange({ garment }, { skip, ...changes }, actor, 
   await garment.save({ session });
 }
 
+/**
+ * A new garment on the same order remaking a rejected one: same design, price and measurements,
+ * numbered after the last garment, planned from today to the old due date (or today, when that
+ * has passed). Returns the new garment document.
+ */
+export async function remakeGarment({ garment, order }, actor, session) {
+  const settings = await readSettings(garment.branchId, session);
+  const day = today();
+  const ownDue = garment.dueDate ?? null;
+  const dueDate = (ownDue ?? order.pickupDate) < day ? day : ownDue;
+  const last = await Garment.findOne({ orderId: order._id }).sort({ index: -1 }).session(session).lean();
+  const [doc] = buildGarments({
+    branchId: garment.branchId,
+    order,
+    garments: [
+      {
+        type: garment.type,
+        description: garment.description,
+        fabric: garment.fabric,
+        designNotes: garment.designNotes,
+        agreedPrice: garment.agreedPrice,
+        quantity: 1,
+        dueDate,
+        referenceKeys: [...garment.referenceKeys],
+        measurementId: garment.measurementId,
+      },
+    ],
+    startIndex: last.index + 1,
+    settings,
+    actor,
+  });
+  const [remake] = await Garment.create([{ ...doc, catalogItemId: garment.catalogItemId, remakeOf: garment._id }], { session });
+  await recordAudit(
+    {
+      branchId: order.branchId,
+      entityType: 'order',
+      entityId: order._id,
+      action: 'add_garments',
+      changes: [{ path: 'garments', before: null, after: [remake.garmentNo] }],
+      actor,
+    },
+    session,
+  );
+  return remake;
+}
+
 /** Adds garments to an open order, numbered after the existing ones. */
 export async function addGarments(branchId, user, orderId, { garments }, actor) {
   if (!mongoose.isValidObjectId(orderId)) throw notFound();

@@ -1,9 +1,11 @@
 import mongoose from 'mongoose';
 import { applyStageAction, ProductionRuleError } from '@vs/shared/production.js';
 import { clock } from '../../clock.js';
+import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
 import { businessRule, forbidden, validationError } from '../../core/errors.js';
-import { loadGarmentsForStageAction, saveStageChange } from '../orders/garments.js';
+import { loadGarmentsForStageAction, remakeGarment, saveStageChange } from '../orders/garments.js';
+import { settleOrderAfterStageChange } from '../orders/lifecycle.js';
 import { getGarment, isOrderInScope, today } from '../orders/service.js';
 import { getUserNames } from '../users/service.js';
 import { getVendorNames, isActiveVendor } from '../vendors/service.js';
@@ -14,8 +16,6 @@ const { ObjectId } = mongoose.Types;
 
 // Inputs every event keeps as given (the rest comes from the production rules).
 const EVENT_FIELDS = ['workerIds', 'remarks', 'photoKeys', 'reason', 'resolution', 'chargeable', 'chargeAmount'];
-// Not recorded until alteration, pickup and rejection are built.
-const NOT_YET = new Set(['alteration', 'picked_up', 'rejected']);
 
 /** Workers and vendor must be active ones of the branch; photos must be this branch's stage photos. */
 async function checkInputs(branchId, user, input) {
@@ -43,11 +43,32 @@ function applyRules(garment, input, day) {
 }
 
 /**
+ * A rejected garment is never charged; the owner's resolution is kept on it, and a remake is a
+ * new garment on the same order. Returns the `rejection` to save with the garment.
+ */
+async function resolveRejection(item, input, actor, session) {
+  const remake = input.resolution === 'remake' ? await remakeGarment(item, actor, session) : null;
+  await recordAudit(
+    {
+      branchId: item.garment.branchId,
+      entityType: 'garment',
+      entityId: item.garment._id,
+      action: 'reject',
+      before: { status: item.garment.status, resolution: null },
+      after: { status: 'rejected', resolution: input.resolution },
+      actor,
+    },
+    session,
+  );
+  return { resolution: input.resolution, reason: input.reason, remakeGarmentId: remake?._id ?? null, at: clock.now(), by: actor.userId };
+}
+
+/**
  * Records one stage action on one or more garments (a bulk action) in one transaction: every
- * garment's new state and one stage event each, or nothing. Returns the saved garments.
+ * garment's new state and one stage event each, or nothing. Orders whose garments are now all
+ * settled are completed (or reopened by an alteration). Returns the saved garments.
  */
 export async function recordStageAction(branchId, user, input, actor) {
-  if (NOT_YET.has(input.action)) throw businessRule('ACTION_NOT_ALLOWED', 'That step is not possible yet');
   await checkInputs(branchId, user, input);
   const fields = Object.fromEntries(EVENT_FIELDS.filter((f) => input[f] !== undefined).map((f) => [f, input[f]]));
 
@@ -59,6 +80,7 @@ export async function recordStageAction(branchId, user, input, actor) {
     const events = [];
     for (const item of loaded) {
       const { changes, event } = applyRules(item.garment, input, day);
+      if (input.action === 'rejected') changes.rejection = await resolveRejection(item, input, actor, session);
       await saveStageChange(item, changes, actor, session);
       events.push({
         ...fields,
@@ -72,6 +94,8 @@ export async function recordStageAction(branchId, user, input, actor) {
       });
     }
     await StageEvent.create(events, { session, ordered: true });
+    const orders = new Map(loaded.map(({ order }) => [String(order._id), order]));
+    for (const order of orders.values()) await settleOrderAfterStageChange(order, actor, session);
     return loaded.map(({ garment }) => garment.toObject());
   });
 }

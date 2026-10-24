@@ -105,6 +105,24 @@ export function resumeOrder(branchId, orderId, { version }, actor) {
 }
 
 /**
+ * Brings the order's status in line with its garments after a stage change: an active order
+ * whose garments are all settled, with at least one picked up, is completed; a completed order
+ * with a garment back in work (an alteration after pickup) is active again. Both are audited.
+ */
+export async function settleOrderAfterStageChange(order, actor, session) {
+  const garments = await Garment.find({ orderId: order._id }, { status: 1 }).session(session).lean();
+  const inWork = garments.some((g) => g.status === 'in_progress' || g.status === 'ready');
+  const before = auditFields(order);
+  if (order.status === 'active' && !inWork && garments.some((g) => g.status === 'picked_up')) {
+    order.status = 'completed';
+    await saveOrder(order, 'complete', before, actor, session);
+  } else if (order.status === 'completed' && inWork) {
+    order.status = 'active';
+    await saveOrder(order, 'reopen', before, actor, session);
+  }
+}
+
+/**
  * The refund percent for an order whose garments reached `furthestStage`: the first schedule
  * row (in stage order) whose `uptoStage` is at or after it, else 0.
  */

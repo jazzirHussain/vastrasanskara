@@ -1,53 +1,14 @@
 import { test, expect, vi, afterEach } from 'vitest';
-import { addDaysYmd, istDate, workingStage, QC_STAGES } from '@vs/shared';
+import { addDaysYmd } from '@vs/shared';
 import { useTestDb } from './helpers/db.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
-import { clock } from '../src/clock.js';
+import { productionHelpers, today } from './helpers/production.js';
 import { StageEvent } from '../src/modules/production/model.js';
 useTestDb();
 afterEach(() => vi.restoreAllMocks());
 const app = buildTestApp();
 
-let keys = 0;
-const today = () => istDate(clock.now());
-
-async function world() {
-  const ops = await loginAs(app, { roles: ['operations'] });
-  const d1 = await loginAs(app, { roles: ['designer'], name: 'Meera' });
-  const d2 = await loginAs(app, { roles: ['designer'], name: 'Nila' });
-  const customerId = (await ops.agent.post('/v1/customers').send({ name: 'Asha Rao', phone: '9876543210' })).body.id;
-  const worker = (await ops.agent.post('/v1/workers').send({ name: 'Ravi' })).body;
-  const vendor = (await ops.agent.post('/v1/vendors').send({ name: 'Zari works' })).body;
-  const take = async ({ designer = d1, quantity = 1 } = {}) =>
-    (await ops.agent.post('/v1/orders').set('Idempotency-Key', `p${++keys}`).send({
-      customerId, designerId: String(designer.user._id), pickupDate: addDaysYmd(today(), 40),
-      garments: [{ type: 'blouse', description: 'Blouse', agreedPrice: 450000, quantity }],
-    })).body;
-  return { ops, d1, d2, worker, vendor, take };
-}
-
-const send = (who, garments, body) =>
-  who.agent.post('/v1/production/actions').send({
-    stage: workingStage(garments[0]),
-    garments: garments.map((g) => ({ id: g.id, version: g.version })),
-    ...body,
-  });
-
-/** Acts on one garment and returns it as the API answers (fails the test on an error). */
-async function act(who, garment, body) {
-  const r = await send(who, [garment], body);
-  expect(r.status, JSON.stringify(r.body)).toBe(200);
-  return r.body.garments[0];
-}
-
-/** Completes (or passes QC on) stages until the garment works on `stage`. */
-async function advanceTo(who, garment, stage) {
-  let g = garment;
-  while (workingStage(g) !== stage) g = await act(who, g, { action: QC_STAGES.includes(workingStage(g)) ? 'qc_pass' : 'complete' });
-  return g;
-}
-
-const history = async (who, garment) => (await who.agent.get(`/v1/production/garments/${garment.id}/events`)).body.items;
+const { world, send, act, advanceTo, history } = productionHelpers(app);
 
 async function stagePhoto(who) {
   const r = await who.agent.post('/v1/files/upload-url').send({ purpose: 'stage_photo', contentType: 'image/jpeg', size: 1000 });
