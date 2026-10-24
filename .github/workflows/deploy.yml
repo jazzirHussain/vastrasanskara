@@ -1,0 +1,86 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+# One deploy at a time; a newer push waits for the running one instead of cancelling it.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC → AWS role; no long-lived AWS keys
+    env:
+      AWS_REGION: ap-south-1
+      # Set these as repository variables (Settings → Secrets and variables → Actions → Variables).
+      API_HOST: ${{ vars.API_HOST }} # api.<domain>
+      WEB_BUCKET: ${{ vars.WEB_BUCKET }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+      INSTANCE_ID: ${{ vars.INSTANCE_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build web
+        run: |
+          npm ci
+          VITE_API_URL="https://${API_HOST}" npm run build -w @vs/web
+
+      # The API goes first so the new web app never talks to an old API.
+      - name: Deploy API on EC2 (SSM Run Command)
+        run: |
+          command_id=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "deploy ${GITHUB_SHA}" \
+            --parameters "commands=[\"sudo -iu deploy bash /opt/vastrasanskara/deploy/scripts/remote-deploy.sh ${GITHUB_SHA} ${API_HOST}\"],executionTimeout=[\"900\"]" \
+            --query 'Command.CommandId' --output text)
+          echo "SSM command: $command_id"
+          aws ssm wait command-executed --command-id "$command_id" --instance-id "$INSTANCE_ID" || true
+          status=$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" --query Status --output text)
+          aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" \
+            --query '[StandardOutputContent,StandardErrorContent]' --output text
+          if [ "$status" != "Success" ]; then
+            echo "Remote deploy finished with status $status" >&2
+            exit 1
+          fi
+
+      - name: Upload web to S3
+        run: |
+          # Hashed assets never change: cache for a year. index.html must always be fresh.
+          aws s3 sync apps/web/dist "s3://${WEB_BUCKET}" --delete \
+            --exclude index.html --cache-control "public, max-age=31536000, immutable"
+          aws s3 cp apps/web/dist/index.html "s3://${WEB_BUCKET}/index.html" \
+            --cache-control "no-cache"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths "/*" \
+            --query 'Invalidation.Id' --output text
+
+      - name: Final health check
+        run: curl -fsS "https://${API_HOST}/v1/health"
