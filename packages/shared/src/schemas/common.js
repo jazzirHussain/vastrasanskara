@@ -1,14 +1,21 @@
 import { z } from 'zod';
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 export const objectId = z.string().regex(/^[0-9a-f]{24}$/i, 'Invalid id');
 
 export const email = z.string().trim().toLowerCase().pipe(z.email());
 
-// 10-digit Indian mobile; an optional +91 prefix, spaces and hyphens are stripped.
-export const phone = z
-  .string()
-  .transform((s) => s.replace(/[\s-]/g, '').replace(/^\+91/, ''))
-  .pipe(z.string().regex(/^[6-9]\d{9}$/, 'Invalid mobile number'));
+// Any country's number, normalised to E.164 ('+919876543210'). Numbers typed without a
+// country code are read as Indian; a leading '00' international prefix is treated as '+'.
+export const phone = z.string().transform((value, ctx) => {
+  const input = value.trim().replace(/^00/, '+');
+  const parsed = parsePhoneNumberFromString(input, 'IN');
+  if (!parsed || !parsed.isValid()) {
+    ctx.addIssue({ code: 'custom', message: 'Invalid phone number' });
+    return z.NEVER;
+  }
+  return parsed.number;
+});
 
 export const gstin = z
   .string()

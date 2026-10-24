@@ -273,7 +273,7 @@ git add packages/shared && git commit -m "feat(shared): IST date, financial year
 
 **Interfaces:**
 - Produces (`permissions.js`): `ROLES = ['admin', 'operations', 'designer']`; `PERMISSIONS` — object of constants whose values are: `orders.read.all`, `orders.read.own`, `orders.write`, `production.update`, `measurements.write`, `customers.read`, `customers.write`, `money.view`, `billing.draft`, `billing.issue`, `billing.cancel`, `payments.record`, `discounts.give`, `periods.lock`, `audit.verify`, `reports.export`, `expenses.write`, `stock.write`, `stock.consume.own`, `settings.edit`, `users.manage`, `system.monitor`; `ROLE_PERMISSIONS` — admin: all; operations: all except `production.update`, `billing.cancel`, `periods.lock`, `audit.verify`, `reports.export`, `settings.edit`, `users.manage`, `system.monitor`, `stock.consume.own`; designer: `orders.read.own`, `production.update`, `measurements.write`, `customers.read`, `stock.consume.own`. `permissionsFor(roles: string[]) → Set<string>` (union; throws `Error('Unknown role: x')`); `can(roles, permission) → boolean`.
-- Produces (`schemas/common.js`): `objectId` (24-hex string), `email` (trimmed, lower-cased, valid email), `phone` (10-digit Indian mobile, optional `+91` stripped), `gstin` (regex `^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$`), `stateCode` (`'01'`–`'38'`, `'97'`), `hhmm` (`HH:mm` 00:00–23:59), `paise` (non-negative integer), `password` (min 10 chars, max 200).
+- Produces (`schemas/common.js`): `objectId` (24-hex string), `email` (trimmed, lower-cased, valid email), `phone` (any country, validated with libphonenumber-js, normalised to E.164 e.g. `+919876543210`; no country code → India; leading `00` → `+`), `gstin` (regex `^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$`), `stateCode` (`'01'`–`'38'`, `'97'`), `hhmm` (`HH:mm` 00:00–23:59), `paise` (non-negative integer), `password` (min 10 chars, max 200).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -299,7 +299,7 @@ test('unknown role', () => { expect(() => permissionsFor(['ceo'])).toThrow('Unkn
 import { test, expect } from 'vitest';
 import { email, phone, gstin, hhmm } from '../src/schemas/common.js';
 test('email normalised', () => { expect(email.parse(' Owner@Example.com ')).toBe('owner@example.com'); });
-test('phone normalised', () => { expect(phone.parse('+919876543210')).toBe('9876543210'); expect(() => phone.parse('12345')).toThrow(); });
+test('phone normalised to E.164', () => { expect(phone.parse('98765 43210')).toBe('+919876543210'); expect(phone.parse('+44 7911 123456')).toBe('+447911123456'); expect(() => phone.parse('12345')).toThrow(); });
 test('gstin', () => { expect(gstin.safeParse('29ABCDE1234F1Z5').success).toBe(true); expect(gstin.safeParse('29abcde1234f1z5').success).toBe(false); });
 test('hhmm', () => { expect(hhmm.safeParse('21:00').success).toBe(true); expect(hhmm.safeParse('24:00').success).toBe(false); });
 ```
