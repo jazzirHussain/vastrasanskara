@@ -4,6 +4,7 @@ import {
   IconHome2,
   IconNeedleThread,
   IconPlus,
+  IconTool,
   IconUsersGroup,
 } from '@tabler/icons-react';
 
@@ -16,6 +17,7 @@ export const navItems = [
   { label: 'Orders', path: '/orders', permission: 'orders.read.own', icon: IconNeedleThread, phone: 'bar' },
   { label: 'New order', path: '/orders/new', permission: 'orders.write', icon: IconPlus, phone: 'primary' },
   { label: 'Customers', path: '/customers', permission: 'customers.read', icon: IconAddressBook, phone: 'bar' },
+  { label: 'Workshop', path: '/workshop', permission: 'workshop.manage', icon: IconTool, phone: 'more' },
   { label: 'Users', path: '/users', permission: 'users.manage', icon: IconUsersGroup, phone: 'more' },
   { label: 'Settings', path: '/settings', permission: 'settings.edit', icon: IconAdjustmentsHorizontal, phone: 'more' },
 ];

@@ -13,6 +13,7 @@ import { OrderPage } from './features/orders/OrderPage.jsx';
 import { OrdersPage } from './features/orders/OrdersPage.jsx';
 import { SettingsPage } from './features/settings/SettingsPage.jsx';
 import { UsersPage } from './features/users/UsersPage.jsx';
+import { WorkshopPage } from './features/workshop/WorkshopPage.jsx';
 import { AppLayout } from './layout/AppLayout.jsx';
 
 /** Routes. Rendered inside a router (BrowserRouter in main.jsx, MemoryRouter in tests). */
@@ -36,6 +37,9 @@ export default function App() {
             </Route>
             <Route element={<RequirePermission permission="orders.write" />}>
               <Route path="/orders/new" element={<NewOrderPage />} />
+            </Route>
+            <Route element={<RequirePermission permission="workshop.manage" />}>
+              <Route path="/workshop" element={<WorkshopPage />} />
             </Route>
             <Route element={<RequirePermission permission="users.manage" />}>
               <Route path="/users" element={<UsersPage />} />

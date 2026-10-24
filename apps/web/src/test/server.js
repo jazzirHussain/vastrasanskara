@@ -52,7 +52,7 @@ export const operationsUser = {
   name: 'Kavya',
   email: 'kavya@x.com',
   roles: ['operations'],
-  permissions: ['orders.read.own', 'orders.read.all', 'orders.write', 'customers.read', 'customers.write', 'measurements.write', 'money.view'],
+  permissions: ['orders.read.own', 'orders.read.all', 'orders.write', 'customers.read', 'customers.write', 'measurements.write', 'money.view', 'workshop.manage'],
   branchId: 'b1',
 };
 
