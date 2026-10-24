@@ -81,6 +81,20 @@ export function toGarmentJson(g, user) {
     stageState: g.stageState,
     status: g.status,
     tightSchedule: g.tightSchedule,
+    alterationOpen: Boolean(g.alterationOpen),
+    vendorWork: g.vendorWork
+      ? { vendorId: String(g.vendorWork.vendorId), dueBackDate: g.vendorWork.dueBackDate, sentOn: g.vendorWork.sentOn }
+      : null,
+    readyDate: g.readyDate ?? null,
+    rejection: g.rejection
+      ? {
+          resolution: g.rejection.resolution,
+          reason: g.rejection.reason,
+          remakeGarmentId: g.rejection.remakeGarmentId ? String(g.rejection.remakeGarmentId) : null,
+          at: g.rejection.at,
+        }
+      : null,
+    remakeOf: g.remakeOf ? String(g.remakeOf) : null,
     stagePlan: planJson(g.stagePlan),
     referenceKeys: [...g.referenceKeys],
     measurementId: g.measurementId ? String(g.measurementId) : null,

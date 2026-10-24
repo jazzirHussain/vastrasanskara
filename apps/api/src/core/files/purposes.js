@@ -1,4 +1,5 @@
 import { canReadGarmentFile } from '../../modules/orders/service.js';
+import { canReadStagePhoto } from '../../modules/production/service.js';
 
 export const ALLOWED_TYPES = Object.freeze({
   'image/jpeg': 'jpg',
@@ -35,4 +36,9 @@ registerFilePurpose('garment_reference', {
   allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf'],
   canWrite: (user) => user.permissions.has('orders.write') || user.permissions.has('production.update'),
   canRead: (user, key) => canReadGarmentFile(user, key),
+});
+registerFilePurpose('stage_photo', {
+  allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic'],
+  canWrite: (user) => user.permissions.has('production.update') || user.permissions.has('orders.write'),
+  canRead: (user, key) => canReadStagePhoto(user, key),
 });

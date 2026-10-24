@@ -212,6 +212,19 @@ export async function getOrder(branchId, user, orderId) {
   return { order, garments, customer };
 }
 
+/** A garment of an order in the user's scope; 404 otherwise. */
+export async function getGarment(branchId, user, garmentId) {
+  if (!mongoose.isValidObjectId(garmentId)) throw notFound();
+  const garment = await Garment.findOne({ _id: garmentId, branchId }).lean();
+  if (!garment || !(await isOrderInScope(user, garment.orderId))) throw notFound();
+  return garment;
+}
+
+/** Whether the order belongs to the user's branch and scope. */
+export async function isOrderInScope(user, orderId) {
+  return Boolean(await Order.exists({ _id: orderId, branchId: user.branchId, ...orderScope(user) }));
+}
+
 /** Whether the user may read a garment reference file: they can read an order that uses it. */
 export async function canReadGarmentFile(user, key) {
   const garment = await Garment.findOne({ branchId: user.branchId, referenceKeys: key }, { orderId: 1 }).lean();

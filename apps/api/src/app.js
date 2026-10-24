@@ -19,6 +19,7 @@ import { measurementsRouter } from './modules/measurements/routes.js';
 import { settingsRouter } from './modules/settings/routes.js';
 import { designersRouter, passwordResetRouter, usersRouter } from './modules/users/routes.js';
 import { garmentsRouter, ordersRouter } from './modules/orders/routes.js';
+import { productionRouter } from './modules/production/routes.js';
 import { vendorsRouter } from './modules/vendors/routes.js';
 import { workersRouter } from './modules/workers/routes.js';
 
@@ -63,6 +64,7 @@ export function createApp({ config, storage = createStorage(config), mount, logg
   app.use('/v1/garments', garmentsRouter());
   app.use('/v1/workers', workersRouter());
   app.use('/v1/vendors', vendorsRouter());
+  app.use('/v1/production', productionRouter());
   app.use('/v1/files', filesRouter(storage));
   app.use('/v1/notifications', notificationsRouter());
   app.use('/v1/admin/outbox', adminOutboxRouter());

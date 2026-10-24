@@ -97,6 +97,48 @@ export function updateGarmentPlan(branchId, user, garmentId, { version, patch: {
   });
 }
 
+/**
+ * Garments (with their orders) for a production stage action, as documents to change in
+ * `session`. Every garment must be in the user's order scope (404), at its version (409) and
+ * on an active order (422); an alteration may also reopen a completed order. Nothing is
+ * changed here, so a bulk action fails whole.
+ */
+export async function loadGarmentsForStageAction(branchId, user, refs, session, { action } = {}) {
+  const ids = refs.map((r) => r.id);
+  const garments = await Garment.find({ _id: { $in: ids }, branchId }).session(session);
+  const orderIds = [...new Set(garments.map((g) => String(g.orderId)))];
+  const orders = await Order.find({ _id: { $in: orderIds }, branchId, ...orderScope(user) }).session(session);
+  const garmentById = new Map(garments.map((g) => [String(g._id), g]));
+  const orderById = new Map(orders.map((o) => [String(o._id), o]));
+
+  const loaded = refs.map(({ id, version }) => {
+    const garment = garmentById.get(id.toLowerCase());
+    const order = garment && orderById.get(String(garment.orderId));
+    if (!order) throw notFound();
+    return { garment, order, version };
+  });
+  if (loaded.some(({ garment, version }) => garment.__v !== version)) throw conflict();
+  const statuses = action === 'alteration' ? ['active', 'completed'] : ['active'];
+  for (const { order } of loaded) assertStatus(order, statuses);
+  return loaded.map(({ garment, order }) => ({ garment, order }));
+}
+
+/**
+ * Saves a garment's new production state (from applyStageAction). A `skip` entry marks that
+ * stage skipped in the plan. Stage changes are recorded as stage events, not audit entries.
+ */
+export async function saveStageChange({ garment }, { skip, ...changes }, actor, session) {
+  if (skip) {
+    const entry = garment.stagePlan.find((s) => s.stage === skip.stage);
+    entry.skipped = true;
+    entry.skipReason = skip.reason;
+  }
+  garment.set(changes);
+  garment.updatedBy = actor.userId;
+  garment.increment();
+  await garment.save({ session });
+}
+
 /** Adds garments to an open order, numbered after the existing ones. */
 export async function addGarments(branchId, user, orderId, { garments }, actor) {
   if (!mongoose.isValidObjectId(orderId)) throw notFound();

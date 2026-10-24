@@ -83,6 +83,31 @@ const garmentSchema = new mongoose.Schema({
   status: { type: String, enum: ['in_progress', 'ready', 'picked_up', 'rejected', 'cancelled'], default: 'in_progress' },
   alterationOpen: { type: Boolean, default: false },
   tightSchedule: { type: Boolean, default: false },
+  // Set while a stage is with a vendor (stageState 'with_vendor').
+  vendorWork: {
+    type: new mongoose.Schema(
+      { vendorId: { type: ObjectId, ref: 'Vendor' }, dueBackDate: String, sentOn: String },
+      { _id: false },
+    ),
+    default: null,
+  },
+  // The day the garment last became ready for pickup.
+  readyDate: { type: String, default: null },
+  rejection: {
+    type: new mongoose.Schema(
+      {
+        resolution: { type: String, enum: ['refund', 'remake', 'write_off'] },
+        reason: String,
+        remakeGarmentId: { type: ObjectId, default: null },
+        at: Date,
+        by: { type: ObjectId, ref: 'User' },
+      },
+      { _id: false },
+    ),
+    default: null,
+  },
+  // The rejected garment this one remakes.
+  remakeOf: { type: ObjectId, default: null },
   materials: { type: [mongoose.Schema.Types.Mixed], default: [] },
 });
 garmentSchema.plugin(commonFields);
