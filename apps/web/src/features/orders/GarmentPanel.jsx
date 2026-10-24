@@ -9,9 +9,21 @@ import { apiFetch } from '../../lib/api.js';
 import { isOpen } from './orderStatus.js';
 import { PlanEditor } from './PlanEditor.jsx';
 
+/**
+ * Opens a stored file in a new tab. The tab is opened during the tap (Safari blocks one opened
+ * after an await) and pointed at the signed URL once it arrives; it is closed if that fails.
+ */
 async function openFile(key) {
-  const { url } = await apiFetch('/v1/files/url', { query: { key } });
-  window.open(url, '_blank', 'noopener');
+  const tab = window.open('', '_blank');
+  if (tab) tab.opener = null;
+  try {
+    const { url } = await apiFetch('/v1/files/url', { query: { key } });
+    if (tab) tab.location.href = url;
+    else window.location.assign(url);
+  } catch (error) {
+    tab?.close();
+    throw error;
+  }
 }
 
 function Fact({ label, children }) {
@@ -30,11 +42,18 @@ function Fact({ label, children }) {
 export function GarmentPanel({ order, garment, typeLabel, late }) {
   const { can } = useAuth();
   const [adjusting, setAdjusting] = useState(false);
+  const [fileError, setFileError] = useState(null);
   const canAdjust = isOpen(order) && (can('production.update') || can('orders.write'));
 
   return (
     <section className="vs-panel" style={{ padding: 20 }} aria-label={garment.description}>
-      <div style={{ display: 'grid', gap: 24, gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
+      <div
+        style={{
+          display: 'grid',
+          gap: 24,
+          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+        }}
+      >
         <Stack gap="sm">
           <div>
             <Text size="xs" c="var(--vs-muted)" className="vs-figures">
@@ -48,7 +67,9 @@ export function GarmentPanel({ order, garment, typeLabel, late }) {
                 {typeLabel(garment.type)}
               </Text>
               {garment.status !== 'in_progress' && <StatusBadge status={garment.status} />}
-              {garment.tightSchedule && garment.status === 'in_progress' && <StatusBadge status="tight" />}
+              {garment.tightSchedule && garment.status === 'in_progress' && (
+                <StatusBadge status="tight" />
+              )}
               {late && <StatusBadge status="late" />}
               {garment.batchId && <StatusBadge status="batch" label="Part of a batch" />}
             </Group>
@@ -83,11 +104,26 @@ export function GarmentPanel({ order, garment, typeLabel, late }) {
               </Text>
               <Group gap="sm">
                 {garment.referenceKeys.map((key, i) => (
-                  <Anchor key={key} component="button" type="button" onClick={() => openFile(key)}>
+                  <Anchor
+                    key={key}
+                    component="button"
+                    type="button"
+                    onClick={() => {
+                      setFileError(null);
+                      openFile(key).catch(() =>
+                        setFileError('This photo could not be opened. Please try again.'),
+                      );
+                    }}
+                  >
                     Photo {i + 1}
                   </Anchor>
                 ))}
               </Group>
+              {fileError && (
+                <Text size="sm" c="red" role="alert">
+                  {fileError}
+                </Text>
+              )}
             </div>
           )}
           {canAdjust && (
@@ -107,7 +143,14 @@ export function GarmentPanel({ order, garment, typeLabel, late }) {
           late={late}
         />
       </div>
-      {adjusting && <PlanEditor orderId={order.id} garment={garment} opened onClose={() => setAdjusting(false)} />}
+      {adjusting && (
+        <PlanEditor
+          orderId={order.id}
+          garment={garment}
+          opened
+          onClose={() => setAdjusting(false)}
+        />
+      )}
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import { test, expect } from 'vitest';
+import { test, expect, vi, afterEach } from 'vitest';
 import { fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -6,6 +6,8 @@ import { addDaysYmd } from '@vs/shared';
 import { server, asOperations, asDesigner, defaultSettings } from '../../test/server.js';
 import { renderApp } from '../../test/setup.js';
 import { orderDetailFixture, orderSummary, todayYmd } from '../../test/orders.js';
+
+afterEach(() => vi.restoreAllMocks());
 
 const detail = (fields) => server.use(http.get('/v1/orders/o1', () => HttpResponse.json(orderDetailFixture(fields))));
 
@@ -105,4 +107,39 @@ test('adjusting the plan sends only changed dates', async () => {
   fireEvent.change(within(dialog).getByLabelText('Handwork'), { target: { value: addDaysYmd(handwork, 1) } });
   await userEvent.click(within(dialog).getByRole('button', { name: 'Save plan' }));
   await expect.poll(() => sent).toEqual({ version: 0, changes: [{ stage: 'handwork', plannedDate: addDaysYmd(handwork, 1) }] });
+});
+test('a reference photo opens in a tab taken during the tap', async () => {
+  asOperations();
+  const fixture = orderDetailFixture();
+  fixture.garments[0].referenceKeys = ['garment_reference/a.jpg'];
+  const tab = { location: { href: '' }, opener: {}, close: vi.fn() };
+  const open = vi.spyOn(window, 'open').mockReturnValue(tab);
+  let openedBeforeUrl = null;
+  server.use(
+    http.get('/v1/orders/o1', () => HttpResponse.json(fixture)),
+    http.get('/v1/files/url', () => {
+      openedBeforeUrl = open.mock.calls.length > 0;
+      return HttpResponse.json({ url: 'https://files.example/a.jpg' });
+    }),
+  );
+  renderApp('/orders/o1');
+  await userEvent.click(await screen.findByRole('button', { name: 'Photo 1' }));
+  await expect.poll(() => tab.location.href).toBe('https://files.example/a.jpg');
+  expect(openedBeforeUrl).toBe(true);
+  expect(tab.opener).toBeNull();
+});
+test('a reference photo that cannot be opened says so', async () => {
+  asOperations();
+  const fixture = orderDetailFixture();
+  fixture.garments[0].referenceKeys = ['garment_reference/a.jpg'];
+  const tab = { location: { href: '' }, opener: {}, close: vi.fn() };
+  vi.spyOn(window, 'open').mockReturnValue(tab);
+  server.use(
+    http.get('/v1/orders/o1', () => HttpResponse.json(fixture)),
+    http.get('/v1/files/url', () => HttpResponse.json({ error: { code: 'NOT_FOUND', message: 'Not found' } }, { status: 404 })),
+  );
+  renderApp('/orders/o1');
+  await userEvent.click(await screen.findByRole('button', { name: 'Photo 1' }));
+  expect(await screen.findByText(/photo could not be opened/i)).toBeInTheDocument();
+  expect(tab.close).toHaveBeenCalled();
 });
