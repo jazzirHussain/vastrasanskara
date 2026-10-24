@@ -141,6 +141,10 @@ const listQuery = z.strictObject({
   pickupFrom: ymd.optional(),
   pickupTo: ymd.optional(),
   q: z.string().max(100).optional(),
+  late: z
+    .enum(['true', 'false'])
+    .transform((v) => v === 'true')
+    .optional(),
   cursor: z.string().max(500).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
 });

@@ -1,10 +1,13 @@
 import { Router } from 'express';
+import { z } from 'zod';
+import { objectId } from '@vs/shared/schemas/common.js';
+import { STAGE_KEYS } from '@vs/shared/stages.js';
 import { stageActionSchema } from '@vs/shared/schemas/production.js';
 import { actorFrom, requireAnyPermission, requirePermission } from '../../core/auth/middleware.js';
 import { forbidden } from '../../core/errors.js';
 import { validate } from '../../core/validate.js';
 import { toGarmentJson } from '../orders/routes.js';
-import { listGarmentEvents, recordStageAction } from './service.js';
+import { listGarmentEvents, listProductionGarments, productionBoard, recordStageAction } from './service.js';
 
 // Only designers (and admin) update stages; the counter may hand a garment over, and only
 // those who take orders may record a rejection (it changes what is billed).
@@ -37,6 +40,32 @@ function toEventJson(e, names, user) {
   };
 }
 
+const flag = z
+  .enum(['true', 'false'])
+  .transform((v) => v === 'true')
+  .optional();
+const garmentsQuery = z.strictObject({
+  stage: z.enum(STAGE_KEYS).optional(),
+  late: flag,
+  withVendor: flag,
+  vendorId: objectId.optional(),
+  designerId: objectId.optional(),
+});
+
+function toRowJson(r, user) {
+  const { garment: g, order } = r;
+  return {
+    garment: toGarmentJson(g, user),
+    order: { id: String(order._id), orderNo: order.orderNo, pickupDate: order.pickupDate, priority: order.priority },
+    customer: { id: String(order.customerId), name: r.customerName },
+    designer: { id: String(order.designerId), name: r.designerName },
+    workingStage: r.workingStage,
+    late: r.late,
+    nearlyReady: r.nearlyReady,
+    vendor: g.vendorWork ? { id: String(g.vendorWork.vendorId), name: r.vendorName ?? '' } : null,
+  };
+}
+
 export function productionRouter() {
   const router = Router();
 
@@ -51,6 +80,15 @@ export function productionRouter() {
       res.json({ garments: garments.map((g) => toGarmentJson(g, req.user)) });
     },
   );
+
+  router.get('/board', requirePermission('orders.read.own'), async (req, res) => {
+    res.json(await productionBoard(req.user.branchId, req.user));
+  });
+
+  router.get('/garments', requirePermission('orders.read.own'), validate({ query: garmentsQuery }), async (req, res) => {
+    const { items, truncated } = await listProductionGarments(req.user.branchId, req.user, req.validatedQuery);
+    res.json({ items: items.map((r) => toRowJson(r, req.user)), truncated });
+  });
 
   router.get('/garments/:id/events', requirePermission('orders.read.own'), async (req, res) => {
     const { events, names } = await listGarmentEvents(req.user.branchId, req.user, req.params.id);

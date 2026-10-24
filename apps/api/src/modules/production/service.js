@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
-import { applyStageAction, ProductionRuleError } from '@vs/shared/production.js';
-import { STAGES } from '@vs/shared/stages.js';
+import { applyStageAction, isGarmentLate, isNearlyReady, ProductionRuleError, workingStage } from '@vs/shared/production.js';
+import { STAGE_KEYS, STAGES } from '@vs/shared/stages.js';
 import { clock } from '../../clock.js';
 import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
@@ -9,7 +9,7 @@ import { emit } from '../../core/notify/emit.js';
 import { getCustomerNames } from '../customers/service.js';
 import { loadGarmentsForStageAction, remakeGarment, saveStageChange } from '../orders/garments.js';
 import { settleOrderAfterStageChange } from '../orders/lifecycle.js';
-import { getGarment, isOrderInScope, today } from '../orders/service.js';
+import { getGarment, isOrderInScope, listOpenGarments, today } from '../orders/service.js';
 import { getUserNames } from '../users/service.js';
 import { getVendorNames, isActiveVendor } from '../vendors/service.js';
 import { areActiveWorkers, getWorkerNames } from '../workers/service.js';
@@ -165,4 +165,50 @@ export async function canReadStagePhoto(user, key) {
   const event = await StageEvent.findOne({ branchId: user.branchId, photoKeys: key }, { orderId: 1 }).lean();
   if (!event) return user.permissions.has('production.update') || user.permissions.has('orders.write');
   return isOrderInScope(user, event.orderId);
+}
+
+// The stages a garment can be worked on or wait at: Materials ready through Ready for pickup.
+const BOARD_STAGES = STAGE_KEYS.slice(1, 13);
+
+/** Open garments in the user's scope per working stage: in house, with vendors, and late. */
+export async function productionBoard(branchId, user) {
+  const { items } = await listOpenGarments(branchId, user);
+  const day = today();
+  const stages = new Map(BOARD_STAGES.map((stage) => [stage, { stage, inHouse: 0, withVendor: 0, late: 0 }]));
+  for (const { garment, order } of items) {
+    const count = stages.get(workingStage(garment));
+    if (garment.stageState === 'with_vendor') count.withVendor += 1;
+    else count.inHouse += 1;
+    if (isGarmentLate(garment, order, day)) count.late += 1;
+  }
+  return { stages: [...stages.values()] };
+}
+
+/**
+ * Open garments in the user's scope, filtered, by due date then garment number. Each item adds
+ * workingStage, late, nearlyReady and the vendor (name) holding it.
+ */
+export async function listProductionGarments(branchId, user, { stage, late, withVendor, vendorId, designerId } = {}) {
+  const { items, truncated } = await listOpenGarments(branchId, user, { designerId });
+  const day = today();
+  const rows = items
+    .map((item) => ({
+      ...item,
+      workingStage: workingStage(item.garment),
+      late: isGarmentLate(item.garment, item.order, day),
+      nearlyReady: isNearlyReady(item.garment),
+    }))
+    .filter(
+      (r) =>
+        (!stage || r.workingStage === stage) &&
+        (late === undefined || r.late === late) &&
+        (withVendor === undefined || (r.garment.stageState === 'with_vendor') === withVendor) &&
+        (!vendorId || String(r.garment.vendorWork?.vendorId) === vendorId),
+    )
+    .sort((a, b) => {
+      const due = (r) => r.garment.dueDate ?? r.order.pickupDate;
+      return due(a).localeCompare(due(b)) || a.garment.garmentNo.localeCompare(b.garment.garmentNo);
+    });
+  const vendors = await getVendorNames(branchId, rows.map((r) => r.garment.vendorWork?.vendorId));
+  return { items: rows.map((r) => ({ ...r, vendorName: vendors.get(String(r.garment.vendorWork?.vendorId)) ?? null })), truncated };
 }

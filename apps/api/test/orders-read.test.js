@@ -90,3 +90,14 @@ test('late is suspended while on hold', async () => {
   await Order.updateOne({ _id: order.id }, { status: 'on_hold' });
   expect((await ops.agent.get(`/v1/orders/${order.id}`)).body.late).toBe(false);
 });
+test('late filter returns only orders with a late garment', async () => {
+  const { ops, take } = await world();
+  const late = await take({ days: 45 });
+  await take({ days: 46 });
+  const held = await take({ days: 47 });
+  const pastPlan = { $set: { 'stagePlan.$.plannedDate': addDaysYmd(today(), -1) } };
+  for (const o of [late, held]) await Garment.updateOne({ _id: o.garments[0].id, 'stagePlan.stage': 'materials_ready' }, pastPlan);
+  await Order.updateOne({ _id: held.id }, { status: 'on_hold' });
+  const r = await ops.agent.get('/v1/orders').query({ late: 'true' });
+  expect(r.body.items.map((o) => o.id)).toEqual([late.id]);
+});

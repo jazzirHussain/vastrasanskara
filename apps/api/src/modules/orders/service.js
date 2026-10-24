@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { durationsFor, planStages } from '@vs/shared/planning.js';
+import { isGarmentLate } from '@vs/shared/production.js';
 import { stageIndex } from '@vs/shared/stages.js';
 import { financialYear, istDate } from '@vs/shared/fy.js';
 import { clock } from '../../clock.js';
@@ -8,6 +9,7 @@ import { withTransaction } from '../../core/db.js';
 import { businessRule, conflict, notFound, validationError } from '../../core/errors.js';
 import { nextDocumentNumber } from '../../core/numbering.js';
 import { paginate } from '../../core/pagination.js';
+import { logger } from '../../logger.js';
 import { getBranch } from '../branches/service.js';
 import { customerIdsByNamePrefix, getCustomer, getCustomerNames } from '../customers/service.js';
 import { getMeasurement } from '../measurements/service.js';
@@ -234,15 +236,59 @@ export async function canReadGarmentFile(user, key) {
 
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+const OPEN_GARMENT_LIMIT = 1000;
+
+/**
+ * Garments still in work (in progress or ready) on the branch's active orders, in the user's
+ * scope (`user` null = the whole branch, for scheduled checks), by due date. Each item is
+ * { garment, order, customerName, designerName }; `truncated` when the limit was reached.
+ */
+export async function listOpenGarments(branchId, user = null, { designerId } = {}) {
+  const orders = await Order.find({
+    branchId,
+    status: 'active',
+    $and: [user ? orderScope(user) : {}, designerId ? { designerId: new ObjectId(designerId) } : {}],
+  }).lean();
+  const garments = await Garment.find({ orderId: { $in: orders.map((o) => o._id) }, status: { $in: ['in_progress', 'ready'] } })
+    .sort({ dueDate: 1, garmentNo: 1 })
+    .limit(OPEN_GARMENT_LIMIT)
+    .lean();
+  const truncated = garments.length === OPEN_GARMENT_LIMIT;
+  if (truncated) logger.warn({ branchId: String(branchId) }, `open garments capped at ${OPEN_GARMENT_LIMIT}`);
+  const [customerNames, designerNames] = await Promise.all([
+    getCustomerNames(branchId, orders.map((o) => o.customerId)),
+    getUserNames(orders.map((o) => o.designerId)),
+  ]);
+  const orderById = new Map(orders.map((o) => [String(o._id), o]));
+  const items = garments.map((garment) => {
+    const order = orderById.get(String(garment.orderId));
+    return {
+      garment,
+      order,
+      customerName: customerNames.get(String(order.customerId)) ?? '',
+      designerName: designerNames.get(String(order.designerId)) ?? '',
+    };
+  });
+  return { items, truncated };
+}
+
+/** Ids of the active orders in the user's scope with a garment late today. */
+async function lateOrderIds(branchId, user) {
+  const { items } = await listOpenGarments(branchId, user);
+  const day = today();
+  const late = items.filter(({ garment, order }) => isGarmentLate(garment, order, day));
+  return [...new Set(late.map(({ order }) => String(order._id)))].map((id) => new ObjectId(id));
+}
+
 /**
  * A page of the branch's orders in the user's scope, by pickup date. `q` matches the end of the
  * order number (e.g. '0012' or the whole number) or the start of the customer's name. Each item
- * is { order, garments, customerName, designerName }.
+ * is { order, garments, customerName, designerName }. `late` keeps orders with a late garment.
  */
 export async function listOrders(
   branchId,
   user,
-  { status, designerId, customerId, priority, pickupFrom, pickupTo, q, cursor, limit } = {},
+  { status, designerId, customerId, priority, pickupFrom, pickupTo, q, late, cursor, limit } = {},
 ) {
   // Both the requested designer and the user's scope must hold, so a designer cannot widen it.
   const filter = {
@@ -255,6 +301,7 @@ export async function listOrders(
   if (pickupFrom || pickupTo) {
     filter.pickupDate = { ...(pickupFrom && { $gte: pickupFrom }), ...(pickupTo && { $lte: pickupTo }) };
   }
+  if (late) filter._id = { $in: await lateOrderIds(branchId, user) };
   const term = q?.trim();
   if (term) {
     const customerIds = await customerIdsByNamePrefix(branchId, term);
