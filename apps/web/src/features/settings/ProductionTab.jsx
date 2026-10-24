@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { Button, Fieldset, Group, NumberInput, SimpleGrid, Stack, Text, TextInput, Title } from '@mantine/core';
+import { Button, Fieldset, Group, NumberInput, Select, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { STAGES } from '@vs/shared/stages.js';
 
 // Stages that take working days (not order taking, pickup readiness or pickup itself).
 const WORK_STAGES = STAGES.filter((s) => !['order_taken', 'ready_for_pickup', 'picked_up'].includes(s.key));
 
-const toTypeKey = (name) => name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
 /** Sets or clears one stage's days; an empty value removes the key (falls back to the default). */
 function withDays(days, stageKey, value) {
@@ -17,14 +16,15 @@ function withDays(days, stageKey, value) {
 
 export function ProductionTab({ values, set, errors }) {
   const { default: defaults, byGarmentType } = values.stageDurations;
-  const [newType, setNewType] = useState('');
+  const [newType, setNewType] = useState(null);
   const setDurations = (stageDurations) => set('stageDurations', stageDurations);
+  const labelOf = (key) => values.garmentTypes.find((t) => t.key === key)?.label ?? key.replaceAll('_', ' ');
+  const available = values.garmentTypes.filter((t) => !byGarmentType[t.key]);
 
   function addType() {
-    const key = toTypeKey(newType);
-    if (!key || byGarmentType[key]) return;
-    setDurations({ ...values.stageDurations, byGarmentType: { ...byGarmentType, [key]: {} } });
-    setNewType('');
+    if (!newType || byGarmentType[newType]) return;
+    setDurations({ ...values.stageDurations, byGarmentType: { ...byGarmentType, [newType]: {} } });
+    setNewType(null);
   }
 
   function removeType(key) {
@@ -56,13 +56,13 @@ export function ProductionTab({ values, set, errors }) {
         Leave a stage empty to use the default.
       </Text>
       {Object.entries(byGarmentType).map(([type, days]) => (
-        <Fieldset key={type} legend={type.replaceAll('_', ' ')}>
+        <Fieldset key={type} legend={labelOf(type)}>
           <SimpleGrid cols={{ base: 1, xs: 2, md: 3 }}>
             {WORK_STAGES.map((stage) => (
               <NumberInput
                 key={stage.key}
                 label={stage.label}
-                aria-label={`${type} ${stage.label} (days)`}
+                aria-label={`${labelOf(type)} ${stage.label} (days)`}
                 min={0}
                 placeholder={String(defaults[stage.key] ?? '')}
                 value={days[stage.key] ?? ''}
@@ -78,20 +78,21 @@ export function ProductionTab({ values, set, errors }) {
           </SimpleGrid>
           <Group justify="flex-end" mt="sm">
             <Button variant="subtle" color="red" onClick={() => removeType(type)}>
-              Remove {type.replaceAll('_', ' ')}
+              Remove {labelOf(type)}
             </Button>
           </Group>
         </Fieldset>
       ))}
       <Group align="flex-end">
-        <TextInput
-          label="New garment type"
-          placeholder="e.g. Bridal lehenga"
+        <Select
+          label="Garment type to override"
+          placeholder="Choose a garment type"
+          data={available.map((t) => ({ value: t.key, label: t.label }))}
           value={newType}
-          onChange={(e) => setNewType(e.currentTarget.value)}
+          onChange={setNewType}
         />
-        <Button variant="light" onClick={addType}>
-          Add garment type
+        <Button variant="light" onClick={addType} disabled={!newType}>
+          Add override
         </Button>
       </Group>
     </Stack>

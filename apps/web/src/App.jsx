@@ -5,6 +5,8 @@ import { LoginPage } from './auth/LoginPage.jsx';
 import { RequireAuth } from './auth/RequireAuth.jsx';
 import { RequirePermission } from './auth/RequirePermission.jsx';
 import { ResetPasswordPage } from './auth/ResetPasswordPage.jsx';
+import { CustomerPage } from './features/customers/CustomerPage.jsx';
+import { CustomersPage } from './features/customers/CustomersPage.jsx';
 import { HomePage } from './features/home/HomePage.jsx';
 import { SettingsPage } from './features/settings/SettingsPage.jsx';
 import { UsersPage } from './features/users/UsersPage.jsx';
@@ -21,6 +23,10 @@ export default function App() {
         <Route element={<RequireAuth />}>
           <Route element={<AppLayout />}>
             <Route index element={<HomePage />} />
+            <Route element={<RequirePermission permission="customers.read" />}>
+              <Route path="/customers" element={<CustomersPage />} />
+              <Route path="/customers/:id" element={<CustomerPage />} />
+            </Route>
             <Route element={<RequirePermission permission="users.manage" />}>
               <Route path="/users" element={<UsersPage />} />
             </Route>

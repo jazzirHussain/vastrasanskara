@@ -21,7 +21,7 @@ export function ResponsiveTable({ columns, rows, rowKey, onRowClick, label }) {
 
   if (phone) {
     const primary = columns.find((c) => c.primary) ?? columns[0];
-    const rest = columns.filter((c) => c !== primary && !c.hideOnPhone && c.header);
+    const rest = columns.filter((c) => c !== primary && !c.hideOnPhone);
     return (
       <div className="vs-stack" role="list" aria-label={label}>
         {rows.map((row) => (
@@ -29,7 +29,7 @@ export function ResponsiveTable({ columns, rows, rowKey, onRowClick, label }) {
             <div style={{ fontWeight: 600 }}>{primary.render(row)}</div>
             {rest.map((c) => (
               <div key={c.key} style={{ display: 'flex', gap: 8, fontSize: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ color: 'var(--vs-muted)', minWidth: 84 }}>{c.header}</span>
+                {c.header && <span style={{ color: 'var(--vs-muted)', minWidth: 84 }}>{c.header}</span>}
                 <span>{c.render(row)}</span>
               </div>
             ))}

@@ -45,3 +45,50 @@ export function asAdmin() {
 export function asAnonymous() {
   server.use(http.get('/v1/auth/me', notAuthenticated));
 }
+
+export const operationsUser = {
+  id: 'ops1',
+  name: 'Kavya',
+  email: 'kavya@x.com',
+  roles: ['operations'],
+  permissions: ['orders.read.own', 'orders.read.all', 'orders.write', 'customers.read', 'customers.write', 'measurements.write', 'money.view'],
+  branchId: 'b1',
+};
+
+export const designerUser = {
+  id: 'des1',
+  name: 'Meera',
+  email: 'meera@x.com',
+  roles: ['designer'],
+  permissions: ['orders.read.own', 'production.update', 'measurements.write', 'customers.read'],
+  branchId: 'b1',
+};
+
+export function asOperations() {
+  server.use(http.get('/v1/auth/me', () => HttpResponse.json(operationsUser)));
+}
+
+export function asDesigner() {
+  server.use(http.get('/v1/auth/me', () => HttpResponse.json(designerUser)));
+}
+
+/** A customer as GET /v1/customers/:id returns it. */
+export function customerFixture(fields = {}) {
+  return {
+    id: 'c1',
+    name: 'Asha Rao',
+    phone: '+919876543210',
+    email: null,
+    type: 'individual',
+    gstin: null,
+    stateCode: '29',
+    billingAddress: { line1: '', line2: '', city: '', pincode: '' },
+    source: 'walk_in',
+    consent: { email: false, whatsapp: false, sms: false },
+    consentNote: '',
+    preferredChannel: null,
+    createdAt: '2026-10-20T06:00:00Z',
+    version: 0,
+    ...fields,
+  };
+}

@@ -14,5 +14,6 @@ export const errorMessages = {
   LAST_ADMIN: 'At least one active admin is required.',
   CANNOT_DEACTIVATE_SELF: 'You cannot deactivate your own account.',
   RESET_TOKEN_INVALID: 'This reset link is invalid or has expired.',
+  PHONE_TAKEN: 'A customer with this phone already exists.',
   NETWORK_ERROR: 'Cannot reach the server. Check your connection and try again.',
 };
