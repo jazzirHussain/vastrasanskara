@@ -6,7 +6,19 @@ const stageKey = z.enum(STAGE_KEYS);
 const stageDays = z.partialRecord(stageKey, z.int().min(0).max(60));
 const appointmentMinutes = z.int().min(5).max(480);
 const quietWindow = z.strictObject({ start: hhmm, end: hhmm }).nullable();
-const garmentType = z.string().regex(/^[a-z0-9_]{1,50}$/, 'Use lowercase letters, digits and _');
+export const garmentTypeKey = z.string().regex(/^[a-z0-9_]{1,50}$/, 'Use lowercase letters, digits and _');
+const garmentType = garmentTypeKey;
+// The kinds of garment the house makes, each with the measurements taken for it.
+const garmentTypes = z
+  .array(
+    z.strictObject({
+      key: garmentTypeKey,
+      label: z.string().trim().min(1).max(60),
+      measurementFields: z.array(z.string().trim().min(1).max(40)).max(40),
+    }),
+  )
+  .max(100)
+  .refine((types) => new Set(types.map((t) => t.key)).size === types.length, 'Garment type keys must be unique');
 
 export const settingsSchema = z.strictObject({
   advancePercent: z.int().min(0).max(100),
@@ -36,6 +48,7 @@ export const settingsSchema = z.strictObject({
   numberSeries: z.record(z.string().regex(/^[a-z_]+:\d{4}$/), z.int().positive()),
   dailyJobTime: hhmm,
   closingTime: hhmm,
+  garmentTypes,
 });
 
 /** A PUT /v1/settings body: any subset of top-level settings (each replaced whole). */
@@ -70,4 +83,28 @@ export const DEFAULT_SETTINGS = Object.freeze({
   numberSeries: {},
   dailyJobTime: '08:00',
   closingTime: '20:00',
+  garmentTypes: [
+    {
+      key: 'blouse',
+      label: 'Blouse',
+      measurementFields: [
+        'Bust',
+        'Under bust',
+        'Waist',
+        'Shoulder',
+        'Armhole',
+        'Sleeve length',
+        'Sleeve round',
+        'Front neck depth',
+        'Back neck depth',
+        'Blouse length',
+      ],
+    },
+    { key: 'lehenga', label: 'Lehenga', measurementFields: ['Waist', 'Hip', 'Length'] },
+    { key: 'kurta', label: 'Kurta', measurementFields: ['Chest', 'Waist', 'Hip', 'Shoulder', 'Sleeve length', 'Neck', 'Length'] },
+    { key: 'gown', label: 'Gown', measurementFields: ['Bust', 'Waist', 'Hip', 'Shoulder', 'Sleeve length', 'Length'] },
+    { key: 'sherwani', label: 'Sherwani', measurementFields: ['Chest', 'Waist', 'Hip', 'Shoulder', 'Sleeve length', 'Neck', 'Length'] },
+    { key: 'pants', label: 'Pants', measurementFields: ['Waist', 'Hip', 'Thigh', 'Knee', 'Ankle', 'Length'] },
+    { key: 'other', label: 'Other', measurementFields: [] },
+  ],
 });

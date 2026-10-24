@@ -6,3 +6,6 @@ export * from './schemas/common.js';
 export * from './schemas/branch.js';
 export * from './schemas/settings.js';
 export * from './schemas/users.js';
+export * from './schemas/customers.js';
+export * from './schemas/measurements.js';
+export * from './schemas/orders.js';
