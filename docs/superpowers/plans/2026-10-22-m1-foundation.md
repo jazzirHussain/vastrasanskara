@@ -40,7 +40,7 @@
 
 ## File Structure
 
-Layout rule: each module keeps `model.js` (schemas), `service.js` (business logic) and `routes.js` (HTTP only, including response shapes) in its own folder; adapters and storage implementations never own models or routes.
+Layout rule: each module keeps `model.js` (schemas), `service.js` (business logic), `routes.js` (HTTP only, including response shapes) and `jobs.js` (its background job definitions, listed in `src/jobs.js`) in its own folder; adapters, storage implementations and the scheduler never own models, routes or job definitions.
 
 ```
 package.json                      workspaces, root scripts
@@ -52,14 +52,14 @@ packages/shared/
   src/index.js
   test/*.test.js
 apps/api/
-  src/server.js  src/worker.js  src/app.js  src/config.js  src/logger.js  src/clock.js
+  src/server.js  src/worker.js  src/jobs.js (list of every jobs.js)  src/app.js  src/config.js  src/logger.js  src/clock.js
   src/core/errors.js  src/core/validate.js  src/core/db.js  src/core/counters.js
   src/core/audit/{model.js,canonical.js,diff.js,service.js}
   src/core/security.js  src/core/commonFields.js  src/core/auth/{sessions.js,middleware.js,passwords.js,rateLimit.js}
   src/core/idempotency.js
   src/core/files/{storage.js,storage-s3.js,storage-local.js,devFilesRoutes.js,purposes.js,service.js,routes.js}
-  src/core/notify/{render.js,quietHours.js,emailLayout.js,catalog.js,recipients.js,models.js,emit.js,deliver.js,service.js,routes.js,adapters/{registry.js,configure.js,inApp.js,emailSes.js,emailFile.js}}
-  src/core/jobs/{model.js,service.js,registry.js,runJob.js,worker.js,routes.js}
+  src/core/notify/{render.js,quietHours.js,emailLayout.js,catalog.js,recipients.js,models.js,emit.js,deliver.js,service.js,jobs.js,routes.js,adapters/{registry.js,configure.js,inApp.js,emailSes.js,emailFile.js}}
+  src/core/jobs/{model.js,service.js,registry.js,runJob.js,worker.js,jobs.js,routes.js}
   src/core/backup/{backup.js,storageCheck.js,mongodump.js,jobs.js}
   src/modules/branches/{model.js,service.js,routes.js}
   src/modules/settings/{model.js,service.js,routes.js}

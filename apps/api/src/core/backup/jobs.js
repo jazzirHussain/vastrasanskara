@@ -5,7 +5,7 @@ import { runBackup } from './backup.js';
 import { mongodumpStream } from './mongodump.js';
 import { checkStorage } from './storageCheck.js';
 
-// Every 6 hours (IST) and Mondays 09:00 IST. Imported by the worker so they are scheduled.
+// Every 6 hours (IST) and Mondays 09:00 IST. Registered through src/jobs.js.
 defineJob('backup', {
   schedule: '0 */6 * * *',
   handler: ({ config }) =>

@@ -10,7 +10,7 @@ import { runBackup } from '../src/core/backup/backup.js';
 import { checkStorage } from '../src/core/backup/storageCheck.js';
 import { mongodumpStream } from '../src/core/backup/mongodump.js';
 import { getJobDefinitions } from '../src/core/jobs/registry.js';
-import '../src/core/backup/jobs.js';
+import '../src/jobs.js';
 import { createLocalStorage } from '../src/core/files/storage-local.js';
 import { Outbox } from '../src/core/notify/models.js';
 useTestDb();

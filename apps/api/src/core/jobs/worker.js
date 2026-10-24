@@ -1,20 +1,15 @@
 import { Agenda } from 'agenda';
 import { MongoBackend } from '@agendajs/mongo-backend';
 import mongoose from 'mongoose';
-import { deliverDue } from '../notify/deliver.js';
-import { defineJob, getJobDefinitions } from './registry.js';
+import { getJobDefinitions } from './registry.js';
 import { runJob } from './runJob.js';
-import { recordHeartbeat } from './service.js';
-
-// Core jobs, registered when this module is imported.
-defineJob('heartbeat', { schedule: '1 minute', handler: () => recordHeartbeat() });
-defineJob('deliver-outbox', { schedule: '1 minute', handler: ({ storage }) => deliverDue({ storage }) });
 
 const DRAIN_TIMEOUT_MS = 30_000;
 
 /**
  * Starts Agenda on the Mongoose connection (connect first) and schedules every defined job
- * in IST. stop() lets running jobs finish (up to 30 s) before returning.
+ * in IST. Import src/jobs.js first so the definitions exist. stop() lets running jobs
+ * finish (up to 30 s) before returning.
  */
 export async function startWorker({ config, storage } = {}) {
   const agenda = new Agenda({

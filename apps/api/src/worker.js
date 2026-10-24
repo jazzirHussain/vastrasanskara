@@ -1,7 +1,7 @@
 import { loadConfig } from './config.js';
 import { connectDb, disconnectDb } from './core/db.js';
 import { createStorage } from './core/files/storage.js';
-import './core/backup/jobs.js';
+import './jobs.js';
 import { startWorker } from './core/jobs/worker.js';
 import { registerConfiguredAdapters } from './core/notify/adapters/configure.js';
 import { logger } from './logger.js';

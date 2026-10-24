@@ -5,11 +5,15 @@ import { useTestDb } from './helpers/db.js';
 import { buildTestApp, createTestUser, loginAs } from './helpers/app.js';
 import { defineJob, getJobDefinitions } from '../src/core/jobs/registry.js';
 import { runJob } from '../src/core/jobs/runJob.js';
+import '../src/jobs.js';
 import { startWorker } from '../src/core/jobs/worker.js';
 import { Outbox } from '../src/core/notify/models.js';
 import { emit } from '../src/core/notify/emit.js';
 import { registerAdapter, resetAdapters } from '../src/core/notify/adapters/registry.js';
 import { clock } from '../src/clock.js';
+import { readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 useTestDb();
 const app = buildTestApp();
 
@@ -75,4 +79,13 @@ test('deliver-outbox sends due messages', async () => {
   expect(await runJob('deliver-outbox', {})).toEqual({ ok: true });
   expect(send).toHaveBeenCalledTimes(2);
   resetAdapters();
+});
+test('every jobs.js file is listed in src/jobs.js', () => {
+  const src = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src');
+  const jobFiles = readdirSync(src, { recursive: true })
+    .map((f) => f.split(path.sep).join('/'))
+    .filter((f) => f.endsWith('/jobs.js'));
+  const list = readFileSync(path.join(src, 'jobs.js'), 'utf8');
+  expect(jobFiles.length).toBeGreaterThanOrEqual(3);
+  for (const file of jobFiles) expect(list).toContain(`import './${file}';`);
 });
