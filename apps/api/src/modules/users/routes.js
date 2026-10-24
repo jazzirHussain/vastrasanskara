@@ -6,12 +6,12 @@ import {
   passwordResetRequestSchema,
   updateUserSchema,
 } from '@vs/shared/schemas/users.js';
-import { actorFrom, requirePermission } from '../../core/auth/middleware.js';
+import { actorFrom, requireAnyPermission, requirePermission } from '../../core/auth/middleware.js';
 import { authRateLimiter } from '../../core/auth/rateLimit.js';
 import { notFound } from '../../core/errors.js';
 import { validate } from '../../core/validate.js';
 import { confirmPasswordReset, requestPasswordReset } from './passwordReset.js';
-import { createUser, listUsers, updateUser } from './service.js';
+import { createUser, listDesigners, listUsers, updateUser } from './service.js';
 
 function toUserJson(user) {
   return {
@@ -61,5 +61,14 @@ export function passwordResetRouter(config) {
     res.status(204).end();
   });
 
+  return router;
+}
+
+/** Designers to assign orders to (operations staff cannot list users). */
+export function designersRouter() {
+  const router = Router();
+  router.get('/', requireAnyPermission('orders.write', 'orders.read.all'), async (req, res) => {
+    res.json({ items: await listDesigners(req.user.branchId) });
+  });
   return router;
 }

@@ -1,0 +1,187 @@
+import mongoose from 'mongoose';
+import { durationsFor, planStages } from '@vs/shared/planning.js';
+import { financialYear, istDate } from '@vs/shared/fy.js';
+import { clock } from '../../clock.js';
+import { recordAudit } from '../../core/audit/service.js';
+import { withTransaction } from '../../core/db.js';
+import { businessRule, notFound, validationError } from '../../core/errors.js';
+import { nextDocumentNumber } from '../../core/numbering.js';
+import { getBranch } from '../branches/service.js';
+import { getCustomer } from '../customers/service.js';
+import { getMeasurement } from '../measurements/service.js';
+import { readSettings } from '../settings/service.js';
+import { isActiveDesigner } from '../users/service.js';
+import { Garment, Order } from './model.js';
+
+const { ObjectId } = mongoose.Types;
+
+/** Today's IST business date. */
+export const today = () => istDate(clock.now());
+
+const pad = (n, width) => String(n).padStart(width, '0');
+
+/** Orders the user may see: their own as designer, or all with orders.read.all. */
+export function orderScope(user) {
+  return user.permissions.has('orders.read.all') ? {} : { designerId: new ObjectId(user.id) };
+}
+
+/** A fresh stage plan for a garment, with each planned date also kept as the original. */
+export function stagePlanFor({ orderDate, dueDate, settings, type }) {
+  const { stagePlan, tightSchedule } = planStages({ orderDate, dueDate, durations: durationsFor(settings, type) });
+  return {
+    stagePlan: stagePlan.map((s) => ({ ...s, originalPlannedDate: s.plannedDate, skipped: false, skipReason: null })),
+    tightSchedule,
+  };
+}
+
+/**
+ * Checks garment lines against the branch and customer: known garment type, the customer's own
+ * measurement set, reference photos uploaded to this branch as garment references (400), and
+ * own due dates between today and the pickup date (422).
+ */
+export async function checkGarmentInputs(branchId, { customerId, pickupDate, garments }, settings, prefix = 'garments') {
+  const issues = [];
+  const types = new Set(settings.garmentTypes.map((t) => t.key));
+  for (const [i, g] of garments.entries()) {
+    if (!types.has(g.type)) issues.push({ path: `${prefix}.${i}.type`, message: 'Unknown garment type' });
+    if (g.measurementId) {
+      const m = await getMeasurement(branchId, g.measurementId).catch(() => null);
+      if (!m || String(m.customerId) !== String(customerId) || m.garmentType !== g.type) {
+        issues.push({ path: `${prefix}.${i}.measurementId`, message: "Not one of this customer's measurements for this garment type" });
+      }
+    }
+    for (const [k, key] of g.referenceKeys.entries()) {
+      if (!key.startsWith(`${branchId}/garment_reference/`)) {
+        issues.push({ path: `${prefix}.${i}.referenceKeys.${k}`, message: 'Not a garment reference upload' });
+      }
+    }
+  }
+  if (issues.length) throw validationError(issues);
+  for (const g of garments) {
+    if (g.dueDate && g.dueDate > pickupDate) {
+      throw businessRule('DUE_AFTER_PICKUP', 'A garment cannot be due after the pickup date');
+    }
+    if (g.dueDate && g.dueDate < today()) throw businessRule('DUE_IN_PAST', 'A garment cannot be due in the past');
+  }
+}
+
+/**
+ * Garment documents for the lines, numbered from `startIndex`. A line with quantity N becomes
+ * N garments sharing a new batchId.
+ */
+export function buildGarments({ branchId, order, garments, startIndex, settings, actor }) {
+  const docs = [];
+  let index = startIndex;
+  for (const { quantity, ...line } of garments) {
+    const batchId = quantity > 1 ? new ObjectId() : null;
+    const dueDate = line.dueDate ?? null;
+    const plan = stagePlanFor({ orderDate: today(), dueDate: dueDate ?? order.pickupDate, settings, type: line.type });
+    for (let n = 0; n < quantity; n++) {
+      docs.push({
+        ...line,
+        branchId,
+        orderId: order._id,
+        garmentNo: `${order.orderNo}-${pad(index, 2)}`,
+        index,
+        quantity: 1,
+        dueDate,
+        originalDueDate: dueDate,
+        batchId,
+        ...structuredClone(plan),
+        createdBy: actor.userId,
+        updatedBy: actor.userId,
+      });
+      index += 1;
+    }
+  }
+  return docs;
+}
+
+async function checkParties(branchId, { customerId, designerId }) {
+  const issues = [];
+  const customer = await getCustomer(branchId, customerId).catch(() => null);
+  if (!customer) issues.push({ path: 'customerId', message: 'Unknown customer' });
+  if (!(await isActiveDesigner(branchId, designerId))) {
+    issues.push({ path: 'designerId', message: 'Choose an active designer' });
+  }
+  if (issues.length) throw validationError(issues);
+}
+
+/**
+ * Takes an order: the order number, every garment (batches expanded) with its stage plan, and
+ * the audit entry are saved in one transaction.
+ */
+export async function createOrder(branchId, input, actor) {
+  const orderDate = today();
+  if (input.pickupDate < orderDate) throw businessRule('PICKUP_IN_PAST', 'The pickup date cannot be in the past');
+  await checkParties(branchId, input);
+  const settings = await readSettings(branchId);
+  await checkGarmentInputs(branchId, input, settings);
+  const branch = await getBranch(branchId);
+
+  return withTransaction(async (session) => {
+    const now = clock.now();
+    const fyCode = financialYear(now).code;
+    const { number, fy } = await nextDocumentNumber(
+      { branchId, docType: 'order', now, start: settings.numberSeries[`order:${fyCode}`] ?? 1 },
+      session,
+    );
+    const { garments, ...fields } = input;
+    const [order] = await Order.create(
+      [
+        {
+          ...fields,
+          branchId,
+          orderNo: `${branch.prefixes.order}/${fy.code}/${pad(number, 4)}`,
+          orderDate,
+          originalPickupDate: input.pickupDate,
+          createdBy: actor.userId,
+          updatedBy: actor.userId,
+        },
+      ],
+      { session },
+    );
+    const garmentDocs = await Garment.create(buildGarments({ branchId, order, garments, startIndex: 1, settings, actor }), {
+      session,
+      ordered: true,
+    });
+    await recordAudit(
+      {
+        branchId,
+        entityType: 'order',
+        entityId: order._id,
+        action: 'create',
+        before: null,
+        after: {
+          orderNo: order.orderNo,
+          customerId: String(order.customerId),
+          designerId: String(order.designerId),
+          pickupDate: order.pickupDate,
+          garments: garmentDocs.map((g) => g.garmentNo),
+        },
+        actor,
+      },
+      session,
+    );
+    return { order: order.toObject(), garments: garmentDocs.map((g) => g.toObject()) };
+  });
+}
+
+/** The order with its garments (by index) and customer; 404 when outside the user's scope. */
+export async function getOrder(branchId, user, orderId) {
+  if (!mongoose.isValidObjectId(orderId)) throw notFound();
+  const order = await Order.findOne({ _id: orderId, branchId, ...orderScope(user) }).lean();
+  if (!order) throw notFound();
+  const [garments, customer] = await Promise.all([
+    Garment.find({ orderId: order._id }).sort({ index: 1 }).lean(),
+    getCustomer(branchId, order.customerId),
+  ]);
+  return { order, garments, customer };
+}
+
+/** Whether the user may read a garment reference file: they can read an order that uses it. */
+export async function canReadGarmentFile(user, key) {
+  const garment = await Garment.findOne({ branchId: user.branchId, referenceKeys: key }, { orderId: 1 }).lean();
+  if (!garment) return user.permissions.has('orders.write');
+  return Boolean(await Order.exists({ _id: garment.orderId, branchId: user.branchId, ...orderScope(user) }));
+}

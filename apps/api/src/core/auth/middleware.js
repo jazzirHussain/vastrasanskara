@@ -52,6 +52,16 @@ export function requirePermission(...permissions) {
     });
 }
 
+/** Requires a signed-in user holding at least one of the listed permissions. */
+export function requireAnyPermission(...permissions) {
+  return (req, res, next) =>
+    requireAuth(req, res, (err) => {
+      if (err) return next(err);
+      if (!permissions.some((p) => req.user.permissions.has(p))) return next(forbidden());
+      return next();
+    });
+}
+
 export function actorFrom(req) {
   return { userId: req.user?.id ?? null, ip: req.ip ?? null, userAgent: req.get('User-Agent') ?? null };
 }

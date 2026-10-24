@@ -1,3 +1,5 @@
+import { canReadGarmentFile } from '../../modules/orders/service.js';
+
 export const ALLOWED_TYPES = Object.freeze({
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -28,4 +30,9 @@ export function getFilePurpose(name) {
 registerFilePurpose('branch_logo', {
   canWrite: (user) => user.permissions.has('settings.edit'),
   canRead: async () => true,
+});
+registerFilePurpose('garment_reference', {
+  allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf'],
+  canWrite: (user) => user.permissions.has('orders.write') || user.permissions.has('production.update'),
+  canRead: (user, key) => canReadGarmentFile(user, key),
 });

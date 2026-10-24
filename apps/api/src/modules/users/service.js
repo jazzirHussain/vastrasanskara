@@ -97,3 +97,15 @@ export async function getUserNames(ids) {
   const users = await User.find({ _id: { $in: unique } }, { name: 1 }).lean();
   return new Map(users.map((u) => [String(u._id), u.name]));
 }
+
+/** Active designers of the branch, by name. */
+export async function listDesigners(branchId) {
+  const users = await User.find({ branchId, active: true, roles: 'designer' }, { name: 1 }).sort({ name: 1, _id: 1 }).lean();
+  return users.map((u) => ({ id: String(u._id), name: u.name }));
+}
+
+/** Whether the id is an active designer of the branch. */
+export async function isActiveDesigner(branchId, userId) {
+  if (!mongoose.isValidObjectId(userId)) return false;
+  return Boolean(await User.exists({ _id: userId, branchId, active: true, roles: 'designer' }));
+}

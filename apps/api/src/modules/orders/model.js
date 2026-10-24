@@ -1,0 +1,94 @@
+import mongoose from 'mongoose';
+import { STAGE_KEYS } from '@vs/shared/stages.js';
+import { commonFields } from '../../core/commonFields.js';
+
+const { ObjectId } = mongoose.Schema.Types;
+
+// Business dates ('YYYY-MM-DD', IST) are strings throughout, compared as strings.
+const orderSchema = new mongoose.Schema({
+  branchId: { type: ObjectId, ref: 'Branch', required: true },
+  orderNo: { type: String, required: true },
+  customerId: { type: ObjectId, ref: 'Customer', required: true },
+  designerId: { type: ObjectId, ref: 'User', required: true },
+  priority: { type: String, enum: ['normal', 'rush'], default: 'normal' },
+  expectedBudget: { type: Number, default: null },
+  notes: { type: String, default: '' },
+  orderDate: { type: String, required: true },
+  pickupDate: { type: String, required: true },
+  originalPickupDate: { type: String, required: true },
+  occasionDate: { type: String, default: null },
+  status: { type: String, enum: ['active', 'on_hold', 'completed', 'cancelled'], default: 'active' },
+  holdHistory: [
+    {
+      _id: false,
+      from: { type: String, required: true },
+      to: { type: String, default: null },
+      reason: { type: String, default: '' },
+      by: { type: ObjectId, ref: 'User' },
+    },
+  ],
+  cancellation: {
+    type: new mongoose.Schema(
+      {
+        reason: String,
+        furthestStage: String,
+        refundPercent: Number,
+        at: Date,
+        by: { type: ObjectId, ref: 'User' },
+      },
+      { _id: false },
+    ),
+    default: null,
+  },
+});
+orderSchema.plugin(commonFields);
+orderSchema.index({ branchId: 1, orderNo: 1 }, { unique: true });
+orderSchema.index({ branchId: 1, status: 1, pickupDate: 1 });
+orderSchema.index({ branchId: 1, designerId: 1, pickupDate: 1 });
+orderSchema.index({ branchId: 1, customerId: 1 });
+
+export const Order = mongoose.models.Order ?? mongoose.model('Order', orderSchema);
+
+const stagePlanEntry = new mongoose.Schema(
+  {
+    stage: { type: String, enum: STAGE_KEYS, required: true },
+    plannedDate: { type: String, default: null },
+    originalPlannedDate: { type: String, default: null },
+    skipped: { type: Boolean, default: false },
+    skipReason: { type: String, default: null },
+  },
+  { _id: false },
+);
+
+const garmentSchema = new mongoose.Schema({
+  branchId: { type: ObjectId, ref: 'Branch', required: true },
+  orderId: { type: ObjectId, ref: 'Order', required: true },
+  garmentNo: { type: String, required: true },
+  index: { type: Number, required: true },
+  type: { type: String, required: true },
+  description: { type: String, required: true },
+  fabric: { type: String, default: '' },
+  designNotes: { type: String, default: '' },
+  quantity: { type: Number, default: 1 },
+  agreedPrice: { type: Number, required: true },
+  catalogItemId: { type: ObjectId, default: null },
+  dueDate: { type: String, default: null },
+  originalDueDate: { type: String, default: null },
+  batchId: { type: ObjectId, default: null },
+  referenceKeys: { type: [String], default: [] },
+  measurementId: { type: ObjectId, ref: 'Measurement', default: null },
+  stagePlan: { type: [stagePlanEntry], default: [] },
+  currentStage: { type: String, enum: STAGE_KEYS, default: 'order_taken' },
+  stageState: { type: String, enum: ['pending', 'in_progress', 'with_vendor'], default: 'pending' },
+  status: { type: String, enum: ['in_progress', 'ready', 'picked_up', 'rejected', 'cancelled'], default: 'in_progress' },
+  alterationOpen: { type: Boolean, default: false },
+  tightSchedule: { type: Boolean, default: false },
+  materials: { type: [mongoose.Schema.Types.Mixed], default: [] },
+});
+garmentSchema.plugin(commonFields);
+garmentSchema.index({ branchId: 1, garmentNo: 1 }, { unique: true });
+garmentSchema.index({ orderId: 1, index: 1 });
+garmentSchema.index({ branchId: 1, status: 1, dueDate: 1 });
+garmentSchema.index({ branchId: 1, referenceKeys: 1 });
+
+export const Garment = mongoose.models.Garment ?? mongoose.model('Garment', garmentSchema);
