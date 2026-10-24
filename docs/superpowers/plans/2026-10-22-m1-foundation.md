@@ -73,13 +73,13 @@ apps/api/
 apps/web/
   index.html  vite.config.js
   src/main.jsx  src/App.jsx  src/theme.js
-  src/lib/{api.js,errorMessages.js,queryClient.js,router.js}
-  src/auth/{AuthContext.js,AuthProvider.jsx,RequireAuth.jsx,LoginPage.jsx,ForgotPasswordPage.jsx,ResetPasswordPage.jsx}
+  src/lib/{api.js,errorMessages.js,queryClient.js,router.js,fieldErrors.js,upload.js}
+  src/auth/{AuthContext.js,AuthProvider.jsx,RequireAuth.jsx,RequirePermission.jsx,LoginPage.jsx,ForgotPasswordPage.jsx,ResetPasswordPage.jsx}
   src/layout/{AppLayout.jsx,navItems.js}
   src/notifications/NotificationBell.jsx
   src/features/home/HomePage.jsx
-  src/features/users/UsersPage.jsx
-  src/features/settings/SettingsPage.jsx
+  src/features/users/{UsersPage.jsx,AddUserModal.jsx,EditUserModal.jsx,roles.jsx,usersApi.js}
+  src/features/settings/{SettingsPage.jsx,BusinessTab.jsx,MoneyTab.jsx,ProductionTab.jsx,AppointmentsTab.jsx,NotificationsTab.jsx,NumberingTab.jsx,settingsApi.js}
   src/test/{setup.js,server.js}
 deploy/nginx/api.conf  deploy/ecosystem.config.cjs  deploy/scripts/remote-deploy.sh
 .github/workflows/ci.yml  .github/workflows/deploy.yml

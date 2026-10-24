@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { Alert, Button, Center, Paper, PasswordInput, Stack, TextInput, Title } from '@mantine/core';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Alert, Anchor, Button, Center, Paper, PasswordInput, Stack, TextInput, Title } from '@mantine/core';
 import { useAuth } from './AuthContext.js';
 
 export function LoginPage() {
@@ -55,6 +55,9 @@ export function LoginPage() {
             <Button type="submit" loading={submitting}>
               Log in
             </Button>
+            <Anchor component={Link} to="/forgot-password" size="sm">
+              Forgot password?
+            </Anchor>
           </Stack>
         </form>
       </Paper>
