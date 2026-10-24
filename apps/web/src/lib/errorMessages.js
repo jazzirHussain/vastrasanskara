@@ -21,7 +21,10 @@ export const errorMessages = {
   DUE_IN_PAST: 'A garment cannot be due in the past.',
   INVALID_STATUS: 'This order cannot be changed in its current status.',
   PLAN_OUT_OF_RANGE: 'Planned dates must fall between today and the due date.',
-  STAGE_ORDER_VIOLATION: 'Planned dates must follow the stage order.',
+  STAGE_ORDER_VIOLATION: 'This does not follow the stage order. Reload and try again.',
+  ACTION_NOT_ALLOWED: 'That step is not possible for this garment right now.',
+  WITH_VENDOR: 'This garment is with a vendor. Record it as back first.',
+  REWORK_TARGET_INVALID: 'Choose an earlier stage that was not skipped.',
   PHONE_TAKEN: 'A customer with this phone already exists.',
   NETWORK_ERROR: 'Cannot reach the server. Check your connection and try again.',
 };

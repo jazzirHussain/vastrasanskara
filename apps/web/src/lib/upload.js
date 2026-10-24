@@ -15,3 +15,20 @@ export async function uploadFile(file, purpose) {
   }
   return key;
 }
+
+/**
+ * Opens a stored file in a new tab. The tab is opened during the tap (Safari blocks one opened
+ * after an await) and pointed at the signed URL once it arrives; it is closed if that fails.
+ */
+export async function openFile(key) {
+  const tab = window.open('', '_blank');
+  if (tab) tab.opener = null;
+  try {
+    const { url } = await apiFetch('/v1/files/url', { query: { key } });
+    if (tab) tab.location.href = url;
+    else window.location.assign(url);
+  } catch (error) {
+    tab?.close();
+    throw error;
+  }
+}

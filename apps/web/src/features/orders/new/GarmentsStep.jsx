@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Alert,
   Button,
   CloseButton,
   Drawer,
@@ -13,16 +12,14 @@ import {
   TextInput,
   Textarea,
 } from '@mantine/core';
-import { Dropzone } from '@mantine/dropzone';
-import { IconPhotoPlus } from '@tabler/icons-react';
 import { istDate } from '@vs/shared/fy.js';
 import { useAuth } from '../../../auth/AuthContext.js';
 import { shortDate } from '../../../components/DateLabel.jsx';
-import { uploadFile } from '../../../lib/upload.js';
+import { IMAGE_TYPES, PhotoUploads } from '../../../components/PhotoUploads.jsx';
 import { MeasurementForm } from '../../customers/MeasurementForm.jsx';
 import { useRecordMeasurement } from '../../customers/customersApi.js';
 
-const ACCEPT = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf'];
+const ACCEPT = [...IMAGE_TYPES, 'application/pdf'];
 
 /** A blank garment line. `measurementId` undefined means "the latest set for its type". */
 export function newGarment() {
@@ -89,49 +86,14 @@ function Measurements({ garment, latest, customerId, garmentTypes, onChosen }) {
 
 /** Reference photo uploads; `garment.referenceKeys` holds stored keys or `{ key, name }` for new ones. */
 export function References({ garment, onChange }) {
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState(null);
-
-  async function drop(files) {
-    setError(null);
-    setUploading(true);
-    try {
-      const added = [];
-      for (const file of files) added.push({ key: await uploadFile(file, 'garment_reference'), name: file.name });
-      onChange([...garment.referenceKeys, ...added].slice(0, 10));
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setUploading(false);
-    }
-  }
-
   return (
-    <div>
-      <Dropzone onDrop={drop} accept={ACCEPT} maxSize={10 * 1024 * 1024} loading={uploading} p="sm" radius="sm">
-        <Group gap="xs" justify="center" style={{ pointerEvents: 'none' }}>
-          <IconPhotoPlus size={20} stroke={1.6} color="var(--vs-muted)" aria-hidden="true" />
-          <Text size="sm" c="var(--vs-muted)">
-            Add reference photos or sketches
-          </Text>
-        </Group>
-      </Dropzone>
-      {error && <Alert color="red" mt="xs">{error}</Alert>}
-      {garment.referenceKeys.length > 0 && (
-        <Group gap={6} mt={6}>
-          {garment.referenceKeys.map((r, i) => (
-            <Group key={r.key ?? r} gap={2} className="vs-panel" px={8} py={2}>
-              <Text size="xs">{r.name ?? `Photo ${i + 1}`}</Text>
-              <CloseButton
-                size="xs"
-                aria-label={`Remove ${r.name ?? `photo ${i + 1}`}`}
-                onClick={() => onChange(garment.referenceKeys.filter((_, j) => j !== i))}
-              />
-            </Group>
-          ))}
-        </Group>
-      )}
-    </div>
+    <PhotoUploads
+      value={garment.referenceKeys}
+      onChange={onChange}
+      purpose="garment_reference"
+      label="Add reference photos or sketches"
+      accept={ACCEPT}
+    />
   );
 }
 

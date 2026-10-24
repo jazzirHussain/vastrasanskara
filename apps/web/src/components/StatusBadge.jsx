@@ -12,6 +12,8 @@ const STATUSES = {
   tight: ['Tight schedule', 'haldi'],
   inactive: ['Inactive', 'muted'],
   batch: ['Batch', 'indigo'],
+  with_vendor: ['With vendor', 'haldi'],
+  alteration: ['Alteration open', 'haldi'],
 };
 
 const TINTS = {

@@ -65,3 +65,27 @@ export function useGarmentPlan(orderId, garmentId) {
 export function useGarmentUpdate(orderId, garmentId) {
   return useGarmentChange(orderId, (body) => apiFetch(`/v1/garments/${garmentId}`, { method: 'PATCH', body }));
 }
+
+/** Records a stage action on one or more garments; orders and production views refresh. */
+export function useStageAction() {
+  const queryClient = useQueryClient();
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ORDERS_KEY }),
+      queryClient.invalidateQueries({ queryKey: ['production'] }),
+    ]);
+  const mutation = useMutation({
+    mutationFn: (body) => apiFetch('/v1/production/actions', { method: 'POST', body }),
+    onSuccess: refresh,
+  });
+  return { ...mutation, refresh };
+}
+
+/** A garment's stage events, oldest first (read when `enabled`). */
+export function useGarmentEvents(garmentId, { enabled = true } = {}) {
+  return useQuery({
+    queryKey: ['production', 'events', garmentId],
+    queryFn: () => apiFetch(`/v1/production/garments/${garmentId}/events`),
+    enabled,
+  });
+}

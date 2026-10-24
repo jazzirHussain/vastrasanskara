@@ -5,27 +5,12 @@ import { DateLabel } from '../../components/DateLabel.jsx';
 import { Money } from '../../components/Money.jsx';
 import { StageThread } from '../../components/StageThread.jsx';
 import { StatusBadge } from '../../components/StatusBadge.jsx';
-import { apiFetch } from '../../lib/api.js';
+import { openFile } from '../../lib/upload.js';
 import { GarmentEditor } from './GarmentEditor.jsx';
+import { GarmentHistory } from './GarmentHistory.jsx';
 import { isOpen } from './orderStatus.js';
 import { PlanEditor } from './PlanEditor.jsx';
-
-/**
- * Opens a stored file in a new tab. The tab is opened during the tap (Safari blocks one opened
- * after an await) and pointed at the signed URL once it arrives; it is closed if that fails.
- */
-async function openFile(key) {
-  const tab = window.open('', '_blank');
-  if (tab) tab.opener = null;
-  try {
-    const { url } = await apiFetch('/v1/files/url', { query: { key } });
-    if (tab) tab.location.href = url;
-    else window.location.assign(url);
-  } catch (error) {
-    tab?.close();
-    throw error;
-  }
-}
+import { StageActions } from './StageActions.jsx';
 
 function Fact({ label, children }) {
   if (children === null || children === undefined || children === '') return null;
@@ -73,6 +58,8 @@ export function GarmentPanel({ order, garment, typeLabel, late }) {
                 <StatusBadge status="tight" />
               )}
               {late && <StatusBadge status="late" />}
+              {garment.stageState === 'with_vendor' && <StatusBadge status="with_vendor" />}
+              {garment.alterationOpen && <StatusBadge status="alteration" />}
               {garment.batchId && <StatusBadge status="batch" label="Part of a batch" />}
             </Group>
           </div>
@@ -128,6 +115,7 @@ export function GarmentPanel({ order, garment, typeLabel, late }) {
               )}
             </div>
           )}
+          <StageActions order={order} garment={garment} />
           {canAdjust && (
             <Group gap="xs">
               <Button variant="default" size="xs" onClick={() => setEditing(true)}>
@@ -147,6 +135,9 @@ export function GarmentPanel({ order, garment, typeLabel, late }) {
           tight={garment.tightSchedule}
           late={late}
         />
+      </div>
+      <div style={{ marginTop: 16 }}>
+        <GarmentHistory garmentId={garment.id} />
       </div>
       {editing && (
         <GarmentEditor order={order} garment={garment} opened onClose={() => setEditing(false)} />
