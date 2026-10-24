@@ -1,3 +1,4 @@
+import { getCustomerForNotification } from '../../modules/customers/service.js';
 import { User } from '../../modules/users/model.js';
 
 /**
@@ -34,4 +35,8 @@ registerRecipientResolver('user', async ({ data, session }) => {
   if (!data?.userId) return [];
   const user = await User.findById(data.userId).session(session ?? null).lean();
   return user ? [userRecipient(user)] : [];
+});
+registerRecipientResolver('client', async ({ data, session }) => {
+  const recipient = data?.customerId ? await getCustomerForNotification(data.customerId, session) : null;
+  return recipient ? [recipient] : [];
 });

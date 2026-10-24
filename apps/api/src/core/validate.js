@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { validationError } from './errors.js';
 
 /** Parses with a zod schema; failures become 400 VALIDATION_FAILED with field paths. */
@@ -22,4 +23,17 @@ export function validate({ body, query, params } = {}) {
     if (body) req.body = parseOrThrow(body, req.body ?? {});
     next();
   };
+}
+
+/**
+ * Body schema for an optimistic-concurrency update: `{ version, ...fields }` where the fields
+ * are checked by `schema`. Parses to `{ version, patch }`.
+ */
+export function versioned(schema) {
+  return z.looseObject({ version: z.int().min(0) }).transform(({ version, ...rest }, ctx) => {
+    const result = schema.safeParse(rest);
+    if (result.success) return { version, patch: result.data };
+    for (const issue of result.error.issues) ctx.addIssue({ code: 'custom', path: issue.path, message: issue.message });
+    return z.NEVER;
+  });
 }
