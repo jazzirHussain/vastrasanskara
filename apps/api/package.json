@@ -8,12 +8,13 @@
     "dev:worker": "node --watch src/worker.js"
   },
   "dependencies": {
+    "@agendajs/mongo-backend": "^4.0.3",
     "@aws-sdk/client-s3": "^3.0.0",
     "@aws-sdk/client-sesv2": "^3.0.0",
     "@aws-sdk/lib-storage": "^3.1156.0",
     "@aws-sdk/s3-request-presigner": "^3.0.0",
     "@vs/shared": "*",
-    "agenda": "^5.0.0",
+    "agenda": "^6.2.6",
     "argon2": "^0.41.0",
     "connect-mongo": "^5.0.0",
     "cors": "^2.8.5",

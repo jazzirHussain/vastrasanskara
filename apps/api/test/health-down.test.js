@@ -7,5 +7,5 @@ import { loadConfig } from '../src/config.js';
 test('health reports 503 when the database is down', async () => {
   const r = await request(createApp({ config: loadConfig({ NODE_ENV: 'test' }) })).get('/v1/health');
   expect(r.status).toBe(503);
-  expect(r.body).toEqual({ db: 'down' });
+  expect(r.body).toEqual({ db: 'down', worker: 'stale' });
 });

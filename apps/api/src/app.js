@@ -7,6 +7,7 @@ import { loadUser } from './core/auth/middleware.js';
 import { createStorage } from './core/files/storage.js';
 import { devFilesRouter } from './core/files/devFilesRoutes.js';
 import { filesRouter } from './core/files/routes.js';
+import { jobsAdminRouter } from './core/jobs/routes.js';
 import { adminOutboxRouter, notificationsRouter, webhooksRouter } from './core/notify/routes.js';
 import { healthRouter } from './modules/health/routes.js';
 import { authRouter } from './modules/auth/routes.js';
@@ -50,6 +51,7 @@ export function createApp({ config, storage = createStorage(config), mount } = {
   app.use('/v1/files', filesRouter(storage));
   app.use('/v1/notifications', notificationsRouter());
   app.use('/v1/admin/outbox', adminOutboxRouter());
+  app.use('/v1/admin/jobs', jobsAdminRouter());
 
   mount?.(app);
 

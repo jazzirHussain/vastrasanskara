@@ -30,6 +30,8 @@ export function sessionMiddleware(config, clientPromise = mongoClientPromise()) 
       collectionName: SESSIONS,
       stringify: false,
       ttl: IDLE_TIMEOUT_MS / 1000,
+      // The expiry index is created by ensureSessionIndexes() at startup, not in the background.
+      autoRemove: 'disabled',
     }),
     cookie: {
       httpOnly: true,
@@ -39,6 +41,11 @@ export function sessionMiddleware(config, clientPromise = mongoClientPromise()) 
       maxAge: IDLE_TIMEOUT_MS,
     },
   });
+}
+
+/** TTL index so MongoDB deletes sessions once their `expires` time passes. Run at startup. */
+export async function ensureSessionIndexes() {
+  await mongoose.connection.collection(SESSIONS).createIndex({ expires: 1 }, { expireAfterSeconds: 0 });
 }
 
 /** Deletes every stored session of a user (deactivation, role change, password reset). */

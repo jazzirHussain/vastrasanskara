@@ -4,7 +4,8 @@ import { useTestDb } from './helpers/db.js';
 import { buildTestApp, api, createTestUser, loginAs } from './helpers/app.js';
 import { clock } from '../src/clock.js';
 import { requirePermission } from '../src/core/auth/middleware.js';
-import { revokeUserSessions } from '../src/core/auth/sessions.js';
+import { ensureSessionIndexes, revokeUserSessions } from '../src/core/auth/sessions.js';
+import mongoose from 'mongoose';
 import { AuditLog } from '../src/core/audit/model.js';
 useTestDb();
 const app = buildTestApp({ mount: (a) => a.get('/t/money', requirePermission('money.view'), (req, res) => res.json({ ok: 1 })) });
@@ -91,4 +92,9 @@ test('login is rate limited per IP', async () => {
   const r = await attempt();
   expect(r.status).toBe(429);
   expect(r.body.error.code).toBe('RATE_LIMITED');
+});
+test('session expiry index is created at startup (expired sessions are removed by MongoDB)', async () => {
+  await ensureSessionIndexes();
+  const indexes = await mongoose.connection.collection('sessions').indexes();
+  expect(indexes).toEqual(expect.arrayContaining([expect.objectContaining({ key: { expires: 1 }, expireAfterSeconds: 0 })]));
 });

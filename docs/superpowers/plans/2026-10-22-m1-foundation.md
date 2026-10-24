@@ -6,7 +6,7 @@
 
 **Architecture:** npm-workspaces monorepo: `packages/shared` (pure JS helpers + zod schemas used by both sides), `apps/api` (Express API + Agenda worker, two entry points, MongoDB via Mongoose), `apps/web` (React + Vite + Mantine). Modules talk through `service.js` functions that accept an optional MongoDB `session` so writes compose into one transaction.
 
-**Tech Stack:** Node 22 LTS, JavaScript (ESM, no TypeScript), Express 5, Mongoose 8, zod 4, pino, helmet, cors, express-session + connect-mongo, argon2, express-rate-limit, Agenda 5, @aws-sdk/client-s3 + s3-request-presigner, @aws-sdk/client-sesv2 + nodemailer, React 18, Vite, Mantine 7, React Router 6, TanStack Query 5, Vitest 3, supertest, mongodb-memory-server, aws-sdk-client-mock, @testing-library/react, msw.
+**Tech Stack:** Node 22 LTS, JavaScript (ESM, no TypeScript), Express 5, Mongoose 8, zod 4, pino, helmet, cors, express-session + connect-mongo, argon2, express-rate-limit, Agenda 6 + @agendajs/mongo-backend (Agenda 5 bundles MongoDB driver 4, incompatible with Mongoose 8's driver 6), @aws-sdk/client-s3 + s3-request-presigner, @aws-sdk/client-sesv2 + nodemailer, React 18, Vite, Mantine 7, React Router 6, TanStack Query 5, Vitest 3, supertest, mongodb-memory-server, aws-sdk-client-mock, @testing-library/react, msw.
 
 **Spec:** `docs/superpowers/specs/2026-10-22-vastrasanskara-system-design.md` (sections 2, 3.1, 5.7, 8, 10, 11, 12, 14.1)
 
@@ -59,7 +59,7 @@ apps/api/
   src/core/idempotency.js
   src/core/files/{storage.js,storage-s3.js,storage-local.js,devFilesRoutes.js,purposes.js,service.js,routes.js}
   src/core/notify/{render.js,quietHours.js,emailLayout.js,catalog.js,recipients.js,models.js,emit.js,deliver.js,service.js,routes.js,adapters/{registry.js,configure.js,inApp.js,emailSes.js,emailFile.js}}
-  src/core/jobs/{registry.js,runJob.js,worker.js,routes.js}
+  src/core/jobs/{model.js,service.js,registry.js,runJob.js,worker.js,routes.js}
   src/core/backup/{backup.js,storageCheck.js}
   src/modules/branches/{model.js,service.js,routes.js}
   src/modules/settings/{model.js,service.js,routes.js}
