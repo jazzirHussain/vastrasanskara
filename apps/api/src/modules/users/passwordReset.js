@@ -29,7 +29,7 @@ export async function issuePasswordLink(user, { purpose, appOrigin }, session) {
     { session },
   );
   await emit(
-    'auth.password_reset',
+    purpose === 'invite' ? 'auth.invite' : 'auth.password_reset',
     {
       branchId: user.branchId,
       refId: String(link._id),

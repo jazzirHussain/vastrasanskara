@@ -97,6 +97,12 @@ async function queueFallback(entry, now) {
   );
 }
 
+// Clears the event's secret vars (e.g. a password link) once the entry is final.
+function unsetSecrets(entry) {
+  const names = getEventDefinition(entry.event).secretVars ?? [];
+  return names.length ? { $unset: Object.fromEntries(names.map((n) => [`vars.${n}`, ''])) } : {};
+}
+
 function claimNext(now) {
   return Outbox.findOneAndUpdate(
     {
@@ -147,6 +153,7 @@ export async function deliverDue({ now = clock.now(), limit = 50, storage } = {}
           lastError: null,
           lockedAt: null,
         },
+        ...unsetSecrets(entry),
       });
       result.sent += 1;
       const outcome = status === 'delivered' ? 'delivered' : 'sent';
@@ -154,17 +161,20 @@ export async function deliverDue({ now = clock.now(), limit = 50, storage } = {}
     } catch (err) {
       const finalFailure = err instanceof RenderError || attempts >= MAX_ATTEMPTS;
       const retryAt = new Date(now.getTime() + BACKOFF_MINUTES[attempts - 1] * 60_000);
-      await Outbox.updateOne(mine, {
-        $set: finalFailure
-          ? { status: 'failed', attempts, lastError: err.message, lockedAt: null }
+      await Outbox.updateOne(
+        mine,
+        finalFailure
+          ? { $set: { status: 'failed', attempts, lastError: err.message, lockedAt: null }, ...unsetSecrets(entry) }
           : {
-              status: 'pending',
-              attempts,
-              lastError: err.message,
-              lockedAt: null,
-              scheduledFor: retryAt,
+              $set: {
+                status: 'pending',
+                attempts,
+                lastError: err.message,
+                lockedAt: null,
+                scheduledFor: retryAt,
+              },
             },
-      });
+      );
       if (!finalFailure) {
         result.retried += 1;
         logger.warn(

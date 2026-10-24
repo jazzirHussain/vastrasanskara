@@ -24,7 +24,22 @@ const toNotificationJson = (n) => ({
   createdAt: n.createdAt,
 });
 
-const toOutboxJson = ({ _id, __v: _v, ...rest }) => ({ id: String(_id), ...rest });
+// An explicit field list: never the message vars (they may hold links) or the addresses.
+const toOutboxJson = (o) => ({
+  id: String(o._id),
+  event: o.event,
+  channel: o.channel,
+  recipient: { kind: o.recipient.kind, id: o.recipient.id, name: o.recipient.name ?? '' },
+  status: o.status,
+  skipReason: o.skipReason ?? null,
+  attempts: o.attempts,
+  lastError: o.lastError ?? null,
+  scheduledFor: o.scheduledFor,
+  sentAt: o.sentAt ?? null,
+  deliveredAt: o.deliveredAt ?? null,
+  isFallback: o.isFallback ?? false,
+  createdAt: o.createdAt,
+});
 
 /** The signed-in user's in-app notifications (the bell). */
 export function notificationsRouter() {

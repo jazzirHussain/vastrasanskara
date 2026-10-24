@@ -1,6 +1,6 @@
 import { clock } from '../../clock.js';
 import { logger } from '../../logger.js';
-import { CHANNEL_ADDRESS, getQuietHours, getRule } from './catalog.js';
+import { CHANNEL_ADDRESS, getQuietHours, getRule, withoutSecrets } from './catalog.js';
 import { Branch } from '../../modules/branches/model.js';
 import { Outbox } from './models.js';
 import { nextAllowedTime } from './quietHours.js';
@@ -61,7 +61,8 @@ export async function emit(
               address,
               addresses: recipient.addresses ?? {},
             },
-            vars,
+            // A skipped message is final at once, so it never keeps secrets.
+            vars: skipReason ? withoutSecrets(event, vars) : vars,
             attachments,
             scheduledFor,
             status: skipReason ? 'skipped' : 'pending',

@@ -8,8 +8,18 @@ export const CHANNEL_ADDRESS = Object.freeze({ email: 'email', whatsapp: 'phone'
 
 const events = new Map();
 
-export function defineEvent(name, { recipients, channels, fallback = null, templates }) {
-  events.set(name, { name, recipients, channels, fallback, templates });
+/**
+ * `secretVars` name vars (e.g. a password link) that are dropped once a message is final or
+ * skipped, and never returned by any API.
+ */
+export function defineEvent(name, { recipients, channels, fallback = null, templates, secretVars = [] }) {
+  events.set(name, { name, recipients, channels, fallback, templates, secretVars });
+}
+
+/** `vars` without the event's secret vars. */
+export function withoutSecrets(event, vars = {}) {
+  const secret = new Set(getEventDefinition(event).secretVars);
+  return Object.fromEntries(Object.entries(vars).filter(([key]) => !secret.has(key)));
 }
 
 export function getEventDefinition(name) {
@@ -39,9 +49,21 @@ export function listEvents() {
 
 const SYSTEM_TEMPLATES = (subject, body) => ({ in_app: { body }, email: { subject, body } });
 
+defineEvent('auth.invite', {
+  recipients: ['user'],
+  channels: ['email'],
+  secretVars: ['resetUrl'],
+  templates: {
+    email: {
+      subject: 'Set up your Vastrasanskara account',
+      body: 'Hello {name},\n\nAn account has been created for you. Use this link to set your password. It expires in {expiresIn}:\n{resetUrl}',
+    },
+  },
+});
 defineEvent('auth.password_reset', {
   recipients: ['user'],
   channels: ['email'],
+  secretVars: ['resetUrl'],
   templates: {
     email: {
       subject: 'Reset your password',

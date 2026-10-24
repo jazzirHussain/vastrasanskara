@@ -5,9 +5,11 @@ import { buildTestApp, loginAs, api } from './helpers/app.js';
 import { Outbox } from '../src/core/notify/models.js';
 import { AuditLog } from '../src/core/audit/model.js';
 import { clock } from '../src/clock.js';
+import { deliverDue } from '../src/core/notify/deliver.js';
+import { registerAdapter, resetAdapters } from '../src/core/notify/adapters/registry.js';
 useTestDb();
 const app = buildTestApp();
-const tokenFromOutbox = async () => new URL((await Outbox.findOne({ event: 'auth.password_reset' }).sort({ _id: -1 })).vars.resetUrl).searchParams.get('token');
+const tokenFromOutbox = async () => new URL((await Outbox.findOne({ event: { $in: ['auth.password_reset', 'auth.invite'] } }).sort({ _id: -1 })).vars.resetUrl).searchParams.get('token');
 
 test('admin creates user and invite is queued', async () => {
   const { agent } = await loginAs(app, { roles: ['admin'] });
@@ -91,4 +93,18 @@ test('reset emails are rendered with the user name and link', async () => {
   const entry = await Outbox.findOne({ event: 'auth.password_reset' }).lean();
   expect(entry.vars).toEqual({ name: 'Asha', resetUrl: expect.stringMatching(/^https:\/\/app\.test\/reset-password\?token=/), expiresIn: '30 minutes' });
   expect(entry.recipient.address).toBe(user.email);
+});
+test('new users get an invite email, not a reset email', async () => {
+  const { agent } = await loginAs(app, { roles: ['admin'] });
+  await agent.post('/v1/users').send({ name: 'Riya', email: 'riya@x.com', roles: ['designer'] });
+  const entry = await Outbox.findOne({ event: 'auth.invite' }).lean();
+  expect(entry.vars).toMatchObject({ name: 'Riya', expiresIn: '3 days' });
+  expect(await Outbox.countDocuments({ event: 'auth.password_reset' })).toBe(0);
+  let sent;
+  registerAdapter({ channel: 'email', provider: 'fake-email', capabilities: {}, send: async (m) => { sent = m; return { providerMessageId: 'i1', status: 'sent' }; } });
+  await deliverDue();
+  resetAdapters();
+  expect(sent.subject).toBe('Set up your Vastrasanskara account');
+  expect(sent.text).toContain('reset-password?token=');
+  expect(sent.text).toContain('3 days');
 });
