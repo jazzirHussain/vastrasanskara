@@ -9,7 +9,8 @@ import { filesRouter } from './core/files/routes.js';
 import { adminOutboxRouter, notificationsRouter, webhooksRouter } from './core/notify/routes.js';
 import { healthRouter } from './modules/health/routes.js';
 import { authRouter } from './modules/auth/routes.js';
-import { branchRouter, settingsRouter } from './modules/settings/routes.js';
+import { branchRouter } from './modules/branches/routes.js';
+import { settingsRouter } from './modules/settings/routes.js';
 import { passwordResetRouter, usersRouter } from './modules/users/routes.js';
 
 /** Builds the Express app. `mount(app)` adds routers before the 404 handler. */

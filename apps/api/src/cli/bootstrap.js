@@ -3,7 +3,7 @@
 //   node apps/api/src/cli/bootstrap.js   (reads BOOTSTRAP_* variables, see README)
 import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
-import { branchPatchSchema } from '@vs/shared/schemas/settings.js';
+import { branchPatchSchema } from '@vs/shared/schemas/branch.js';
 import { email, password } from '@vs/shared/schemas/common.js';
 import { loadConfig } from '../config.js';
 import { recordAudit } from '../core/audit/service.js';

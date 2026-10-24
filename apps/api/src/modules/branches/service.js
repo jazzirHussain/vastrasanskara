@@ -1,19 +1,15 @@
-import { branchPatchSchema } from '@vs/shared/schemas/settings.js';
+import { branchPatchSchema } from '@vs/shared/schemas/branch.js';
 import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
 import { businessRule, notFound, validationError } from '../../core/errors.js';
 import { parseOrThrow } from '../../core/validate.js';
 import { Branch } from './model.js';
 
-const FIELDS = ['name', 'legalName', 'gstin', 'stateCode', 'address', 'phone', 'email', 'logoKey', 'prefixes'];
+export const BRANCH_FIELDS = ['name', 'legalName', 'gstin', 'stateCode', 'address', 'phone', 'email', 'logoKey', 'prefixes'];
 
 function pick(branch) {
   const plain = typeof branch.toObject === 'function' ? branch.toObject() : branch;
-  return Object.fromEntries(FIELDS.map((f) => [f, plain[f] ?? null]));
-}
-
-export function toBranchJson(branch) {
-  return { id: String(branch._id), ...pick(branch) };
+  return Object.fromEntries(BRANCH_FIELDS.map((f) => [f, plain[f] ?? null]));
 }
 
 /** A GSTIN starts with its state code, so the branch's state must match it. */

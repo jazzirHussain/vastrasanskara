@@ -1,5 +1,6 @@
 import { test, expect } from 'vitest';
-import { DEFAULT_SETTINGS, settingsSchema, settingsPatchSchema, branchPatchSchema } from '../src/schemas/settings.js';
+import { DEFAULT_SETTINGS, settingsSchema, settingsPatchSchema } from '../src/schemas/settings.js';
+import { branchPatchSchema } from '../src/schemas/branch.js';
 import { createUserSchema, updateUserSchema } from '../src/schemas/users.js';
 
 test('defaults are valid settings', () => {
