@@ -1,12 +1,11 @@
 import { Router } from 'express';
-import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import { permissionsFor } from '@vs/shared/permissions.js';
 import { email } from '@vs/shared/schemas/common.js';
 import { clock } from '../../clock.js';
-import { AppError } from '../../core/errors.js';
 import { validate } from '../../core/validate.js';
 import { actorFrom, requireAuth } from '../../core/auth/middleware.js';
+import { authRateLimiter } from '../../core/auth/rateLimit.js';
 import { authenticate } from './service.js';
 
 // Login checks the password only; length rules apply when a password is set (Task 17).
@@ -28,14 +27,7 @@ const callback = (fn) => new Promise((resolve, reject) => fn((err) => (err ? rej
 export function authRouter(config) {
   const router = Router();
 
-  const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    limit: config.loginRateLimit,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-    handler: (req, res, next) =>
-      next(new AppError(429, 'RATE_LIMITED', 'Too many login attempts; try again later')),
-  });
+  const loginLimiter = authRateLimiter(config, 'Too many login attempts; try again later');
 
   router.post('/login', loginLimiter, validate({ body: loginBody }), async (req, res) => {
     const user = await authenticate(req.body, actorFrom(req));

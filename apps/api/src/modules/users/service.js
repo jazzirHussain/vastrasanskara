@@ -4,22 +4,11 @@ import { recordAudit } from '../../core/audit/service.js';
 import { revokeUserSessions } from '../../core/auth/sessions.js';
 import { withTransaction } from '../../core/db.js';
 import { businessRule, conflict, notFound } from '../../core/errors.js';
-import { hashPassword } from '../auth/service.js';
+import { hashPassword } from '../../core/auth/passwords.js';
 import { User } from './model.js';
 import { issuePasswordLink } from './passwordReset.js';
 
 const emailTaken = () => conflict('EMAIL_TAKEN', 'A user with this email already exists');
-
-export function toUserJson(user) {
-  return {
-    id: String(user._id),
-    name: user.name,
-    email: user.email,
-    roles: [...user.roles],
-    active: user.active,
-    createdAt: user.createdAt,
-  };
-}
 
 const auditFields = (user) => ({ name: user.name, email: user.email, roles: [...user.roles], active: user.active });
 const isActiveAdmin = (u) => u.active && u.roles.includes('admin');

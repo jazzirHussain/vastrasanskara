@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { rateLimit } from 'express-rate-limit';
 import mongoose from 'mongoose';
 import {
   createUserSchema,
@@ -8,10 +7,22 @@ import {
   updateUserSchema,
 } from '@vs/shared/schemas/users.js';
 import { actorFrom, requirePermission } from '../../core/auth/middleware.js';
-import { AppError, notFound } from '../../core/errors.js';
+import { authRateLimiter } from '../../core/auth/rateLimit.js';
+import { notFound } from '../../core/errors.js';
 import { validate } from '../../core/validate.js';
 import { confirmPasswordReset, requestPasswordReset } from './passwordReset.js';
-import { createUser, listUsers, toUserJson, updateUser } from './service.js';
+import { createUser, listUsers, updateUser } from './service.js';
+
+function toUserJson(user) {
+  return {
+    id: String(user._id),
+    name: user.name,
+    email: user.email,
+    roles: [...user.roles],
+    active: user.active,
+    createdAt: user.createdAt,
+  };
+}
 
 export function usersRouter(config) {
   const router = Router();
@@ -38,15 +49,7 @@ export function usersRouter(config) {
 export function passwordResetRouter(config) {
   const router = Router();
   // Same per-IP budget as login, so the request endpoint cannot be used to flood inboxes.
-  router.use(
-    rateLimit({
-      windowMs: 15 * 60 * 1000,
-      limit: config.loginRateLimit,
-      standardHeaders: 'draft-7',
-      legacyHeaders: false,
-      handler: (req, res, next) => next(new AppError(429, 'RATE_LIMITED', 'Too many attempts; try again later')),
-    }),
-  );
+  router.use(authRateLimiter(config));
 
   router.post('/request', validate({ body: passwordResetRequestSchema }), async (req, res) => {
     await requestPasswordReset(req.body.email, config);

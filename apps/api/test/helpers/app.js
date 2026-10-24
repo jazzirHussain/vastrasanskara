@@ -6,7 +6,7 @@ import { createApp } from '../../src/app.js';
 import { loadConfig } from '../../src/config.js';
 import { Branch } from '../../src/modules/branches/model.js';
 import { User } from '../../src/modules/users/model.js';
-import { hashPassword } from '../../src/modules/auth/service.js';
+import { hashPassword } from '../../src/core/auth/passwords.js';
 
 /**
  * App with test config (appOrigin https://app.test) and local file storage in a fresh

@@ -1,24 +1,12 @@
-import argon2 from 'argon2';
 import { clock } from '../../clock.js';
 import { withTransaction } from '../../core/db.js';
 import { AppError } from '../../core/errors.js';
 import { recordAudit } from '../../core/audit/service.js';
+import { hashPassword, verifyPassword } from '../../core/auth/passwords.js';
 import { User } from '../users/model.js';
 
 export const MAX_FAILED_LOGINS = 10;
 export const LOCKOUT_MS = 15 * 60 * 1000;
-
-export function hashPassword(plain) {
-  return argon2.hash(plain, { type: argon2.argon2id });
-}
-
-export async function verifyPassword(hash, plain) {
-  try {
-    return await argon2.verify(hash, plain);
-  } catch {
-    return false;
-  }
-}
 
 // Verified against when the email is unknown, so response time does not reveal which emails exist.
 let dummyHash;

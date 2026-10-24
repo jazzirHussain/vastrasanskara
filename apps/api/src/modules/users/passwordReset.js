@@ -5,7 +5,7 @@ import { revokeUserSessions } from '../../core/auth/sessions.js';
 import { withTransaction } from '../../core/db.js';
 import { AppError } from '../../core/errors.js';
 import { emit } from '../../core/notify/emit.js';
-import { hashPassword } from '../auth/service.js';
+import { hashPassword } from '../../core/auth/passwords.js';
 import { PasswordReset, User } from './model.js';
 
 const LINKS = {

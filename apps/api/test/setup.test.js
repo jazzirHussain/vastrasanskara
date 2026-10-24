@@ -1,6 +1,6 @@
 import { test, expect } from 'vitest';
 import { useTestDb } from './helpers/db.js';
-import { bootstrap } from '../src/cli/bootstrap.js';
+import { bootstrap } from '../src/modules/setup/service.js';
 import { getSettings } from '../src/modules/settings/service.js';
 import { Branch } from '../src/modules/branches/model.js';
 import { User } from '../src/modules/users/model.js';

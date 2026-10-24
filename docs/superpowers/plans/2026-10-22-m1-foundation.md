@@ -40,31 +40,33 @@
 
 ## File Structure
 
+Layout rule: each module keeps `model.js` (schemas), `service.js` (business logic) and `routes.js` (HTTP only, including response shapes) in its own folder; adapters and storage implementations never own models or routes.
+
 ```
 package.json                      workspaces, root scripts
 vitest.config.js                  test.projects for all workspaces
 eslint.config.js, .prettierrc, .gitignore, .nvmrc, .env.example, README.md
 packages/shared/
   src/money.js  src/fy.js  src/stages.js  src/permissions.js
-  src/schemas/common.js  src/schemas/settings.js  src/schemas/users.js
+  src/schemas/common.js  src/schemas/branch.js  src/schemas/settings.js  src/schemas/users.js
   src/index.js
   test/*.test.js
 apps/api/
   src/server.js  src/worker.js  src/app.js  src/config.js  src/logger.js  src/clock.js
   src/core/errors.js  src/core/validate.js  src/core/db.js  src/core/counters.js
   src/core/audit/{model.js,canonical.js,diff.js,service.js}
-  src/core/security.js  src/core/auth/{sessions.js,middleware.js}
+  src/core/security.js  src/core/commonFields.js  src/core/auth/{sessions.js,middleware.js,passwords.js,rateLimit.js}
   src/core/idempotency.js
-  src/core/files/{storage-s3.js,storage-local.js,purposes.js,routes.js}
-  src/core/notify/{render.js,quietHours.js,emailLayout.js,catalog.js,recipients.js,models.js,emit.js,adapters/registry.js,adapters/inApp.js,adapters/emailSes.js,adapters/emailFile.js,deliver.js,routes.js}
+  src/core/files/{storage.js,storage-s3.js,storage-local.js,devFilesRoutes.js,purposes.js,service.js,routes.js}
+  src/core/notify/{render.js,quietHours.js,emailLayout.js,catalog.js,recipients.js,models.js,emit.js,deliver.js,service.js,routes.js,adapters/{registry.js,configure.js,inApp.js,emailSes.js,emailFile.js}}
   src/core/jobs/{registry.js,runJob.js,worker.js,routes.js}
   src/core/backup/{backup.js,storageCheck.js}
-  src/modules/branches/{model.js,service.js}
+  src/modules/branches/{model.js,service.js,routes.js}
   src/modules/settings/{model.js,service.js,routes.js}
-  src/modules/users/{model.js,service.js,routes.js,passwordReset.js}
+  src/modules/users/{model.js,service.js,passwordReset.js,routes.js}   (PasswordReset model lives in model.js)
   src/modules/auth/{service.js,routes.js}
   src/modules/health/routes.js
-  src/cli/bootstrap.js
+  src/modules/setup/service.js   (bootstrap logic)   src/cli/bootstrap.js   (thin CLI runner)
   scripts/dev-db.js
   test/helpers/{db.js,app.js}
   test/**/*.test.js
