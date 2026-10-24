@@ -1,9 +1,12 @@
 import mongoose from 'mongoose';
 import { applyStageAction, ProductionRuleError } from '@vs/shared/production.js';
+import { STAGES } from '@vs/shared/stages.js';
 import { clock } from '../../clock.js';
 import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
 import { businessRule, forbidden, validationError } from '../../core/errors.js';
+import { emit } from '../../core/notify/emit.js';
+import { getCustomerNames } from '../customers/service.js';
 import { loadGarmentsForStageAction, remakeGarment, saveStageChange } from '../orders/garments.js';
 import { settleOrderAfterStageChange } from '../orders/lifecycle.js';
 import { getGarment, isOrderInScope, today } from '../orders/service.js';
@@ -11,11 +14,13 @@ import { getUserNames } from '../users/service.js';
 import { getVendorNames, isActiveVendor } from '../vendors/service.js';
 import { areActiveWorkers, getWorkerNames } from '../workers/service.js';
 import { StageEvent } from './model.js';
+import './notifications.js';
 
 const { ObjectId } = mongoose.Types;
 
 // Inputs every event keeps as given (the rest comes from the production rules).
 const EVENT_FIELDS = ['workerIds', 'remarks', 'photoKeys', 'reason', 'resolution', 'chargeable', 'chargeAmount'];
+const stageLabel = (key) => STAGES.find((s) => s.key === key)?.label ?? key;
 
 /** Workers and vendor must be active ones of the branch; photos must be this branch's stage photos. */
 async function checkInputs(branchId, user, input) {
@@ -39,6 +44,38 @@ function applyRules(garment, input, day) {
   } catch (err) {
     if (err instanceof ProductionRuleError) throw businessRule(err.code, err.message);
     throw err;
+  }
+}
+
+/**
+ * The immediate notifications a saved stage event sets off, queued in the same transaction:
+ * reaching Trials and fittings, a failed QC, and a garment ready for pickup. `refId` is the
+ * stage event, so returning to a stage later notifies again.
+ */
+async function notifyStageEvent({ garment, order, previousStage, changes, event, customerName }, session) {
+  const notices = [];
+  if (changes.currentStage === 'trials_fittings' && previousStage !== 'trials_fittings') notices.push('garment.fitting_reached');
+  if (event.action === 'qc_fail') notices.push('qc.failed');
+  if (changes.status === 'ready') notices.push('garment.ready_for_pickup');
+  for (const name of notices) {
+    const vars = {
+      garmentNo: garment.garmentNo,
+      description: garment.description,
+      customerName,
+      orderNo: order.orderNo,
+      link: `/orders/${order._id}`,
+      ...(name === 'qc.failed' && { stage: stageLabel(event.stage), reworkStage: stageLabel(event.reworkStage), remarks: event.remarks }),
+    };
+    await emit(
+      name,
+      {
+        branchId: order.branchId,
+        refId: String(event._id),
+        data: { designerId: String(order.designerId), customerId: String(order.customerId) },
+        vars,
+      },
+      { session },
+    );
   }
 }
 
@@ -78,8 +115,11 @@ export async function recordStageAction(branchId, user, input, actor) {
     const loaded = await loadGarmentsForStageAction(branchId, user, input.garments, session, { action: input.action });
     const bulkId = loaded.length > 1 ? new ObjectId() : null;
     const events = [];
+    const applied = [];
     for (const item of loaded) {
+      const previousStage = item.garment.currentStage;
       const { changes, event } = applyRules(item.garment, input, day);
+      applied.push({ ...item, previousStage, changes });
       if (input.action === 'rejected') changes.rejection = await resolveRejection(item, input, actor, session);
       await saveStageChange(item, changes, actor, session);
       events.push({
@@ -93,7 +133,12 @@ export async function recordStageAction(branchId, user, input, actor) {
         bulkId,
       });
     }
-    await StageEvent.create(events, { session, ordered: true });
+    const saved = await StageEvent.create(events, { session, ordered: true });
+    const customerNames = await getCustomerNames(branchId, loaded.map(({ order }) => order.customerId));
+    for (const [i, item] of applied.entries()) {
+      const customerName = customerNames.get(String(item.order.customerId)) ?? '';
+      await notifyStageEvent({ ...item, event: saved[i], customerName }, session);
+    }
     const orders = new Map(loaded.map(({ order }) => [String(order._id), order]));
     for (const order of orders.values()) await settleOrderAfterStageChange(order, actor, session);
     return loaded.map(({ garment }) => garment.toObject());
