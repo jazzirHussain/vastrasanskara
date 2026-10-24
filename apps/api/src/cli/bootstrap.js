@@ -30,7 +30,7 @@ function inputFromEnv(env) {
 }
 
 const config = loadConfig();
-await connectDb(config.mongoUri);
+await connectDb(config.mongoUri, { dnsServers: config.dnsServers });
 try {
   const { branchId, adminId } = await bootstrap(inputFromEnv(process.env));
   console.log(`Bootstrapped branch ${branchId} with admin ${adminId}`);

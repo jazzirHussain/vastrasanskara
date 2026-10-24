@@ -23,3 +23,7 @@ test('production uses the __Host- cookie', () => {
 test('rejects an unknown NODE_ENV', () => {
   expect(() => loadConfig({ NODE_ENV: 'staging' })).toThrow(/NODE_ENV/);
 });
+test('DNS_SERVERS is an optional comma-separated list (for SRV lookups on machines with broken DNS)', () => {
+  expect(loadConfig({ NODE_ENV: 'test' }).dnsServers).toEqual([]);
+  expect(loadConfig({ NODE_ENV: 'test', DNS_SERVERS: '1.1.1.1, 8.8.8.8' }).dnsServers).toEqual(['1.1.1.1', '8.8.8.8']);
+});

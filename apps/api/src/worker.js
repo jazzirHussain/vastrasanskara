@@ -7,7 +7,7 @@ import { registerConfiguredAdapters } from './core/notify/adapters/configure.js'
 import { logger } from './logger.js';
 
 const config = loadConfig();
-await connectDb(config.mongoUri);
+await connectDb(config.mongoUri, { dnsServers: config.dnsServers });
 const storage = createStorage(config);
 registerConfiguredAdapters(config, storage);
 const { stop } = await startWorker({ config, storage });

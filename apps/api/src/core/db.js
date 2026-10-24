@@ -1,6 +1,13 @@
+import dns from 'node:dns';
 import mongoose from 'mongoose';
 
-export async function connectDb(uri) {
+/**
+ * Connects Mongoose. `dnsServers` (optional) replaces Node's DNS servers first — needed where
+ * Node cannot use the system resolver (e.g. Windows with an IPv6 link-local DNS server), which
+ * breaks the SRV lookup of mongodb+srv:// URIs.
+ */
+export async function connectDb(uri, { dnsServers = [] } = {}) {
+  if (dnsServers.length) dns.setServers(dnsServers);
   await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
   return mongoose.connection;
 }

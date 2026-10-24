@@ -48,6 +48,8 @@ export function loadConfig(env = process.env) {
     env: nodeEnv,
     port,
     mongoUri: env.MONGO_URI ?? 'mongodb://127.0.0.1:27017/vastrasanskara',
+    // Optional DNS servers for mongodb+srv lookups, for machines whose resolver Node cannot use.
+    dnsServers: (env.DNS_SERVERS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
     appOrigin: env.APP_ORIGIN ?? 'http://localhost:5173',
     apiOrigin: env.API_ORIGIN ?? 'http://localhost:4000',
     sessionSecret: env.SESSION_SECRET ?? 'dev-only-session-secret-not-for-production',
