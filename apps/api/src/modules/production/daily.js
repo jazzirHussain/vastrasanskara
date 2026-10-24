@@ -41,8 +41,9 @@ async function checkBranch(branchId, settings, day) {
   }
 
   const soon = addDaysYmd(day, 3);
+  // Pickup in three days or fewer (spec: the order's pickup, whatever a garment's own due date).
   const atRisk = items.filter(
-    (r) => r.garment.status === 'in_progress' && dueOf(r) >= day && dueOf(r) <= soon && !isNearlyReady(r.garment),
+    (r) => r.garment.status === 'in_progress' && r.order.pickupDate >= day && r.order.pickupDate <= soon && !isNearlyReady(r.garment),
   );
   for (const rows of groupBy(atRisk, (r) => String(r.order._id)).values()) {
     const { order, customerName } = rows[0];

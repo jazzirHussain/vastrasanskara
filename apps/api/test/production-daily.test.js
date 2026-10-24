@@ -109,3 +109,21 @@ test('held orders are left out of every check', async () => {
   expect(away.stageState).toBe('with_vendor');
   expect((await run('08:00', 1)).queued).toBe(0);
 });
+
+test('pickup risk follows the order pickup date, not a garment due date', async () => {
+  const { take } = await setup();
+  const soon = await take({ days: 2 });
+  await Garment.updateOne({ _id: soon.garments[0].id }, { dueDate: addDaysYmd(today(), -1) });
+  const later = await take({ days: 20 });
+  await Garment.updateOne({ _id: later.garments[0].id }, { dueDate: addDaysYmd(today(), 2) });
+  await run();
+  expect([...new Set((await rows('pickup.at_risk')).map((r) => r.vars.orderNo))]).toEqual([soon.orderNo]);
+});
+
+test('inactive designers get no digests', async () => {
+  const { owner, d1, take } = await setup();
+  await makeLate((await take()).garments[0]);
+  await owner.agent.patch(`/v1/users/${d1.user._id}`).send({ active: false });
+  await run();
+  expect(await rows('stage.late_digest')).toEqual([]);
+});

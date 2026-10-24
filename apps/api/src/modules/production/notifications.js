@@ -2,10 +2,13 @@
 // worker define them.
 import { defineEvent, registerRecipientResolver } from '../../core/notify/catalog.js';
 import { resolveRecipients } from '../../core/notify/recipients.js';
+import { isActiveDesigner } from '../users/service.js';
 
-// The order's designer (data.designerId).
-registerRecipientResolver('designer', ({ data, session }) =>
-  data?.designerId ? resolveRecipients('user', { data: { userId: data.designerId }, session }) : [],
+// The order's designer (data.designerId), while they are an active designer of the branch.
+registerRecipientResolver('designer', async ({ branchId, data, session }) =>
+  data?.designerId && (await isActiveDesigner(branchId, data.designerId))
+    ? resolveRecipients('user', { data: { userId: data.designerId }, session })
+    : [],
 );
 
 const STAFF = (subject, body) => ({ in_app: { body }, email: { subject, body } });

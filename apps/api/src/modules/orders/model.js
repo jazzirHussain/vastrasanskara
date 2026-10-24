@@ -27,6 +27,9 @@ const orderSchema = new mongoose.Schema({
       by: { type: ObjectId, ref: 'User' },
     },
   ],
+  // Bumped by every stage action on the order's garments, so two at once conflict and one
+  // retries (and sees the other's garments) instead of both missing that the order is finished.
+  stageSeq: { type: Number, default: 0 },
   cancellation: {
     type: new mongoose.Schema(
       {

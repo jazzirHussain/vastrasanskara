@@ -120,6 +120,7 @@ export async function loadGarmentsForStageAction(branchId, user, refs, session, 
   if (loaded.some(({ garment, version }) => garment.__v !== version)) throw conflict();
   const statuses = action === 'alteration' ? ['active', 'completed'] : ['active'];
   for (const { order } of loaded) assertStatus(order, statuses);
+  for (const order of orders) await Order.updateOne({ _id: order._id }, { $inc: { stageSeq: 1 } }, { session });
   return loaded.map(({ garment, order }) => ({ garment, order }));
 }
 

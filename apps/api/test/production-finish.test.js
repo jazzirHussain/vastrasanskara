@@ -100,3 +100,14 @@ test('a rejected garment does not hold the order open', async () => {
   await pickUp(d1, await makeReady(d1, order.garments[1]));
   expect((await orderOf(ops, order)).status).toBe('completed');
 });
+
+test('two last hand-overs at the same moment still complete the order', async () => {
+  const { ops, d1, take } = await world();
+  for (let round = 0; round < 3; round++) {
+    const order = await take({ quantity: 2 });
+    const ready = [await makeReady(d1, order.garments[0]), await makeReady(d1, order.garments[1])];
+    const results = await Promise.all(ready.map((g) => send(ops, [g], { action: 'picked_up', stage: 'ready_for_pickup' })));
+    expect(results.map((r) => r.status)).toEqual([200, 200]);
+    expect((await orderOf(ops, order)).status).toBe('completed');
+  }
+});
