@@ -7,6 +7,7 @@ export const PERMISSIONS = Object.freeze({
   ORDERS_READ_OWN: 'orders.read.own',
   ORDERS_WRITE: 'orders.write',
   PRODUCTION_UPDATE: 'production.update',
+  WORKSHOP_MANAGE: 'workshop.manage',
   MEASUREMENTS_WRITE: 'measurements.write',
   CUSTOMERS_READ: 'customers.read',
   CUSTOMERS_WRITE: 'customers.write',

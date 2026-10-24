@@ -11,3 +11,8 @@ test('admin has everything', () => {
   for (const p of Object.values(PERMISSIONS)) expect(all.has(p)).toBe(true);
 });
 test('unknown role', () => { expect(() => permissionsFor(['ceo'])).toThrow('Unknown role: ceo'); });
+test('workshop.manage for admin and operations only', () => {
+  expect(can(['admin'], 'workshop.manage')).toBe(true);
+  expect(can(['operations'], 'workshop.manage')).toBe(true);
+  expect(can(['designer'], 'workshop.manage')).toBe(false);
+});

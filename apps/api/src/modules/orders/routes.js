@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { isGarmentLate } from '@vs/shared/production.js';
 import { stageIndex } from '@vs/shared/stages.js';
 import { objectId } from '@vs/shared/schemas/common.js';
 import {
@@ -22,18 +23,6 @@ import { getUserNames } from '../users/service.js';
 import { createOrder, getOrder, listOrders, today } from './service.js';
 
 const DONE = new Set(['ready', 'picked_up', 'rejected', 'cancelled']);
-
-// The stage a garment is working towards: Order taken is complete once the order exists.
-const stageToFinish = (g) => (g.currentStage === 'order_taken' ? 'materials_ready' : g.currentStage);
-
-/** Late: the stage being worked is past its planned date, or the garment is past due and not ready. */
-export function isGarmentLate(garment, order, day) {
-  if (order.status !== 'active' || DONE.has(garment.status)) return false;
-  const stage = stageToFinish(garment);
-  const planned = garment.stagePlan.find((s) => s.stage === stage);
-  if (planned?.plannedDate && !planned.skipped && planned.plannedDate < day) return true;
-  return (garment.dueDate ?? order.pickupDate) < day;
-}
 
 const planJson = (plan) =>
   plan.map(({ stage, plannedDate, originalPlannedDate, skipped, skipReason }) => ({
