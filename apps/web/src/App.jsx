@@ -8,6 +8,7 @@ import { ResetPasswordPage } from './auth/ResetPasswordPage.jsx';
 import { CustomerPage } from './features/customers/CustomerPage.jsx';
 import { CustomersPage } from './features/customers/CustomersPage.jsx';
 import { HomePage } from './features/home/HomePage.jsx';
+import { NewOrderPage } from './features/orders/NewOrderPage.jsx';
 import { SettingsPage } from './features/settings/SettingsPage.jsx';
 import { UsersPage } from './features/users/UsersPage.jsx';
 import { AppLayout } from './layout/AppLayout.jsx';
@@ -26,6 +27,9 @@ export default function App() {
             <Route element={<RequirePermission permission="customers.read" />}>
               <Route path="/customers" element={<CustomersPage />} />
               <Route path="/customers/:id" element={<CustomerPage />} />
+            </Route>
+            <Route element={<RequirePermission permission="orders.write" />}>
+              <Route path="/orders/new" element={<NewOrderPage />} />
             </Route>
             <Route element={<RequirePermission permission="users.manage" />}>
               <Route path="/users" element={<UsersPage />} />

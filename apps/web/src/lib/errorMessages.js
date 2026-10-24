@@ -14,6 +14,9 @@ export const errorMessages = {
   LAST_ADMIN: 'At least one active admin is required.',
   CANNOT_DEACTIVATE_SELF: 'You cannot deactivate your own account.',
   RESET_TOKEN_INVALID: 'This reset link is invalid or has expired.',
+  PICKUP_IN_PAST: 'Pickup date cannot be in the past.',
+  DUE_AFTER_PICKUP: 'A garment cannot be due after the pickup date.',
+  DUE_IN_PAST: 'A garment cannot be due in the past.',
   PHONE_TAKEN: 'A customer with this phone already exists.',
   NETWORK_ERROR: 'Cannot reach the server. Check your connection and try again.',
 };
