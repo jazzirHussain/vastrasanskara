@@ -6,6 +6,7 @@ import { sessionMiddleware } from './core/auth/sessions.js';
 import { loadUser } from './core/auth/middleware.js';
 import { createStorage } from './core/files/purposes.js';
 import { filesRouter } from './core/files/routes.js';
+import { adminOutboxRouter, notificationsRouter, webhooksRouter } from './core/notify/routes.js';
 import { healthRouter } from './modules/health/routes.js';
 import { authRouter } from './modules/auth/routes.js';
 
@@ -23,13 +24,15 @@ export function createApp({ config, storage = createStorage(config), mount } = {
     next();
   });
   app.use(securityMiddleware(config));
-  app.use(express.json({ limit: '1mb' }));
+  // rawBody keeps the exact bytes so webhook adapters can verify provider signatures.
+  app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 
   app.use('/v1/health', healthRouter);
   // Stands in for S3 in development: browsers PUT/GET raw files with signed URLs,
   // so it sits before sessions and the JSON-only app-header check.
   if (config.storage.adapter === 'local') app.use('/v1/dev-files', storage.router());
-  // Task 15 mounts /v1/webhooks here.
+  // Provider callbacks: no session or app header; each adapter authenticates its provider.
+  app.use('/v1/webhooks', webhooksRouter());
 
   app.use(sessionMiddleware(config));
   app.use(loadUser);
@@ -37,6 +40,8 @@ export function createApp({ config, storage = createStorage(config), mount } = {
 
   app.use('/v1/auth', authRouter(config));
   app.use('/v1/files', filesRouter(storage));
+  app.use('/v1/notifications', notificationsRouter());
+  app.use('/v1/admin/outbox', adminOutboxRouter());
 
   mount?.(app);
 
