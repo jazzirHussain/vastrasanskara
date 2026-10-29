@@ -1,9 +1,10 @@
 import { istDate } from '@vs/shared/fy.js';
 import { clock } from '../../clock.js';
-import { Allocation, CreditNote, Invoice, Receipt } from './model.js';
+import { Allocation, CreditNote, Invoice, Receipt, Refund } from './model.js';
 
 // Every function here runs inside the caller's transaction, after guardCustomerMoney, so the
 // sums it reads cannot change before the caller commits.
+const TAX_HEADS = ['gross', 'taxable', 'cgst', 'sgst', 'igst'];
 const RELEASE_REASONS = ['release_cancel', 'release_credit', 'release_receipt_cancel'];
 
 const requireTransaction = (session, name) => {
@@ -123,4 +124,22 @@ export async function recomputeSettlement(invoiceId, session) {
   invoice.settlement = settlement;
   await invoice.save({ session });
   return settlement;
+}
+
+/**
+ * What a receipt voucher has not yet adjusted: its figures less the adjustments on issued bills
+ * and the reversals of refunds paid from its receipt, as { gross, taxable, cgst, sgst, igst }.
+ */
+export async function voucherRemaining(rv, session) {
+  requireTransaction(session, 'voucherRemaining');
+  const bills = await Invoice.find({ status: 'issued', 'advanceAdjustments.receiptVoucherId': rv._id }, { advanceAdjustments: 1 })
+    .session(session)
+    .lean();
+  const used = bills.flatMap((b) => b.advanceAdjustments.filter((a) => String(a.receiptVoucherId) === String(rv._id)));
+  const refundIds = await Allocation.distinct('refundId', { receiptId: rv.receiptId, refundId: { $ne: null } }).session(session);
+  if (refundIds.length) {
+    const refunds = await Refund.find({ _id: { $in: refundIds }, status: 'issued' }, { rvReversal: 1 }).session(session).lean();
+    used.push(...refunds.map((r) => r.rvReversal).filter(Boolean));
+  }
+  return Object.fromEntries(TAX_HEADS.map((h) => [h, (rv[h] ?? 0) - used.reduce((s, u) => s + (u[h] ?? 0), 0)]));
 }

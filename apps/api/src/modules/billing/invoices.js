@@ -1,19 +1,29 @@
 import mongoose from 'mongoose';
 import { payStatus } from '@vs/shared/billing.js';
-import { istDate } from '@vs/shared/fy.js';
-import { GstError, RULE46_ADDRESS_THRESHOLD, computeInvoice, placeOfSupply } from '@vs/shared/gst.js';
+import { addDaysYmd, istDate } from '@vs/shared/fy.js';
+import { GstError, RULE46_ADDRESS_THRESHOLD, computeInvoice, placeOfSupply, proportionalTax } from '@vs/shared/gst.js';
 import { amountInWords } from '@vs/shared/money.js';
 import { clock } from '../../clock.js';
+import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
 import { businessRule, conflict, forbidden, notFound, validationError } from '../../core/errors.js';
 import { getBranch } from '../branches/service.js';
 import { getItemsByIds, itemForCharge, itemForGarmentType } from '../catalog/service.js';
 import { getCustomer } from '../customers/service.js';
 import { getOrderForBilling } from '../orders/service.js';
-import { isPeriodLocked } from '../periods/service.js';
+import { assertPeriodOpen, isPeriodLocked } from '../periods/service.js';
 import { listChargeableEvents } from '../production/service.js';
 import { readSettings } from '../settings/service.js';
-import { CreditNote, Invoice } from './model.js';
+import { allocate, availableByReceipt, recomputeSettlement, voucherRemaining } from './allocations.js';
+import {
+  customerSnapshot,
+  guardCustomerMoney,
+  newPdfKey,
+  sellerSnapshot,
+  takeDocumentNumber,
+  toImmutableError,
+} from './documents.js';
+import { CreditNote, Invoice, ReceiptVoucher } from './model.js';
 
 const NO_SLABS = [{ upToUnitPrice: null, rateBp: 0 }];
 const NOT_BILLABLE = new Set(['rejected', 'cancelled']);
@@ -271,6 +281,272 @@ export async function deleteDraft(branchId, id) {
   const invoice = await loadInvoice(branchId, id);
   if (invoice.status !== 'draft') throw immutable();
   await invoice.deleteOne();
+}
+
+// --- Issuing -----------------------------------------------------------------------------------
+
+const lineRule = (code, message, lineKey) => businessRule(code, message, { lineKey });
+const notBillable = (line) => lineRule('GARMENT_NOT_BILLABLE', 'This line can no longer be billed', line.key);
+const alreadyBilled = (line) => lineRule('ALREADY_BILLED', 'This is already on another bill', line.key);
+
+/** The first line whose `field` repeats an earlier line's. */
+function repeated(lines, field) {
+  const seen = new Set();
+  return lines.find((l) => {
+    const k = String(l[field]);
+    if (seen.has(k)) return true;
+    seen.add(k);
+    return false;
+  });
+}
+
+/**
+ * Re-checks, inside the issuing transaction, that every garment, charge and rush line can still
+ * be billed: garments not rejected or cancelled, nothing already on another issued bill, at most
+ * one rush charge and none once the order's rush is billed. Returns the ids the bill will carry.
+ */
+async function checkIssueLinks(branchId, invoice, lines, session) {
+  const garmentLines = lines.filter((l) => l.garmentId);
+  const eventLines = lines.filter((l) => l.stageEventId);
+  const rushLines = lines.filter((l) => l.source === 'rush');
+  if (!invoice.orderId) {
+    const stray = garmentLines[0] ?? eventLines[0] ?? rushLines[0];
+    if (stray) throw notBillable(stray);
+    return { order: null, garmentIds: [], stageEventIds: [] };
+  }
+
+  const { order, garments } = await getOrderForBilling(branchId, invoice.orderId, session);
+  const byId = new Map(garments.map((g) => [String(g._id), g]));
+  const billableGarment = (garmentId) => {
+    const g = byId.get(String(garmentId));
+    return Boolean(g) && !NOT_BILLABLE.has(g.status);
+  };
+  for (const l of garmentLines) if (!billableGarment(l.garmentId)) throw notBillable(l);
+  if (eventLines.length) {
+    const chargeable = await listChargeableEvents(branchId, garments.map((g) => g._id), session);
+    const events = new Map(chargeable.map((e) => [String(e.id), e]));
+    for (const l of eventLines) {
+      const e = events.get(String(l.stageEventId));
+      if (!e || !billableGarment(e.garmentId)) throw notBillable(l);
+    }
+  }
+  if (rushLines.length && order.priority !== 'rush') throw notBillable(rushLines[0]);
+
+  const twice = repeated(garmentLines, 'garmentId') ?? repeated(eventLines, 'stageEventId') ?? rushLines[1];
+  if (twice) throw alreadyBilled(twice);
+
+  const oid = (v) => new mongoose.Types.ObjectId(String(v));
+  const garmentIds = garmentLines.map((l) => oid(l.garmentId));
+  const stageEventIds = eventLines.map((l) => oid(l.stageEventId));
+  if (garmentIds.length || stageEventIds.length) {
+    const others = await Invoice.find(
+      {
+        _id: { $ne: invoice._id },
+        status: 'issued',
+        $or: [{ garmentIds: { $in: garmentIds } }, { stageEventIds: { $in: stageEventIds } }],
+      },
+      { garmentIds: 1, stageEventIds: 1 },
+    )
+      .session(session)
+      .lean();
+    const billed = new Set(others.flatMap((i) => [...i.garmentIds, ...i.stageEventIds].map(String)));
+    const onAnother = (v) => Boolean(v) && billed.has(String(v));
+    const clash = lines.find((l) => onAnother(l.garmentId) || onAnother(l.stageEventId));
+    if (clash) throw alreadyBilled(clash);
+  }
+  if (rushLines.length) {
+    const rushBilled = await Invoice.exists({
+      branchId,
+      orderId: order._id,
+      status: 'issued',
+      'snapshot.lines.source': 'rush',
+    }).session(session);
+    if (rushBilled) throw alreadyBilled(rushLines[0]);
+  }
+  return { order, garmentIds, stageEventIds };
+}
+
+const TAX_HEADS = ['cgst', 'sgst', 'igst'];
+
+/** The voucher's share for `applied` paise of its receipt, never more than it has left to adjust. */
+async function voucherAdjustment(receipt, applied, session) {
+  const rv = await ReceiptVoucher.findOne({ _id: receipt.receiptVoucherId, status: 'issued' }).session(session).lean();
+  if (!rv) return null;
+  const left = await voucherRemaining(rv, session);
+  if (left.gross <= 0) return null;
+  const share = proportionalTax({ part: applied, whole: receipt.amount, of: rv });
+  const gross = Math.min(share.gross, left.gross);
+  const heads = Object.fromEntries(TAX_HEADS.map((h) => [h, Math.max(0, Math.min(share[h], left[h]))]));
+  return {
+    receiptVoucherId: rv._id,
+    number: rv.number,
+    gross,
+    taxable: gross - heads.cgst - heads.sgst - heads.igst,
+    ...heads,
+  };
+}
+
+/**
+ * Applies the advance held for the bill (the order's receipts, then receipts with no order,
+ * oldest first) until the bill is covered. Returns { advanceApplied, adjustments }.
+ */
+async function applyAdvance(invoice, total, { date, actor }, session) {
+  const held = await availableByReceipt(
+    invoice.branchId,
+    invoice.customerId,
+    { orderId: invoice.orderId, includeUnassigned: true },
+    session,
+  );
+  let remaining = total;
+  const adjustments = [];
+  for (const { receipt, available } of held) {
+    if (remaining <= 0) break;
+    const applied = Math.min(available, remaining);
+    await allocate(
+      {
+        branchId: invoice.branchId,
+        customerId: invoice.customerId,
+        receiptId: receipt._id,
+        invoiceId: invoice._id,
+        amount: applied,
+        reason: 'advance_applied',
+        date,
+        by: actor.userId,
+      },
+      session,
+    );
+    remaining -= applied;
+    if (receipt.receiptVoucherId) {
+      const adjustment = await voucherAdjustment(receipt, applied, session);
+      if (adjustment) adjustments.push(adjustment);
+    }
+  }
+  return { advanceApplied: total - remaining, adjustments };
+}
+
+const discountsOf = (lines) =>
+  lines.filter((l) => l.discount > 0).map((l) => ({ lineKey: l.key, amount: l.discount, reason: l.discountReason ?? '' }));
+
+/** Refuses a bill of ₹50,000 or more to an unregistered customer without an address (Rule 46). */
+function checkAddress(customer, total) {
+  if (customer.gstin || total < RULE46_ADDRESS_THRESHOLD) return;
+  const a = customer.billingAddress;
+  if (!a?.line1 || !a?.city) {
+    throw businessRule('ADDRESS_REQUIRED', "Add the customer's address for a bill of ₹50,000 or more");
+  }
+}
+
+/**
+ * Issues a draft bill at `version`: re-checks it against the items, customer, branch and order
+ * as they are now, takes the next number, fixes the snapshot, applies the advance held and
+ * audits it, all in one transaction dated today (IST).
+ */
+export async function issueInvoice(branchId, id, { version }, actor) {
+  try {
+    return await withTransaction(async (session) => {
+      const now = clock.now();
+      const date = istDate(now);
+      await assertPeriodOpen(branchId, date, session);
+
+      const invoice = await loadInvoice(branchId, id, session);
+      if (invoice.__v !== version) throw conflict();
+      if (invoice.status !== 'draft') throw immutable();
+      await guardCustomerMoney(branchId, invoice.customerId, session);
+
+      const draft = invoice.toObject().draft ?? {};
+      const lines = draft.lines ?? [];
+      if (!lines.length) throw businessRule('NO_LINES', 'Add something to the bill first');
+      const items = await getItemsByIds(branchId, lines.map((l) => l.itemId).filter(Boolean), session);
+      for (const l of lines) {
+        if (!l.itemId || !items.has(String(l.itemId))) {
+          throw lineRule('ITEM_REQUIRED', 'Choose what to bill this line as', l.key);
+        }
+        if (l.rate === 0) throw lineRule('PRICE_NEEDED', 'Enter the price', l.key);
+      }
+      const customer = await getCustomer(branchId, invoice.customerId, session);
+      const branch = await getBranch(branchId, session);
+      const settings = await readSettings(branchId, session);
+      if (!branch.gstin) throw businessRule('BRANCH_GSTIN_MISSING', 'Add the shop GSTIN before issuing bills');
+      const { order, garmentIds, stageEventIds } = await checkIssueLinks(branchId, invoice, lines, session);
+
+      const supply = placeOfSupply({ branchStateCode: branch.stateCode, customer });
+      const invoiceDiscount = draft.invoiceDiscount ?? 0;
+      const calc = compute({ lines, items, invoiceDiscount, interState: supply.interState });
+      checkAddress(customer, calc.totals.total);
+
+      const { number, fyCode } = await takeDocumentNumber({ branchId, docType: 'invoice', now }, session);
+      const dueDate = addDaysYmd(date, settings.billDueDays);
+      const calcByKey = new Map(calc.lines.map((c) => [c.key, c]));
+      const seller = sellerSnapshot(branch);
+      const discount = invoiceDiscount ? { amount: invoiceDiscount, reason: draft.invoiceDiscountReason ?? '' } : null;
+      invoice.snapshot = {
+        docType: 'invoice',
+        title: 'Tax invoice',
+        number,
+        date,
+        dueDate,
+        seller,
+        customer: customerSnapshot(customer),
+        placeOfSupply: { stateCode: supply.stateCode, stateName: supply.stateName, interState: supply.interState },
+        reverseCharge: false,
+        lines: lines.map((l) => lineView(l, items.get(String(l.itemId)), calcByKey.get(l.key))),
+        invoiceDiscount: discount,
+        totals: calc.totals,
+        taxSummary: calc.taxSummary,
+        amountInWords: amountInWords(calc.totals.total),
+        notes: draft.notes ?? '',
+        signatory: seller.legalName,
+        order: order ? { orderNo: order.orderNo } : null,
+      };
+      invoice.set({
+        status: 'issued',
+        number,
+        fyCode,
+        date,
+        month: date.slice(0, 7),
+        dueDate,
+        totals: calc.totals,
+        interState: supply.interState,
+        garmentIds,
+        stageEventIds,
+        issuedAt: now,
+        issuedBy: actor.userId,
+        pdf: { key: newPdfKey(branchId, now), status: 'pending', attempts: 0, nextAttemptAt: now },
+        updatedBy: actor.userId,
+      });
+      invoice.draft = null;
+
+      // Once saved the bill is fixed, so the voucher adjustments are worked out before the save.
+      const { advanceApplied, adjustments } = await applyAdvance(invoice, calc.totals.total, { date, actor }, session);
+      invoice.advanceAdjustments = adjustments;
+      invoice.increment();
+      await invoice.save({ session });
+      await recomputeSettlement(invoice._id, session);
+
+      await recordAudit(
+        {
+          branchId,
+          entityType: 'invoice',
+          entityId: invoice._id,
+          action: 'issue',
+          after: {
+            number,
+            date,
+            customerId: invoice.customerId,
+            totals: calc.totals,
+            discounts: discountsOf(lines),
+            invoiceDiscount: discount,
+            advanceApplied,
+          },
+          actor,
+        },
+        session,
+      );
+      return Invoice.findById(invoice._id).session(session).lean();
+    });
+  } catch (err) {
+    throw toImmutableError(err);
+  }
 }
 
 /** A stored invoice (any status) of the branch, lean; 404 otherwise. */
