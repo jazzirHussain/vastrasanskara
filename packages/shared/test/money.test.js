@@ -1,5 +1,19 @@
 import { test, expect } from 'vitest';
-import { rupeesToPaise, formatINR, roundToRupee, allocateProRata, amountInWords } from '../src/money.js';
+import {
+  rupeesToPaise, formatINR, roundToRupee, allocateProRata, amountInWords, mulDivRound,
+} from '../src/money.js';
+
+test('mulDivRound rounds half away from zero without floats', () => {
+  expect(mulDivRound(1050, 500, 10000)).toBe(53);
+  expect(mulDivRound(1050, 500, 20000)).toBe(26);
+  expect(mulDivRound(-1050, 500, 10000)).toBe(-53);
+  expect(mulDivRound(1049, 500, 10000)).toBe(52);
+  expect(mulDivRound(0, 5, 3)).toBe(0);
+  expect(mulDivRound(9007199254740991, 9007199254740991, 9007199254740991)).toBe(9007199254740991);
+  expect(() => mulDivRound(1.5, 1, 1)).toThrow(RangeError);
+  expect(() => mulDivRound(1, 1, 0)).toThrow(RangeError);
+  expect(() => mulDivRound(1, 1, -2)).toThrow(RangeError);
+});
 
 test('rupeesToPaise', () => {
   expect(rupeesToPaise('1234.5')).toBe(123450);
