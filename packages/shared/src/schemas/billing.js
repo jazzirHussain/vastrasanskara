@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { objectId, paise } from './common.js';
+import { objectId, billingAmount } from './common.js';
 import { ymd } from './orders.js';
 
 const text = (max) => z.string().trim().max(max);
@@ -16,8 +16,8 @@ export const invoiceLineSchema = z
     source: z.enum(['garment', 'charge', 'rush', 'manual']).default('manual'),
     description: reason(300),
     quantity: z.number().positive().max(9999).multipleOf(0.001),
-    rate: paise,
-    discount: paise.default(0),
+    rate: billingAmount,
+    discount: billingAmount.default(0),
     discountReason: text(200).default(''),
   })
   .refine((l) => l.discount === 0 || l.discountReason !== '', {
@@ -30,7 +30,7 @@ export const invoiceDraftSchema = z.strictObject({
     .array(invoiceLineSchema)
     .max(100)
     .refine((lines) => new Set(lines.map((l) => l.key)).size === lines.length, 'Line keys must be unique'),
-  invoiceDiscount: z.strictObject({ amount: paise.positive(), reason: reason(200) }).nullable().default(null),
+  invoiceDiscount: z.strictObject({ amount: billingAmount.positive(), reason: reason(200) }).nullable().default(null),
   notes: text(500).default(''),
 });
 
@@ -47,7 +47,7 @@ export const paymentSchema = z.strictObject({
   customerId: id,
   orderId: id.nullable().default(null),
   invoiceId: id.nullable().default(null),
-  amount: paise.positive(),
+  amount: billingAmount.positive(),
   mode,
   reference: text(100).default(''),
   receivedOn: ymd.nullable().default(null),
@@ -57,7 +57,7 @@ export const paymentSchema = z.strictObject({
 export const refundSchema = z.strictObject({
   customerId: id,
   orderId: id.nullable().default(null),
-  amount: paise.positive(),
+  amount: billingAmount.positive(),
   mode,
   reference: text(100).default(''),
   reason: reason(300),
@@ -67,7 +67,7 @@ export const creditNoteSchema = z
   .strictObject({
     reason: reason(300),
     full: z.boolean().default(false),
-    lines: z.array(z.strictObject({ key: z.string().min(1).max(40), taxable: paise.positive() })).max(100),
+    lines: z.array(z.strictObject({ key: z.string().min(1).max(40), taxable: billingAmount.positive() })).max(100),
   })
   .refine((v) => v.full !== v.lines.length > 0, {
     message: 'Credit the whole bill or choose some lines, not both',

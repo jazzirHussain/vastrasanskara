@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { paise } from './common.js';
+import { billingAmount } from './common.js';
 import { garmentTypeKey } from './settings.js';
 import { GST_RATES_BP } from '../gst.js';
 
@@ -8,7 +8,7 @@ export const UNITS = ['PCS', 'MTR', 'SET', 'NOS', 'OTH'];
 export const CHARGE_FOR = ['rush', 'alteration', 'rework'];
 
 const slab = z.strictObject({
-  upToUnitPrice: paise.positive().nullable(),
+  upToUnitPrice: billingAmount.positive().nullable(),
   rateBp: z.int().refine((v) => GST_RATES_BP.includes(v), 'Not a GST rate'),
 });
 
@@ -18,7 +18,7 @@ const fields = {
   supplyType: z.enum(['goods', 'service']),
   hsnSac: z.string().regex(/^\d{4}(\d{2}){0,2}$/, 'HSN or SAC must be 4, 6 or 8 digits'),
   unit: z.enum(UNITS),
-  defaultPrice: paise,
+  defaultPrice: billingAmount,
   gstSlabs: z.array(slab).min(1).max(5),
   garmentTypes: z.array(garmentTypeKey).max(50),
   chargeFor: z.enum(CHARGE_FOR).nullable(),

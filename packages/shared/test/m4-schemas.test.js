@@ -1,6 +1,7 @@
 import { test, expect } from 'vitest';
 import { catalogItemSchema, catalogItemPatchSchema } from '../src/schemas/catalog.js';
 import {
+  ledgerQuery, month,
   invoiceLineSchema, invoiceDraftSchema, paymentSchema, creditNoteSchema, issueSchema,
 } from '../src/schemas/billing.js';
 import { branchPatchSchema } from '../src/schemas/branch.js';
@@ -105,4 +106,19 @@ test('document prefixes are at most six characters', () => {
   expect(p({ ...all, receipt: 'rc' })).toBe(false);
   expect(p({ ...all, refund: 'A/B' })).toBe(false);
   expect(p({ ...all, expense: 'x'.repeat(11) })).toBe(false);
+});
+
+test('money above one crore is refused', () => {
+  expect(okLine({ rate: 1_000_000_000 })).toBe(true);
+  expect(okLine({ rate: 1_000_000_001 })).toBe(false);
+  expect(paymentSchema.safeParse({ ...pay, amount: 1_000_000_001 }).success).toBe(false);
+  expect(okItem({ defaultPrice: 1_000_000_001 })).toBe(false);
+});
+
+test('limit coerces from a string and month must be real', () => {
+  expect(ledgerQuery.parse({ limit: '20' }).limit).toBe(20);
+  expect(ledgerQuery.safeParse({ limit: '0' }).success).toBe(false);
+  expect(ledgerQuery.safeParse({ limit: '101' }).success).toBe(false);
+  expect(month.safeParse('2026-12').success).toBe(true);
+  expect(month.safeParse('2026-13').success).toBe(false);
 });
