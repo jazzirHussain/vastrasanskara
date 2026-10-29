@@ -202,6 +202,7 @@ export const Invoice = discriminator('invoice', {
   draft: {
     lines: { type: [Mixed], default: [] },
     invoiceDiscount: money,
+    invoiceDiscountReason: { type: String, default: '' },
     notes: { type: String, default: '' },
   },
   dueDate: { type: String, default: null },
