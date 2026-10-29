@@ -34,3 +34,52 @@ export function toInvoiceJson(view) {
     version: invoice.__v,
   };
 }
+
+const pdfOf = (doc) => (doc.pdf?.status && doc.pdf.status !== 'none' ? { status: doc.pdf.status } : null);
+const cancellationOf = (doc) => (doc.cancellation ? { reason: doc.cancellation.reason, at: doc.cancellation.at } : null);
+
+/** A receipt view (from receiptView) as the API answers. */
+export function toReceiptJson(view) {
+  const { receipt, receiptVoucher: rv } = view;
+  return {
+    id: String(receipt._id),
+    type: 'receipt',
+    status: receipt.status,
+    number: receipt.number,
+    date: receipt.date,
+    amount: receipt.amount,
+    mode: receipt.mode,
+    reference: receipt.reference ?? '',
+    receivedOn: receipt.receivedOn ?? null,
+    note: receipt.note ?? '',
+    customer: view.customer,
+    order: view.order,
+    allocations: view.allocations,
+    unallocated: view.unallocated,
+    receiptVoucher: rv
+      ? { id: String(rv._id), number: rv.number, taxable: rv.taxable, cgst: rv.cgst, sgst: rv.sgst, igst: rv.igst }
+      : null,
+    pdf: pdfOf(receipt),
+    cancellation: cancellationOf(receipt),
+  };
+}
+
+/** A stored receipt voucher as the API answers. */
+export function toReceiptVoucherJson(rv) {
+  return {
+    id: String(rv._id),
+    type: 'receipt_voucher',
+    status: rv.status,
+    number: rv.number,
+    date: rv.date,
+    receiptId: String(rv.receiptId),
+    gross: rv.gross,
+    taxable: rv.taxable,
+    cgst: rv.cgst,
+    sgst: rv.sgst,
+    igst: rv.igst,
+    lines: rv.snapshot?.lines ?? [],
+    pdf: pdfOf(rv),
+    cancellation: cancellationOf(rv),
+  };
+}
