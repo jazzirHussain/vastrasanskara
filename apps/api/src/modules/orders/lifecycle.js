@@ -77,7 +77,19 @@ export async function updateOrder(branchId, orderId, { version, patch }, actor) 
  * Moves an order's pickup date (the original is kept) and audits it like any order change.
  * Used when an alteration is promised after the current pickup date.
  */
-export async function movePickupDate(order, pickupDate, actor, session) {
+export async function movePickupDate(order, pickupDate, exceptGarmentId, actor, session) {
+  // Other open garments that follow the pickup date keep the date they were promised.
+  const others = await Garment.find({
+    orderId: order._id,
+    _id: { $ne: exceptGarmentId },
+    status: { $in: ['in_progress', 'ready'] },
+    dueDate: null,
+  }).session(session);
+  for (const g of others) {
+    g.dueDate = order.pickupDate;
+    g.originalDueDate ??= order.pickupDate;
+  }
+  await saveGarments(others, actor, session);
   const before = auditFields(order);
   order.pickupDate = pickupDate;
   await saveOrder(order, 'update', before, actor, session);

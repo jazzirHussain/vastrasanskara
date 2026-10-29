@@ -125,7 +125,7 @@ export async function recordStageAction(branchId, user, input, actor) {
       applied.push({ ...item, previousStage, changes });
       if (input.action === 'alteration') {
         replanForAlteration(item, { readyBy: input.readyBy, settings });
-        if (input.readyBy > item.order.pickupDate) await movePickupDate(item.order, input.readyBy, actor, session);
+        if (input.readyBy > item.order.pickupDate) await movePickupDate(item.order, input.readyBy, item.garment._id, actor, session);
       }
       if (input.action === 'rejected') changes.rejection = await resolveRejection(item, input, actor, session);
       await saveStageChange(item, changes, actor, session);

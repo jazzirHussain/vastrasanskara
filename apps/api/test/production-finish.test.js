@@ -126,6 +126,8 @@ test('an alteration after pickup is not late', async () => {
   const plan = altered.stagePlan.filter((s) => ['tailors', 'trials_fittings', 'finishing', 'branding', 'final_qc', 'packaging', 'ready_for_pickup'].includes(s.stage));
   for (const s of plan) expect(s.plannedDate >= today() && s.plannedDate <= readyBy).toBe(true);
   expect(plan.at(-1).plannedDate).toBe(readyBy);
+  const before = done.stagePlan.slice(0, 6);
+  expect(altered.stagePlan.slice(0, 6).map((s) => [s.plannedDate, s.originalPlannedDate])).toEqual(before.map((s) => [s.plannedDate, s.originalPlannedDate]));
   expect(placed.pickupDate).toBe(readyBy);
   expect(placed.originalPickupDate).toBe(order.pickupDate);
   expect((await history(d1, altered)).at(-1)).toMatchObject({ action: 'alteration', readyBy });
@@ -139,4 +141,28 @@ test('an alteration needs a ready-by date', async () => {
   expect(past.status).toBe(400);
   expect(past.body.error.code).toBe('VALIDATION_FAILED');
   expect(JSON.stringify(past.body.error.details)).toContain('readyBy');
+});
+
+test("moving the pickup for an alteration keeps the other garments' due date", async () => {
+  const { ops, d1, take } = await world();
+  const order = await take({ days: 10, quantity: 2 });
+  const [first, second] = order.garments;
+  const done = await pickUp(d1, await makeReady(d1, first));
+  await act(d1, done, { action: 'alteration', stage: 'picked_up', readyBy: addDaysYmd(today(), 15) });
+  const placed = await orderOf(ops, order);
+  expect(placed.pickupDate).toBe(addDaysYmd(today(), 15));
+  const other = placed.garments.find((g) => g.id === second.id);
+  expect(other.dueDate).toBe(order.pickupDate);
+  expect(other.originalDueDate).toBe(order.pickupDate);
+  expect(isGarmentLate(other, placed, addDaysYmd(today(), 11))).toBe(true);
+});
+
+test('an alteration ready before the pickup leaves the pickup date alone', async () => {
+  const { ops, d1, take } = await world();
+  const order = await take({ days: 10, quantity: 2 });
+  const done = await pickUp(d1, await makeReady(d1, order.garments[0]));
+  await act(d1, done, { action: 'alteration', stage: 'picked_up', readyBy: addDaysYmd(today(), 5) });
+  const placed = await orderOf(ops, order);
+  expect(placed.pickupDate).toBe(order.pickupDate);
+  expect(placed.garments.find((g) => g.id === order.garments[1].id).dueDate ?? null).toBeNull();
 });
