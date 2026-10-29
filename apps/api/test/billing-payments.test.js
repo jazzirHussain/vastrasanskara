@@ -239,7 +239,16 @@ test('a receipt in a locked month cannot be cancelled', async () => {
   expect((await Receipt.findById(receipt.id).lean()).status).toBe('issued');
 });
 
-test.todo('a refunded receipt cannot be cancelled');
+test('a refunded receipt cannot be cancelled', async () => {
+  const { ops, admin, customerId } = await world();
+  const receipt = (await pay(ops, { customerId, amount: 50000, mode: 'cash' })).body.receipt;
+  const refunded = await admin.agent.post('/v1/billing/refunds').set('Idempotency-Key', 'refund-receipt-1')
+    .send({ customerId, amount: 20000, mode: 'cash', reason: 'Not needed' });
+  ok(refunded);
+  const r = await admin.agent.post(`/v1/billing/payments/${receipt.id}/cancel`).send({ reason: 'Wrong' });
+  expect([r.status, r.body.error.code]).toEqual([422, 'RECEIPT_REFUNDED']);
+  expect((await Receipt.findById(receipt.id).lean()).status).toBe('issued');
+});
 
 test('operations record payments; designers cannot', async () => {
   const { ops, d1, customerId } = await world();

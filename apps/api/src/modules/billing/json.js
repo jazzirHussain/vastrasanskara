@@ -83,3 +83,51 @@ export function toReceiptVoucherJson(rv) {
     cancellation: cancellationOf(rv),
   };
 }
+
+/** A stored credit note as the API answers. */
+export function toCreditNoteJson(note) {
+  const snap = note.snapshot ?? {};
+  return {
+    id: String(note._id),
+    type: 'credit_note',
+    status: note.status,
+    number: note.number,
+    date: note.date,
+    invoice: { id: String(note.invoiceId), number: snap.original?.number ?? null, date: snap.original?.date ?? null },
+    reason: note.reason ?? '',
+    lines: (snap.lines ?? []).map((l) => ({
+      key: l.key,
+      description: l.description,
+      hsnSac: l.hsnSac ?? null,
+      taxable: l.taxable,
+      gstRateBp: l.gstRateBp,
+      cgst: l.cgst,
+      sgst: l.sgst,
+      igst: l.igst,
+      total: l.total,
+    })),
+    totals: note.totals ? { ...note.totals } : null,
+    pdf: pdfOf(note),
+  };
+}
+
+/** A refund view (from refundView) as the API answers. */
+export function toRefundJson({ refund, sources }) {
+  const snap = refund.snapshot ?? {};
+  return {
+    id: String(refund._id),
+    type: 'refund',
+    status: refund.status,
+    number: refund.number,
+    date: refund.date,
+    amount: refund.amount,
+    mode: refund.mode,
+    reference: refund.reference ?? '',
+    reason: refund.reason ?? '',
+    customer: { id: String(refund.customerId), name: snap.customer?.name ?? '' },
+    order: refund.orderId ? { id: String(refund.orderId), orderNo: snap.against?.orderNo ?? null } : null,
+    sources,
+    rvReversal: refund.rvReversal ?? null,
+    pdf: pdfOf(refund),
+  };
+}

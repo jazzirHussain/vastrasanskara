@@ -1,6 +1,7 @@
 import { istDate } from '@vs/shared/fy.js';
+import { proportionalTax } from '@vs/shared/gst.js';
 import { clock } from '../../clock.js';
-import { Allocation, CreditNote, Invoice, Receipt, Refund } from './model.js';
+import { Allocation, CreditNote, Invoice, Receipt, ReceiptVoucher, Refund } from './model.js';
 
 // Every function here runs inside the caller's transaction, after guardCustomerMoney, so the
 // sums it reads cannot change before the caller commits.
@@ -116,10 +117,13 @@ export async function recomputeSettlement(invoiceId, session) {
   const rows = await Allocation.find({ invoiceId }, { amount: 1, reason: 1 }).session(session).lean();
   const notes = await CreditNote.find({ invoiceId, status: 'issued' }, { 'totals.total': 1 }).session(session).lean();
 
-  const advanceApplied = rows.filter((r) => r.reason === 'advance_applied').reduce((s, r) => s + r.amount, 0);
+  const cancelled = invoice.status === 'cancelled';
   const paid = rows.reduce((s, r) => s + r.amount, 0);
   const credited = notes.reduce((s, n) => s + n.totals.total, 0);
-  const settlement = { advanceApplied, paid, credited, balance: invoice.totals.total - paid - credited };
+  // A cancelled bill has given all its money back as advance and is owed nothing.
+  const advanceApplied = cancelled ? 0 : rows.filter((r) => r.reason === 'advance_applied').reduce((s, r) => s + r.amount, 0);
+  const balance = cancelled ? 0 : invoice.totals.total - paid - credited;
+  const settlement = { advanceApplied, paid, credited, balance };
 
   invoice.settlement = settlement;
   await invoice.save({ session });
@@ -142,4 +146,30 @@ export async function voucherRemaining(rv, session) {
     used.push(...refunds.map((r) => r.rvReversal).filter(Boolean));
   }
   return Object.fromEntries(TAX_HEADS.map((h) => [h, (rv[h] ?? 0) - used.reduce((s, u) => s + (u[h] ?? 0), 0)]));
+}
+
+const TAX_ONLY = ['cgst', 'sgst', 'igst'];
+
+/**
+ * The receipt voucher's share for `part` paise of its receipt (applied to a bill or refunded),
+ * never more than the voucher has left to adjust, as { receiptVoucherId, number, gross, taxable,
+ * cgst, sgst, igst }; null when the receipt has no issued voucher or nothing is left on it.
+ */
+export async function voucherShare(receipt, part, session) {
+  requireTransaction(session, 'voucherShare');
+  if (!receipt.receiptVoucherId) return null;
+  const rv = await ReceiptVoucher.findOne({ _id: receipt.receiptVoucherId, status: 'issued' }).session(session).lean();
+  if (!rv) return null;
+  const left = await voucherRemaining(rv, session);
+  if (left.gross <= 0) return null;
+  const share = proportionalTax({ part, whole: receipt.amount, of: rv });
+  const gross = Math.min(share.gross, left.gross);
+  const heads = Object.fromEntries(TAX_ONLY.map((h) => [h, Math.max(0, Math.min(share[h], left[h]))]));
+  return {
+    receiptVoucherId: rv._id,
+    number: rv.number,
+    gross,
+    taxable: gross - heads.cgst - heads.sgst - heads.igst,
+    ...heads,
+  };
 }

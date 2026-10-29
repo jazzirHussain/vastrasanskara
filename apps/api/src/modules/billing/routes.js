@@ -2,38 +2,50 @@ import { Router } from 'express';
 import {
   billingReasonSchema,
   blankInvoiceSchema,
+  creditNoteSchema,
   fromOrderSchema,
   invoiceDraftSchema,
   issueSchema,
   paymentSchema,
+  refundSchema,
 } from '@vs/shared/schemas/billing.js';
 import { actorFrom, requirePermission } from '../../core/auth/middleware.js';
 import { idempotent } from '../../core/idempotency.js';
 import { validate, versioned } from '../../core/validate.js';
 import { logger } from '../../logger.js';
-import { toInvoiceJson, toReceiptJson, toReceiptVoucherJson } from './json.js';
+import { toCreditNoteJson, toInvoiceJson, toReceiptJson, toReceiptVoucherJson, toRefundJson } from './json.js';
 import {
+  cancelInvoice,
   cancelReceipt,
   createBlankDraft,
   createDraftFromOrder,
   deleteDraft,
+  getCreditNote,
   getInvoice,
   getReceipt,
   getReceiptVoucher,
+  getRefund,
   invoiceView,
+  issueCreditNote,
   issueInvoice,
+  issueRefund,
   receiptView,
   recordPayment,
+  refundView,
   updateDraft,
 } from './service.js';
 
 const jsonOf = async (branchId, invoice) => toInvoiceJson(await invoiceView(branchId, invoice));
 const receiptJsonOf = async (branchId, receipt) => toReceiptJson(await receiptView(branchId, receipt));
+const refundJsonOf = async (_branchId, refund) => toRefundJson(await refundView(refund));
+const minimalDoc = (d) => ({ id: String(d._id), number: d.number, status: d.status });
 
 // How each committed document answers, and its minimal form if reading it back fails.
 const ANSWERS = {
   invoice: { read: jsonOf, minimal: (d) => ({ id: String(d._id), number: d.number, status: d.status, version: d.__v }) },
-  receipt: { read: receiptJsonOf, minimal: (d) => ({ id: String(d._id), number: d.number, status: d.status }) },
+  receipt: { read: receiptJsonOf, minimal: minimalDoc },
+  creditNote: { read: async (_branchId, d) => toCreditNoteJson(d), minimal: minimalDoc },
+  refund: { read: refundJsonOf, minimal: minimalDoc },
 };
 
 /**
@@ -41,14 +53,14 @@ const ANSWERS = {
  * is still a success (its id, number and status), because an error would free the
  * Idempotency-Key and the client's retry would repeat the write.
  */
-async function respondCommitted(req, res, kind, doc) {
+async function respondCommitted(req, res, kind, doc, extra = {}) {
   const { read, minimal } = ANSWERS[kind];
   let body;
   try {
-    body = { [kind]: await read(req.user.branchId, doc) };
+    body = { [kind]: await read(req.user.branchId, doc), ...extra };
   } catch (err) {
     logger.warn({ err, docId: String(doc._id), kind, requestId: req.id }, 'billing document saved; reading it back failed');
-    body = { [kind]: minimal(doc) };
+    body = { [kind]: minimal(doc), ...extra };
   }
   res.status(201).json(body);
 }
@@ -97,6 +109,32 @@ export function billingRouter(_storage) {
     },
   );
 
+  router.post(
+    '/invoices/:id/cancel',
+    requirePermission('billing.cancel'),
+    validate({ body: billingReasonSchema }),
+    async (req, res) => {
+      const { branchId } = req.user;
+      const invoice = await cancelInvoice(branchId, req.params.id, req.body, actorFrom(req));
+      res.json({ invoice: await jsonOf(branchId, invoice) });
+    },
+  );
+
+  router.post(
+    '/invoices/:id/credit-notes',
+    requirePermission('billing.cancel'),
+    validate({ body: creditNoteSchema }),
+    idempotent(),
+    async (req, res) => {
+      const { creditNote, warnings } = await issueCreditNote(req.user.branchId, req.params.id, req.body, actorFrom(req));
+      await respondCommitted(req, res, 'creditNote', creditNote, { warnings });
+    },
+  );
+
+  router.get('/credit-notes/:id', async (req, res) => {
+    res.json({ creditNote: toCreditNoteJson(await getCreditNote(req.user.branchId, req.params.id)) });
+  });
+
   router.delete('/invoices/:id', requirePermission('billing.draft'), async (req, res) => {
     await deleteDraft(req.user.branchId, req.params.id);
     res.status(204).end();
@@ -122,6 +160,16 @@ export function billingRouter(_storage) {
       res.json({ receipt: await receiptJsonOf(branchId, receipt) });
     },
   );
+
+  router.post('/refunds', requirePermission('billing.cancel'), validate({ body: refundSchema }), idempotent(), async (req, res) => {
+    const refund = await issueRefund(req.user.branchId, req.body, actorFrom(req));
+    await respondCommitted(req, res, 'refund', refund);
+  });
+
+  router.get('/refunds/:id', async (req, res) => {
+    const { branchId } = req.user;
+    res.json({ refund: await refundJsonOf(branchId, await getRefund(branchId, req.params.id)) });
+  });
 
   router.get('/receipt-vouchers/:id', async (req, res) => {
     res.json({ receiptVoucher: toReceiptVoucherJson(await getReceiptVoucher(req.user.branchId, req.params.id)) });

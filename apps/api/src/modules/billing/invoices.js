@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { payStatus } from '@vs/shared/billing.js';
 import { addDaysYmd, istDate } from '@vs/shared/fy.js';
-import { GstError, RULE46_ADDRESS_THRESHOLD, computeInvoice, placeOfSupply, proportionalTax } from '@vs/shared/gst.js';
+import { GstError, RULE46_ADDRESS_THRESHOLD, computeInvoice, placeOfSupply } from '@vs/shared/gst.js';
 import { amountInWords } from '@vs/shared/money.js';
 import { clock } from '../../clock.js';
 import { recordAudit } from '../../core/audit/service.js';
@@ -14,7 +14,7 @@ import { getOrderForBilling } from '../orders/service.js';
 import { assertPeriodOpen, isPeriodLocked } from '../periods/service.js';
 import { listChargeableEvents } from '../production/service.js';
 import { readSettings } from '../settings/service.js';
-import { allocate, availableByReceipt, recomputeSettlement, voucherRemaining } from './allocations.js';
+import { allocate, availableByReceipt, recomputeSettlement, releaseInvoice, voucherShare } from './allocations.js';
 import {
   customerSnapshot,
   guardCustomerMoney,
@@ -23,7 +23,7 @@ import {
   takeDocumentNumber,
   toImmutableError,
 } from './documents.js';
-import { CreditNote, Invoice, ReceiptVoucher } from './model.js';
+import { CreditNote, Invoice } from './model.js';
 
 const NO_SLABS = [{ upToUnitPrice: null, rateBp: 0 }];
 const NOT_BILLABLE = new Set(['rejected', 'cancelled']);
@@ -366,26 +366,6 @@ async function checkIssueLinks(branchId, invoice, lines, session) {
   return { order, garmentIds, stageEventIds };
 }
 
-const TAX_HEADS = ['cgst', 'sgst', 'igst'];
-
-/** The voucher's share for `applied` paise of its receipt, never more than it has left to adjust. */
-async function voucherAdjustment(receipt, applied, session) {
-  const rv = await ReceiptVoucher.findOne({ _id: receipt.receiptVoucherId, status: 'issued' }).session(session).lean();
-  if (!rv) return null;
-  const left = await voucherRemaining(rv, session);
-  if (left.gross <= 0) return null;
-  const share = proportionalTax({ part: applied, whole: receipt.amount, of: rv });
-  const gross = Math.min(share.gross, left.gross);
-  const heads = Object.fromEntries(TAX_HEADS.map((h) => [h, Math.max(0, Math.min(share[h], left[h]))]));
-  return {
-    receiptVoucherId: rv._id,
-    number: rv.number,
-    gross,
-    taxable: gross - heads.cgst - heads.sgst - heads.igst,
-    ...heads,
-  };
-}
-
 /**
  * Applies the advance held for the bill (the order's receipts, then receipts with no order,
  * oldest first) until the bill is covered. Returns { advanceApplied, adjustments }.
@@ -416,10 +396,8 @@ async function applyAdvance(invoice, total, { date, actor }, session) {
       session,
     );
     remaining -= applied;
-    if (receipt.receiptVoucherId) {
-      const adjustment = await voucherAdjustment(receipt, applied, session);
-      if (adjustment) adjustments.push(adjustment);
-    }
+    const adjustment = await voucherShare(receipt, applied, session);
+    if (adjustment) adjustments.push(adjustment);
   }
   return { advanceApplied: total - remaining, adjustments };
 }
@@ -537,6 +515,60 @@ export async function issueInvoice(branchId, id, { version }, actor) {
             discounts: discountsOf(lines),
             invoiceDiscount: discount,
             advanceApplied,
+          },
+          actor,
+        },
+        session,
+      );
+      return Invoice.findById(invoice._id).session(session).lean();
+    });
+  } catch (err) {
+    throw toImmutableError(err);
+  }
+}
+
+// --- Cancelling --------------------------------------------------------------------------------
+
+/**
+ * Cancels an issued bill (admin) in the month it is dated, while that month is open: the money on
+ * it becomes advance on its receipts again, its garments and charges can be billed again, and its
+ * number stays used. A bill with credit notes cannot be cancelled.
+ */
+export async function cancelInvoice(branchId, id, { reason }, actor) {
+  try {
+    return await withTransaction(async (session) => {
+      const now = clock.now();
+      const invoice = await loadInvoice(branchId, id, session);
+      if (invoice.status === 'cancelled') throw businessRule('ALREADY_CANCELLED', 'This bill is already cancelled');
+      if (invoice.status !== 'issued') throw businessRule('INVALID_STATUS', 'Only an issued bill can be cancelled');
+      await assertPeriodOpen(branchId, invoice.date, session);
+      await guardCustomerMoney(branchId, invoice.customerId, session);
+      if (await CreditNote.exists({ invoiceId: invoice._id, status: 'issued' }).session(session)) {
+        throw businessRule('HAS_CREDIT_NOTES', 'This bill has a credit note, so it cannot be cancelled');
+      }
+
+      const { paid } = await recomputeSettlement(invoice._id, session);
+      const rows = paid > 0 ? await releaseInvoice(invoice, paid, 'release_cancel', actor, session) : [];
+      const cancellation = { reason, at: now, by: actor.userId };
+      const { matchedCount } = await Invoice.updateOne(
+        { _id: invoice._id, status: 'issued' },
+        { $set: { status: 'cancelled', cancellation, updatedBy: actor.userId } },
+        { session },
+      );
+      if (matchedCount !== 1) throw conflict();
+      await recomputeSettlement(invoice._id, session);
+
+      await recordAudit(
+        {
+          branchId,
+          entityType: 'invoice',
+          entityId: invoice._id,
+          action: 'cancel',
+          before: { status: 'issued' },
+          after: {
+            status: 'cancelled',
+            reason,
+            released: rows.map((r) => ({ receiptId: r.receiptId, amount: -r.amount })),
           },
           actor,
         },

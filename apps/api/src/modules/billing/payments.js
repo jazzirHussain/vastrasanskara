@@ -82,7 +82,8 @@ export async function orderEstimate(branchId, order, garments, session) {
 
 // --- Recording a payment -----------------------------------------------------------------------
 
-async function customerFor(branchId, customerId, session) {
+/** The branch's customer, or 400 on customerId. */
+export async function customerFor(branchId, customerId, session) {
   try {
     return await getCustomer(branchId, customerId, session);
   } catch {
@@ -90,7 +91,8 @@ async function customerFor(branchId, customerId, session) {
   }
 }
 
-async function orderFor(branchId, orderId, customer, session) {
+/** One of the customer's orders as { order, garments }, or 400 on orderId. */
+export async function orderFor(branchId, orderId, customer, session) {
   let loaded;
   try {
     loaded = await getOrderForBilling(branchId, orderId, session);
