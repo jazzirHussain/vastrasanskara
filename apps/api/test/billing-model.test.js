@@ -63,6 +63,10 @@ test('issued documents refuse changes', async () => {
   }
   await expect(BillingDocument.updateOne({ _id }, { $set: { 'snapshot.x': 1 } })).rejects.toBeInstanceOf(ImmutableDocumentError);
   await expect(Invoice.findOneAndUpdate({ _id }, { $set: { number: 'X' } })).rejects.toBeInstanceOf(ImmutableDocumentError);
+  await expect(BillingDocument.updateOne({ _id }, { $rename: { 'pdf.lastError': 'number' } })).rejects.toBeInstanceOf(ImmutableDocumentError);
+  await expect(BillingDocument.updateOne({ _id }, { $rename: { 'pdf.lastError': 'pdf.key' } })).rejects.toBeInstanceOf(ImmutableDocumentError);
+  await expect(BillingDocument.updateOne({ _id }, { $unset: { snapshot: 1 } })).rejects.toBeInstanceOf(ImmutableDocumentError);
+  await expect(BillingDocument.findOneAndReplace({ _id }, { status: 'issued' })).rejects.toBeInstanceOf(ImmutableDocumentError);
   await expect(BillingDocument.updateMany({ _id }, { $set: { remindersPaused: true } })).rejects.toBeInstanceOf(ImmutableDocumentError);
   await expect(BillingDocument.replaceOne({ _id }, { status: 'issued' })).rejects.toBeInstanceOf(ImmutableDocumentError);
   await expect(BillingDocument.deleteOne({ _id })).rejects.toBeInstanceOf(ImmutableDocumentError);
@@ -109,6 +113,47 @@ test('the PDF, settlement, reminders and cancellation can still change', async (
   await expect(BillingDocument.updateOne({ _id }, { $set: { status: 'issued' } })).rejects.toBeInstanceOf(ImmutableDocumentError);
 });
 
+test('a document whose stored status is unknown is treated as fixed', async () => {
+  const { _id } = await issuedInvoice();
+  // Loaded without its status.
+  const partial = await Invoice.findById(_id).select('number totals pdf');
+  partial.number = 'INV/2627/0009';
+  await expect(partial.save()).rejects.toBeInstanceOf(ImmutableDocumentError);
+  const pdfOnly = await Invoice.findById(_id).select('pdf');
+  pdfOnly.pdf.status = 'pending';
+  await pdfOnly.save();
+  // Built in memory and passed off as stored.
+  const fake = new Invoice({ _id, branchId: new ObjectId(), customerId: new ObjectId() });
+  fake.isNew = false;
+  fake.number = 'INV/2627/0009';
+  await expect(fake.save()).rejects.toBeInstanceOf(ImmutableDocumentError);
+  const fakeCancel = new Invoice({ _id, branchId: new ObjectId(), customerId: new ObjectId() });
+  fakeCancel.isNew = false;
+  fakeCancel.status = 'cancelled';
+  await expect(fakeCancel.save()).rejects.toBeInstanceOf(ImmutableDocumentError);
+  await expect(partial.deleteOne()).rejects.toBeInstanceOf(ImmutableDocumentError);
+  expect(await Invoice.findById(_id).lean()).toMatchObject({ number: 'INV/2627/0001', status: 'issued', pdf: { status: 'pending' } });
+});
+
+test('a draft cannot be cancelled', async () => {
+  const draft = await Invoice.create({ branchId: new ObjectId(), customerId: new ObjectId() });
+  draft.status = 'cancelled';
+  await expect(draft.save()).rejects.toBeInstanceOf(ImmutableDocumentError);
+  const loaded = await Invoice.findById(draft._id);
+  loaded.set({ status: 'cancelled', cancellation: { reason: 'x', at: now, by } });
+  await expect(loaded.save()).rejects.toBeInstanceOf(ImmutableDocumentError);
+  expect((await Invoice.findById(draft._id).lean()).status).toBe('draft');
+});
+
+test('receipt and refund amounts are whole positive paise', async () => {
+  const base = { branchId: new ObjectId(), customerId: new ObjectId(), mode: 'cash' };
+  for (const amount of [0, -100, 10.5]) {
+    await expect(Receipt.create({ ...base, amount })).rejects.toThrow(/amount/);
+    await expect(BillingDocument.create({ ...base, type: 'refund', amount })).rejects.toThrow(/amount/);
+  }
+  expect((await Receipt.create({ ...base, amount: 1 })).amount).toBe(1);
+});
+
 test('drafts can be edited and deleted', async () => {
   const draft = await Invoice.create({ branchId: new ObjectId(), customerId: new ObjectId(), orderId: new ObjectId(), draft: { lines: [{ key: 'a', rate: 1000 }], notes: '' } });
   expect(draft.toObject()).toMatchObject({ status: 'draft', number: null, date: null, snapshot: null, pdf: { status: 'none' }, cancellation: null });
@@ -138,6 +183,9 @@ test('allocations are append-only', async () => {
   await expect(Allocation.deleteOne({ _id: row._id })).rejects.toThrow(/append-only/);
   await expect(Allocation.deleteMany({})).rejects.toThrow(/append-only/);
   await expect(Allocation.replaceOne({ _id: row._id }, {})).rejects.toThrow(/append-only/);
+  const loaded = await Allocation.findById(row._id);
+  loaded.amount = 1;
+  await expect(loaded.save()).rejects.toThrow(/append-only/);
   expect((await Allocation.findById(row._id).lean()).amount).toBe(5000);
 });
 
@@ -154,6 +202,9 @@ test('allocations settle bills, release newest first and leave the rest as advan
   await withTransaction(async (session) => {
     const own = await availableByReceipt(branchId, customerId, { orderId }, session);
     expect(own.map((a) => [a.receipt.number, a.available])).toEqual([['RCPT/2627/0001', 30000]]);
+    expect(await availableByReceipt(branchId, customerId, { orderId: null }, session)).toEqual([]);
+    const unassigned = await availableByReceipt(branchId, customerId, { orderId: null, includeUnassigned: true }, session);
+    expect(unassigned.map((a) => a.receipt.number)).toEqual(['RCPT/2627/0002']);
     const held = await availableByReceipt(branchId, customerId, { orderId, includeUnassigned: true }, session);
     expect(held.map((a) => [a.receipt.number, a.available])).toEqual([['RCPT/2627/0001', 30000], ['RCPT/2627/0002', 20000]]);
     const base = { branchId, customerId, invoiceId: invoice._id, date: '2026-10-30', by };

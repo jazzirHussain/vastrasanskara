@@ -21,14 +21,14 @@ async function allocatedByReceipt(receiptIds, session) {
 
 /**
  * Receipts of the customer with money not yet allocated, as [{ receipt, available }]: the
- * order's receipts first, then (with includeUnassigned) receipts with no order; oldest first.
+ * order's receipts first, then (only with includeUnassigned) receipts with no order; oldest first.
  * Another order's receipts are never offered. Cancelled receipts hold nothing.
  */
 export async function availableByReceipt(branchId, customerId, { orderId = null, includeUnassigned = false } = {}, session) {
   requireTransaction(session, 'availableByReceipt');
   const groups = [];
   if (orderId) groups.push(orderId);
-  if (includeUnassigned || !orderId) groups.push(null);
+  if (includeUnassigned) groups.push(null);
   const result = [];
   for (const group of groups) {
     const receipts = await Receipt.find({ branchId, customerId, status: 'issued', orderId: group })

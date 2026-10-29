@@ -17,6 +17,13 @@ export const MUTABLE_PATHS = ['status', 'cancellation', 'pdf', 'settlement', 're
 const isMutablePath = (path) => MUTABLE_PATHS.some((p) => path === p || path.startsWith(`${p}.`));
 
 const money = { type: Number, default: 0 };
+// Money that moves (a receipt or refund): whole paise, at least 1.
+const amountPaid = {
+  type: Number,
+  required: true,
+  min: 1,
+  validate: { validator: Number.isSafeInteger, message: 'amount must be whole paise' },
+};
 const taxSplit = { gross: money, taxable: money, cgst: money, sgst: money, igst: money };
 const totalsFields = () => ({
   gross: money,
@@ -110,13 +117,21 @@ billingDocumentSchema.post('save', function rememberStatus() {
   this.$locals.wasStatus = this.status;
 });
 
+// A stored document whose status was not loaded (a partial select, or a document built in memory
+// and marked as stored) is treated as issued: only the mutable paths may change.
 billingDocumentSchema.pre('save', function refuseFixedChanges() {
+  if (this.isNew) return;
   const was = this.$locals.wasStatus;
-  if (this.isNew || !was || was === 'draft') return;
+  if (was === 'draft') {
+    if (this.isModified('status') && this.status === 'cancelled') {
+      throw new ImmutableDocumentError('A draft is deleted, not cancelled');
+    }
+    return;
+  }
   const fixed = this.modifiedPaths().filter((p) => !isMutablePath(p));
   if (fixed.length) throw new ImmutableDocumentError(`Issued documents cannot be changed (${fixed.join(', ')})`);
   if (this.isModified('status') && !(was === 'issued' && this.status === 'cancelled')) {
-    throw new ImmutableDocumentError(`A ${was} document cannot become ${this.status}`);
+    throw new ImmutableDocumentError(`A ${was ?? 'stored'} document cannot become ${this.status}`);
   }
 });
 
@@ -133,6 +148,8 @@ const IGNORED_ON_INSERT = new Set(['createdAt']);
 function checkQueryUpdate() {
   const update = this.getUpdate() ?? {};
   if (Array.isArray(update)) throw new ImmutableDocumentError('Billing documents cannot take pipeline updates');
+  // $rename writes its target (a value), not its keys: refuse it rather than parse both sides.
+  if ('$rename' in update) throw new ImmutableDocumentError('Billing documents cannot take $rename');
   const paths = Object.entries(update).flatMap(([key, value]) =>
     key === '$setOnInsert' ? updatedPaths({ [key]: value }).filter((p) => !IGNORED_ON_INSERT.has(p)) : updatedPaths({ [key]: value }),
   );
@@ -222,7 +239,7 @@ export const CreditNote = discriminator('credit_note', {
 });
 
 export const Receipt = discriminator('receipt', {
-  amount: { type: Number, required: true },
+  amount: amountPaid,
   mode: { type: String, enum: PAYMENT_MODES, required: true },
   reference: { type: String, default: '' },
   // When the money actually came in, as staff noted it (the document is dated the day it is made).
@@ -237,7 +254,7 @@ export const ReceiptVoucher = discriminator('receipt_voucher', {
 });
 
 export const Refund = discriminator('refund', {
-  amount: { type: Number, required: true },
+  amount: amountPaid,
   mode: { type: String, enum: PAYMENT_MODES, required: true },
   reference: { type: String, default: '' },
   reason: { type: String, default: '' },
@@ -278,6 +295,9 @@ allocationSchema.index({ branchId: 1, customerId: 1, date: 1 });
 const refuseAllocationChange = () => {
   throw new Error('allocations is append-only');
 };
+allocationSchema.pre('save', function onlyInserts() {
+  if (!this.isNew) refuseAllocationChange();
+});
 for (const op of [
   'updateOne',
   'updateMany',
