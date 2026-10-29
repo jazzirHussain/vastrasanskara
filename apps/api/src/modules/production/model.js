@@ -16,6 +16,7 @@ const stageEventSchema = new mongoose.Schema(
     workerIds: { type: [ObjectId], default: [] },
     vendorId: { type: ObjectId, ref: 'Vendor', default: null },
     dueBackDate: { type: String, default: null },
+    readyBy: { type: String, default: null },
     reworkStage: { type: String, default: null },
     reason: { type: String, default: null },
     resolution: { type: String, default: null },

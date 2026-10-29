@@ -30,6 +30,7 @@ function details(e) {
     e.reworkStage && `Back to ${stageName(e.reworkStage).toLowerCase()}`,
     e.vendor && `${e.vendor.name}${e.dueBackDate ? `, due back ${shortDate(e.dueBackDate)}` : ''}`,
     e.reason,
+    e.readyBy && `Ready by ${shortDate(e.readyBy)}`,
     e.resolution && `Decided: ${RESOLUTIONS[e.resolution]}`,
     e.chargeable && 'Chargeable',
   ].filter(Boolean);

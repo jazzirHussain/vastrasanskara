@@ -7,10 +7,11 @@ import { withTransaction } from '../../core/db.js';
 import { businessRule, forbidden, validationError } from '../../core/errors.js';
 import { emit } from '../../core/notify/emit.js';
 import { getCustomerNames } from '../customers/service.js';
-import { loadGarmentsForStageAction, remakeGarment, saveStageChange } from '../orders/garments.js';
-import { settleOrderAfterStageChange } from '../orders/lifecycle.js';
+import { loadGarmentsForStageAction, remakeGarment, replanForAlteration, saveStageChange } from '../orders/garments.js';
+import { movePickupDate, settleOrderAfterStageChange } from '../orders/lifecycle.js';
 import { getGarment, isOrderInScope, listOpenGarments, today } from '../orders/service.js';
 import { getUserNames } from '../users/service.js';
+import { readSettings } from '../settings/service.js';
 import { getVendorNames, isActiveVendor } from '../vendors/service.js';
 import { areActiveWorkers, getWorkerNames } from '../workers/service.js';
 import { StageEvent } from './model.js';
@@ -26,6 +27,7 @@ const stageLabel = (key) => STAGES.find((s) => s.key === key)?.label ?? key;
 async function checkInputs(branchId, user, input) {
   if (input.chargeAmount != null && !user.permissions.has('money.view')) throw forbidden();
   const issues = [];
+  if (input.readyBy && input.readyBy < today()) issues.push({ path: 'readyBy', message: 'Choose today or a later day' });
   if (input.workerIds.length && !(await areActiveWorkers(branchId, input.workerIds))) {
     issues.push({ path: 'workerIds', message: 'Choose active workers' });
   }
@@ -108,6 +110,7 @@ async function resolveRejection(item, input, actor, session) {
 export async function recordStageAction(branchId, user, input, actor) {
   await checkInputs(branchId, user, input);
   const fields = Object.fromEntries(EVENT_FIELDS.filter((f) => input[f] !== undefined).map((f) => [f, input[f]]));
+  const settings = input.action === 'alteration' ? await readSettings(branchId) : null;
 
   return withTransaction(async (session) => {
     const day = today();
@@ -120,6 +123,10 @@ export async function recordStageAction(branchId, user, input, actor) {
       const previousStage = item.garment.currentStage;
       const { changes, event } = applyRules(item.garment, input, day);
       applied.push({ ...item, previousStage, changes });
+      if (input.action === 'alteration') {
+        replanForAlteration(item, { readyBy: input.readyBy, settings });
+        if (input.readyBy > item.order.pickupDate) await movePickupDate(item.order, input.readyBy, actor, session);
+      }
       if (input.action === 'rejected') changes.rejection = await resolveRejection(item, input, actor, session);
       await saveStageChange(item, changes, actor, session);
       events.push({

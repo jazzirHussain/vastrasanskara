@@ -73,6 +73,16 @@ export async function updateOrder(branchId, orderId, { version, patch }, actor) 
   });
 }
 
+/**
+ * Moves an order's pickup date (the original is kept) and audits it like any order change.
+ * Used when an alteration is promised after the current pickup date.
+ */
+export async function movePickupDate(order, pickupDate, actor, session) {
+  const before = auditFields(order);
+  order.pickupDate = pickupDate;
+  await saveOrder(order, 'update', before, actor, session);
+}
+
 /** Puts an active order on hold (late checks pause while it is held). */
 export function holdOrder(branchId, orderId, { version, patch: { reason } }, actor) {
   return withTransaction(async (session) => {

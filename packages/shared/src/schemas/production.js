@@ -14,6 +14,7 @@ const REQUIRED = [
   ['vendorId', ['sent_to_vendor']],
   ['dueBackDate', ['sent_to_vendor']],
   ['resolution', ['rejected']],
+  ['readyBy', ['alteration']],
 ];
 
 /**
@@ -37,6 +38,7 @@ export const stageActionSchema = z
     vendorId: objectId.optional(),
     dueBackDate: ymd.optional(),
     resolution: z.enum(['refund', 'remake', 'write_off']).optional(),
+    readyBy: ymd.optional(),
     chargeable: z.boolean().default(false),
     chargeAmount: paise.nullable().optional(),
   })
@@ -45,6 +47,9 @@ export const stageActionSchema = z
       if (actions.includes(value.action) && value[field] === undefined) {
         ctx.addIssue({ code: 'custom', path: [field], message: 'Required' });
       }
+    }
+    if (value.readyBy !== undefined && value.action !== 'alteration') {
+      ctx.addIssue({ code: 'custom', path: ['readyBy'], message: 'Only an alteration has a ready-by date' });
     }
     if (!CHARGEABLE.has(value.action) && (value.chargeable || value.chargeAmount !== undefined)) {
       ctx.addIssue({ code: 'custom', path: ['chargeable'], message: 'Only rework, QC failures and alterations can be charged' });

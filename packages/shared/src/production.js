@@ -142,7 +142,7 @@ export function applyStageAction(garment, input, { today }) {
           readyDate: null,
           ...(pickedUp && { alterationOpen: true }),
         },
-        event,
+        event: { ...event, readyBy: input.readyBy },
       };
     }
     case 'picked_up':

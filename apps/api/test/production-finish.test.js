@@ -1,7 +1,8 @@
 import { test, expect } from 'vitest';
 import { useTestDb } from './helpers/db.js';
 import { buildTestApp } from './helpers/app.js';
-import { productionHelpers } from './helpers/production.js';
+import { addDaysYmd, isGarmentLate } from '@vs/shared';
+import { productionHelpers, today } from './helpers/production.js';
 import { AuditLog } from '../src/core/audit/model.js';
 useTestDb();
 const app = buildTestApp();
@@ -30,7 +31,7 @@ test('a garment goes from order taken to picked up', async () => {
 test('alteration at trials returns the garment to tailors', async () => {
   const { d1, take } = await world();
   const atTrials = await advanceTo(d1, (await take()).garments[0], 'trials_fittings');
-  const altered = await act(d1, atTrials, { action: 'alteration', stage: 'trials_fittings', remarks: 'Take in the waist' });
+  const altered = await act(d1, atTrials, { action: 'alteration', stage: 'trials_fittings', remarks: 'Take in the waist', readyBy: addDaysYmd(today(), 5) });
   expect(altered).toMatchObject({ currentStage: 'tailors', stageState: 'pending', status: 'in_progress', alterationOpen: false });
 });
 
@@ -38,7 +39,7 @@ test('alteration after pickup reopens the garment and the order', async () => {
   const { ops, d1, take } = await world();
   const order = await take();
   const done = await pickUp(d1, await makeReady(d1, order.garments[0]));
-  const reopened = await act(d1, done, { action: 'alteration', stage: 'picked_up', chargeable: true });
+  const reopened = await act(d1, done, { action: 'alteration', stage: 'picked_up', chargeable: true, readyBy: addDaysYmd(today(), 5) });
   expect(reopened).toMatchObject({ currentStage: 'tailors', status: 'in_progress', alterationOpen: true, readyDate: null });
   expect((await orderOf(ops, order)).status).toBe('active');
   expect(await AuditLog.exists({ entityType: 'order', entityId: order.id, action: 'reopen' })).not.toBeNull();
@@ -110,4 +111,32 @@ test('two last hand-overs at the same moment still complete the order', async ()
     expect(results.map((r) => r.status)).toEqual([200, 200]);
     expect((await orderOf(ops, order)).status).toBe('completed');
   }
+});
+
+test('an alteration after pickup is not late', async () => {
+  const { ops, d1, take } = await world();
+  const order = await take({ days: 10 });
+  const done = await pickUp(d1, await makeReady(d1, order.garments[0]));
+  const readyBy = addDaysYmd(today(), 15);
+  const altered = await act(d1, done, { action: 'alteration', stage: 'picked_up', readyBy });
+  const placed = await orderOf(ops, order);
+  expect(isGarmentLate(altered, placed, today())).toBe(false);
+  expect(altered.dueDate).toBe(readyBy);
+  expect(altered.originalDueDate).toBe(order.pickupDate);
+  const plan = altered.stagePlan.filter((s) => ['tailors', 'trials_fittings', 'finishing', 'branding', 'final_qc', 'packaging', 'ready_for_pickup'].includes(s.stage));
+  for (const s of plan) expect(s.plannedDate >= today() && s.plannedDate <= readyBy).toBe(true);
+  expect(plan.at(-1).plannedDate).toBe(readyBy);
+  expect(placed.pickupDate).toBe(readyBy);
+  expect(placed.originalPickupDate).toBe(order.pickupDate);
+  expect((await history(d1, altered)).at(-1)).toMatchObject({ action: 'alteration', readyBy });
+});
+
+test('an alteration needs a ready-by date', async () => {
+  const { d1, take } = await world();
+  const atTrials = await advanceTo(d1, (await take()).garments[0], 'trials_fittings');
+  expect((await send(d1, [atTrials], { action: 'alteration', stage: 'trials_fittings' })).status).toBe(400);
+  const past = await send(d1, [atTrials], { action: 'alteration', stage: 'trials_fittings', readyBy: addDaysYmd(today(), -1) });
+  expect(past.status).toBe(400);
+  expect(past.body.error.code).toBe('VALIDATION_FAILED');
+  expect(JSON.stringify(past.body.error.details)).toContain('readyBy');
 });

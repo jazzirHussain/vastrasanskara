@@ -27,6 +27,7 @@ function toEventJson(e, names, user) {
     workers: e.workerIds.map((w) => ({ id: String(w), name: names.workers.get(String(w)) ?? '' })),
     vendor: e.vendorId ? { id: String(e.vendorId), name: names.vendors.get(String(e.vendorId)) ?? '' } : null,
     dueBackDate: e.dueBackDate ?? null,
+    readyBy: e.readyBy ?? null,
     reworkStage: e.reworkStage ?? null,
     reason: e.reason ?? null,
     resolution: e.resolution ?? null,

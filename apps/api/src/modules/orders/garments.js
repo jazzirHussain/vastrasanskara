@@ -5,7 +5,7 @@ import { withTransaction } from '../../core/db.js';
 import { businessRule, conflict, forbidden, notFound } from '../../core/errors.js';
 import { readSettings } from '../settings/service.js';
 import { Garment, Order } from './model.js';
-import { assertStatus, buildGarments, checkGarmentInputs, orderScope, replanGarment, today } from './service.js';
+import { assertStatus, buildGarments, checkGarmentInputs, orderScope, replanGarment, stagePlanFor, today } from './service.js';
 
 const OPEN = ['active', 'on_hold'];
 // Designers (production.update without orders.write) may change only these.
@@ -122,6 +122,23 @@ export async function loadGarmentsForStageAction(branchId, user, refs, session, 
   for (const { order } of loaded) assertStatus(order, statuses);
   for (const order of orders) await Order.updateOne({ _id: order._id }, { $inc: { stageSeq: 1 } }, { session });
   return loaded.map(({ garment, order }) => ({ garment, order }));
+}
+
+/**
+ * An alteration promises the garment by `readyBy`: it becomes the garment's due date (the
+ * original promise is kept) and Tailors through Ready for pickup are re-planned from today to
+ * then. Earlier stages and every original planned date are kept. Mutates the garment document.
+ */
+export function replanForAlteration({ garment, order }, { readyBy, settings }) {
+  garment.originalDueDate ??= garment.dueDate ?? order.pickupDate;
+  garment.dueDate = readyBy;
+  const { stagePlan, tightSchedule } = stagePlanFor({ orderDate: today(), dueDate: readyBy, settings, type: garment.type });
+  const first = stageIndex('tailors');
+  for (const entry of garment.stagePlan) {
+    const index = stageIndex(entry.stage);
+    if (index >= first && !entry.skipped) entry.plannedDate = stagePlan[index].plannedDate;
+  }
+  garment.tightSchedule = tightSchedule;
 }
 
 /**

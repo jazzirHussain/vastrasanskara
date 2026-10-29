@@ -15,6 +15,7 @@ import {
   Textarea,
 } from '@mantine/core';
 import { useAuth } from '../../auth/AuthContext.js';
+import { addDaysYmd } from '@vs/shared/fy.js';
 import { todayYmd } from '../../components/DateLabel.jsx';
 import { PhotoUploads } from '../../components/PhotoUploads.jsx';
 import { useVendors, useWorkers } from '../workshop/workshopApi.js';
@@ -53,6 +54,7 @@ export function StageActionDialog({ action, garments, onClose, onDone }) {
     reworkStage: '',
     vendorId: '',
     dueBackDate: '',
+    readyBy: addDaysYmd(todayYmd(), 7),
     resolution: 'refund',
     chargeable: false,
     charge: '',
@@ -70,6 +72,7 @@ export function StageActionDialog({ action, garments, onClose, onDone }) {
     if (REWORK.has(action) && !form.reworkStage) issues.reworkStage = 'Choose the stage to rework';
     if (action === 'sent_to_vendor' && !form.vendorId) issues.vendorId = 'Choose a vendor';
     if (action === 'sent_to_vendor' && !form.dueBackDate) issues.dueBackDate = 'Choose the day it is due back';
+    if (action === 'alteration' && !form.readyBy) issues.readyBy = 'Choose the day it will be ready';
     setMissing(issues);
     return Object.keys(issues).length === 0;
   }
@@ -85,6 +88,7 @@ export function StageActionDialog({ action, garments, onClose, onDone }) {
       ...(WITH_REASON.has(action) && { reason: form.reason.trim() }),
       ...(REWORK.has(action) && { reworkStage: form.reworkStage }),
       ...(action === 'sent_to_vendor' && { vendorId: form.vendorId, dueBackDate: form.dueBackDate }),
+      ...(action === 'alteration' && { readyBy: form.readyBy }),
       ...(action === 'rejected' && { resolution: form.resolution }),
       ...(CHARGEABLE.has(action) && { chargeable: form.chargeable }),
       ...(priced && form.charge !== '' && { chargeAmount: Math.round(Number(form.charge) * 100) }),
@@ -155,6 +159,17 @@ export function StageActionDialog({ action, garments, onClose, onDone }) {
                 error={missing.dueBackDate}
               />
             </>
+          )}
+          {action === 'alteration' && (
+            <TextInput
+              label="Ready by"
+              description="When the client will get the altered garment"
+              type="date"
+              min={todayYmd()}
+              value={form.readyBy}
+              onChange={(e) => set({ readyBy: e.currentTarget.value })}
+              error={missing.readyBy}
+            />
           )}
           {WITH_REASON.has(action) && (
             <TextInput label="Reason" value={form.reason} onChange={(e) => set({ reason: e.currentTarget.value })} error={missing.reason} />

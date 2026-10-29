@@ -23,6 +23,13 @@ test('sent_to_vendor needs vendor and due-back date', () => {
   expect(ok({ action: 'sent_to_vendor', vendorId: id(2), dueBackDate: '2026-11-15' })).toBe(true);
 });
 
+test('an alteration needs a ready-by date, and only an alteration has one', () => {
+  expect(ok({ action: 'alteration' })).toBe(false);
+  expect(ok({ action: 'alteration', readyBy: 'soon' })).toBe(false);
+  expect(ok({ action: 'alteration', readyBy: '2026-11-15' })).toBe(true);
+  expect(ok({ action: 'complete', readyBy: '2026-11-15' })).toBe(false);
+});
+
 test('rework and QC fail need a rework stage', () => {
   expect(ok({ action: 'qc_fail' })).toBe(false);
   expect(ok({ action: 'rework', reworkStage: 'tailors' })).toBe(true);
@@ -32,8 +39,8 @@ test('charges only on rework, QC fail and alteration', () => {
   expect(ok({ action: 'complete', chargeable: true })).toBe(false);
   expect(ok({ action: 'complete', chargeAmount: 100 })).toBe(false);
   expect(ok({ action: 'qc_fail', reworkStage: 'handwork', chargeable: true, chargeAmount: 50000 })).toBe(true);
-  expect(ok({ action: 'alteration', chargeable: true, chargeAmount: null })).toBe(true);
-  expect(ok({ action: 'alteration', chargeAmount: 1.5 })).toBe(false);
+  expect(ok({ action: 'alteration', readyBy: '2026-11-15', chargeable: true, chargeAmount: null })).toBe(true);
+  expect(ok({ action: 'alteration', readyBy: '2026-11-15', chargeAmount: 1.5 })).toBe(false);
 });
 
 test('rejection acts on one garment', () => {
@@ -42,7 +49,7 @@ test('rejection acts on one garment', () => {
   expect(ok({ action: 'rejected', reason: 'Disliked' })).toBe(false);
   expect(ok({ action: 'rejected', resolution: 'refund' })).toBe(false);
   expect(ok({ action: 'rejected', reason: 'Disliked', resolution: 'refund', garments: two })).toBe(false);
-  expect(ok({ action: 'alteration', garments: two })).toBe(false);
+  expect(ok({ action: 'alteration', readyBy: '2026-11-15', garments: two })).toBe(false);
 });
 
 test('garments are unique and at most 50', () => {

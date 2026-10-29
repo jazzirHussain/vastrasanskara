@@ -83,6 +83,20 @@ test('send to vendor needs a vendor and a due-back date', async () => {
   await expect.poll(api.posted).toMatchObject({ action: 'sent_to_vendor', stage: 'handwork', vendorId: 'v1', dueBackDate: due });
 });
 
+test('alteration asks for a ready-by date', async () => {
+  asDesigner();
+  const api = serve({ money: false, garment: { currentStage: 'trials_fittings' } });
+  renderApp('/orders/o1');
+  const dialog = await openMore('Alteration');
+  const field = within(dialog).getByLabelText('Ready by');
+  expect(field).toHaveValue(addDaysYmd(todayYmd(), 7));
+  expect(within(dialog).getByText('When the client will get the altered garment')).toBeInTheDocument();
+  const readyBy = addDaysYmd(todayYmd(), 10);
+  fireEvent.change(field, { target: { value: readyBy } });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+  await expect.poll(api.posted).toMatchObject({ action: 'alteration', stage: 'trials_fittings', readyBy });
+});
+
 test('operations sees hand over for a ready garment but no stage buttons', async () => {
   asOperations();
   const api = serve({ garment: { currentStage: 'ready_for_pickup', status: 'ready' } });
