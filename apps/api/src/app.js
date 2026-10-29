@@ -23,6 +23,7 @@ import { productionRouter } from './modules/production/routes.js';
 import { vendorsRouter } from './modules/vendors/routes.js';
 import { workersRouter } from './modules/workers/routes.js';
 import { periodsRouter } from './modules/periods/routes.js';
+import { catalogRouter } from './modules/catalog/routes.js';
 
 /** Builds the Express app. `mount(app)` adds routers before the 404 handler. */
 export function createApp({ config, storage = createStorage(config), mount, logger = defaultLogger } = {}) {
@@ -67,6 +68,7 @@ export function createApp({ config, storage = createStorage(config), mount, logg
   app.use('/v1/vendors', vendorsRouter());
   app.use('/v1/production', productionRouter());
   app.use('/v1/period-locks', periodsRouter());
+  app.use('/v1/catalog', catalogRouter());
   app.use('/v1/files', filesRouter(storage));
   app.use('/v1/notifications', notificationsRouter());
   app.use('/v1/admin/outbox', adminOutboxRouter());
