@@ -116,28 +116,50 @@ async function invoiceFor(branchId, invoiceId, customer, session) {
 const receivedSoFar = (held) => held.reduce((s, h) => s + h.available, 0);
 
 /**
- * What an order advance needs: refuses an advance that would take the money held for the order
- * past its estimated total, and works out the service share for a receipt voucher.
+ * What the part of an order payment left after its bills needs. The order's garments not on an
+ * issued bill are estimated; the money held for the order plus `amount` may not pass that
+ * estimate (`paidToBills` is added back into `maxAmount`, which is the most the payment could be).
+ * When the order has bills and nothing is left to bill, the money is kept as plain advance (null).
  */
-async function advanceFor(branchId, customer, loaded, amount, session) {
+async function advanceFor(branchId, customer, loaded, bills, { amount, paidToBills }, session) {
   const { order, garments } = loaded;
-  const estimate = await orderEstimate(branchId, order, garments, session);
+  const billed = new Set(bills.flatMap((b) => (b.garmentIds ?? []).map(String)));
+  const unbilled = garments.filter((g) => !billed.has(String(g._id)));
+  if (bills.length && !unbilled.some((g) => !NOT_BILLABLE.has(g.status))) return null;
+  const estimate = await orderEstimate(branchId, order, unbilled, session);
   const held = receivedSoFar(await availableByReceipt(branchId, customer._id, { orderId: order._id }, session));
   if (held + amount > estimate.estimatedTotal) {
     throw businessRule('ADVANCE_EXCEEDS_TOTAL', 'This is more than the order total', {
-      maxAmount: Math.max(0, estimate.estimatedTotal - held),
+      maxAmount: paidToBills + Math.max(0, estimate.estimatedTotal - held),
     });
   }
   const serviceShare = estimate.serviceGross > 0 ? mulDivRound(amount, estimate.serviceGross, estimate.estimatedTotal) : 0;
   return { estimate, serviceShare };
 }
 
+/** How much of `amount` each bill takes, oldest first, up to its balance: [{ invoice, amount }]. */
+async function planBills(bills, amount, session) {
+  const plan = [];
+  let remaining = amount;
+  for (const invoice of bills) {
+    if (remaining === 0) break;
+    const { balance } = await recomputeSettlement(invoice._id, session);
+    const take = Math.min(remaining, Math.max(0, balance));
+    if (take > 0) {
+      plan.push({ invoice, amount: take });
+      remaining -= take;
+    }
+  }
+  return plan;
+}
+
 const pdfFor = (branchId, now) => ({ key: newPdfKey(branchId, now), status: 'pending', attempts: 0, nextAttemptAt: now });
 
 /**
  * Records money received from a customer as a receipt, in one transaction dated today (IST):
- * against a bill (paid up to its balance; the rest stays on the bill's order as advance), as an
- * order advance (with a receipt voucher for its service share), or as an advance with no order.
+ * against a bill (paid up to its balance; the rest stays on the bill's order as advance), for an
+ * order (its issued bills first, oldest first; the rest is the order's advance, with a receipt
+ * voucher for its service share of what is not yet billed), or as an advance with no order.
  */
 export async function recordPayment(branchId, input, actor) {
   try {
@@ -154,12 +176,20 @@ export async function recordPayment(branchId, input, actor) {
       }
       await guardCustomerMoney(branchId, customer._id, session);
 
-      // An order advance: the order has no issued bill yet.
-      let advance = null;
-      if (!invoice && loaded) {
-        const billed = await Invoice.exists({ branchId, orderId: loaded.order._id, status: 'issued' }).session(session);
-        if (!billed) advance = await advanceFor(branchId, customer, loaded, input.amount, session);
-      }
+      // The money pays the named bill, or else the order's issued bills (oldest first), up to
+      // their balances; what is left is advance for the order (or for the customer).
+      const bills = invoice
+        ? [invoice]
+        : loaded
+          ? await Invoice.find({ branchId, orderId: loaded.order._id, status: 'issued' }).sort({ date: 1, _id: 1 }).session(session).lean()
+          : [];
+      const plan = await planBills(bills, input.amount, session);
+      const allocated = plan.reduce((sum, p) => sum + p.amount, 0);
+      const left = input.amount - allocated;
+      const advance =
+        !invoice && loaded && left > 0
+          ? await advanceFor(branchId, customer, loaded, bills, { amount: left, paidToBills: allocated }, session)
+          : null;
       const invoiceOrder = invoice?.orderId ? await getOrderForBilling(branchId, invoice.orderId, session).catch(() => null) : null;
       const order = loaded?.order ?? invoiceOrder?.order ?? null;
 
@@ -169,6 +199,7 @@ export async function recordPayment(branchId, input, actor) {
       const fyCode = financialYear(now).code;
       const month = date.slice(0, 7);
       const withVoucher = advance && advance.serviceShare > 0;
+      if (withVoucher && !branch.gstin) throw businessRule('BRANCH_GSTIN_MISSING', 'Add the shop GSTIN before issuing bills');
       const rvId = withVoucher ? new mongoose.Types.ObjectId() : null;
 
       const { number } = await takeDocumentNumber({ branchId, docType: 'receipt', now }, session);
@@ -214,26 +245,12 @@ export async function recordPayment(branchId, input, actor) {
         { session },
       );
 
-      let allocated = 0;
-      if (invoice) {
-        const { balance } = await recomputeSettlement(invoice._id, session);
-        allocated = Math.min(input.amount, Math.max(0, balance));
-        if (allocated > 0) {
-          await allocate(
-            {
-              branchId,
-              customerId: customer._id,
-              receiptId: receipt._id,
-              invoiceId: invoice._id,
-              amount: allocated,
-              reason: 'payment',
-              date,
-              by: actor.userId,
-            },
-            session,
-          );
-          await recomputeSettlement(invoice._id, session);
-        }
+      for (const { invoice: bill, amount } of plan) {
+        await allocate(
+          { branchId, customerId: customer._id, receiptId: receipt._id, invoiceId: bill._id, amount, reason: 'payment', date, by: actor.userId },
+          session,
+        );
+        await recomputeSettlement(bill._id, session);
       }
 
       await recordAudit(
@@ -251,6 +268,7 @@ export async function recordPayment(branchId, input, actor) {
             amount: input.amount,
             mode: input.mode,
             allocated,
+            allocations: plan.map((p) => ({ invoiceId: p.invoice._id, amount: p.amount })),
           },
           actor,
         },
@@ -357,7 +375,11 @@ export async function cancelReceipt(branchId, id, { reason }, actor) {
         ? await ReceiptVoucher.findOne({ _id: receipt.receiptVoucherId, branchId, status: 'issued' }).session(session)
         : null;
       if (rv) {
-        const adjusted = await Invoice.exists({ status: 'issued', 'advanceAdjustments.receiptVoucherId': rv._id }).session(session);
+        const adjusted = await Invoice.exists({
+          branchId,
+          status: 'issued',
+          'advanceAdjustments.receiptVoucherId': rv._id,
+        }).session(session);
         if (adjusted) throw businessRule('VOUCHER_ADJUSTED', 'Cancel the bill first');
       }
 

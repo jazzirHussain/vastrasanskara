@@ -248,3 +248,79 @@ test('operations record payments; designers cannot', async () => {
   ok(r);
   expect((await d1.agent.get(`/v1/billing/payments/${r.body.receipt.id}`)).status).toBe(403);
 });
+
+// --- Fix round 1: an order payment settles the order's bills first ---------------------------
+
+const lineBody = (l) => ({
+  key: l.key, source: l.source, itemId: l.itemId, garmentId: l.garmentId, stageEventId: l.stageEventId,
+  description: l.description, quantity: l.quantity, rate: l.rate, discount: l.discount, discountReason: l.discountReason,
+});
+/** Issues a bill for only the first `count` lines of the order's draft. */
+const billFirst = async (ops, order, count) => {
+  const draft = await draftFor(order);
+  const saved = await ops.agent.put(`/v1/billing/invoices/${draft.id}`).send({
+    version: draft.version, lines: draft.lines.slice(0, count).map(lineBody), invoiceDiscount: null, notes: '',
+  });
+  ok(saved, 200);
+  const r = await issue(ops, saved.body.invoice);
+  ok(r);
+  return r.body.invoice;
+};
+
+test('a payment on a billed order reduces that bill', async () => {
+  const { ops, customerId, takeOrder } = await world();
+  const order = await takeOrder({ prices: [450000] }); // ₹5,040
+  const bill = (await issue(ops, await draftFor(order))).body.invoice;
+  const r = await pay(ops, { customerId, orderId: order.id, amount: 200000, mode: 'cash' });
+  ok(r);
+  expect(r.body.receipt).toMatchObject({
+    allocations: [{ invoiceId: bill.id, number: bill.number, amount: 200000 }], unallocated: 0, receiptVoucher: null,
+    order: { id: order.id },
+  });
+  const view = (await ops.agent.get(`/v1/billing/invoices/${bill.id}`)).body.invoice;
+  expect(view.settlement).toMatchObject({ paid: 200000, balance: 304000 });
+});
+
+test('the excess over the bill stays as advance', async () => {
+  const { ops, customerId, items, takeOrder } = await world();
+  // Blouse ₹4,500 + 12 % = ₹5,040 is billed; stitching ₹1,000 + 5 % = ₹1,050 is not yet.
+  const order = await takeOrder({ prices: [450000, 100000] });
+  await asStitching(order, items, [1]);
+  const bill = await billFirst(ops, order, 1);
+  expect(bill.totals.total).toBe(504000);
+
+  const r = await pay(ops, { customerId, orderId: order.id, amount: 609000, mode: 'cash' });
+  ok(r);
+  expect(r.body.receipt).toMatchObject({ allocations: [{ invoiceId: bill.id, amount: 504000 }], unallocated: 105000 });
+  expect(r.body.receipt.receiptVoucher).toMatchObject({ taxable: 100000, cgst: 2500, sgst: 2500 });
+  const over = await pay(ops, { customerId, orderId: order.id, amount: 100, mode: 'cash' });
+  expect([over.status, over.body.error.code, over.body.error.details]).toEqual([422, 'ADVANCE_EXCEEDS_TOTAL', { maxAmount: 0 }]);
+
+  // Once everything is billed, money above the bills is kept as advance on the order (no voucher).
+  const done = await takeOrder({ prices: [450000] });
+  const doneBill = (await issue(ops, await draftFor(done))).body.invoice;
+  const extra = await pay(ops, { customerId, orderId: done.id, amount: 600000, mode: 'cash' });
+  ok(extra);
+  expect(extra.body.receipt).toMatchObject({ allocations: [{ invoiceId: doneBill.id, amount: 504000 }], unallocated: 96000, receiptVoucher: null });
+});
+
+test('two advances at once on one order cannot exceed its total', async () => {
+  const { ops, customerId, takeOrder } = await world();
+  const order = await takeOrder({ prices: [100000] }); // ₹1,050 with GST
+  const results = await Promise.all([1, 2].map(() => pay(ops, { customerId, orderId: order.id, amount: 60000, mode: 'cash' })));
+  expect(results.map((r) => r.status).sort()).toEqual([201, 422]);
+  expect(results.find((r) => r.status === 422).body.error).toMatchObject({ code: 'ADVANCE_EXCEEDS_TOTAL', details: { maxAmount: 45000 } });
+  expect(await Receipt.countDocuments()).toBe(1);
+});
+
+test('a receipt voucher needs the shop GSTIN', async () => {
+  const { ops, customerId, items, takeOrder } = await world();
+  const order = await takeOrder({ prices: [100000] });
+  await asStitching(order, items);
+  await Branch.updateOne({}, { gstin: null });
+  const r = await pay(ops, { customerId, orderId: order.id, amount: 105000, mode: 'cash' });
+  expect([r.status, r.body.error.code]).toEqual([422, 'BRANCH_GSTIN_MISSING']);
+  expect(await counterValue('receipt')).toBe(0);
+  // Goods only (no voucher) is still a receipt.
+  ok(await pay(ops, { customerId, orderId: (await takeOrder({ prices: [100000] })).id, amount: 50000, mode: 'cash' }));
+});
