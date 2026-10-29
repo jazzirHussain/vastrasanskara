@@ -2,7 +2,7 @@ import { test, expect } from 'vitest';
 import mongoose from 'mongoose';
 import { useTestDb } from './helpers/db.js';
 import { withTransaction } from '../src/core/db.js';
-import { nextDocumentNumber } from '../src/core/numbering.js';
+import { nextDocumentNumber, seriesUsed } from '../src/core/numbering.js';
 useTestDb();
 
 const branchId = new mongoose.Types.ObjectId();
@@ -26,4 +26,18 @@ test('an aborted transaction does not use up a number', async () => {
 });
 test('needs a transaction', async () => {
   await expect(nextDocumentNumber({ branchId, docType: 'order', now: new Date() })).rejects.toThrow(/transaction/);
+});
+test('seriesUsed knows a started series', async () => {
+  const now = new Date('2026-10-24T06:00:00Z');
+  expect(await seriesUsed(branchId, 'order', '2627')).toBe(false);
+  await expect(withTransaction(async (session) => {
+    await nextDocumentNumber({ branchId, docType: 'order', now }, session);
+    throw new Error('abort');
+  })).rejects.toThrow('abort');
+  expect(await seriesUsed(branchId, 'order', '2627')).toBe(false);
+  await take(now);
+  expect(await seriesUsed(branchId, 'order', '2627')).toBe(true);
+  expect(await seriesUsed(branchId, 'order', '2728')).toBe(false);
+  expect(await seriesUsed(branchId, 'invoice', '2627')).toBe(false);
+  expect(await seriesUsed(new mongoose.Types.ObjectId(), 'order', '2627')).toBe(false);
 });

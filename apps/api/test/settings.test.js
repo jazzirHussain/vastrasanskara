@@ -3,6 +3,8 @@ import { useTestDb } from './helpers/db.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { AuditLog } from '../src/core/audit/model.js';
 import { getQuietHours } from '../src/core/notify/catalog.js';
+import { withTransaction } from '../src/core/db.js';
+import { nextDocumentNumber } from '../src/core/numbering.js';
 useTestDb();
 const app = buildTestApp();
 
@@ -56,4 +58,19 @@ test('branch logo must be a logo uploaded for this branch', async () => {
   expect((await agent.put('/v1/branch').send({ logoKey: own })).status).toBe(200);
   const foreign = '000000000000000000000000/branch_logo/2026/7c9e6679-7425-40de-944b-e07fc1f90ae7.png';
   expect((await agent.put('/v1/branch').send({ logoKey: foreign })).status).toBe(400);
+});
+test('a used number series cannot be restarted', async () => {
+  const { agent, user } = await loginAs(app, { roles: ['admin'] });
+  expect((await agent.put('/v1/settings').send({ numberSeries: { 'invoice:2627': 101, 'receipt:2627': 5 } })).status).toBe(200);
+  await withTransaction((session) => nextDocumentNumber({ branchId: user.branchId, docType: 'invoice', now: new Date('2026-10-30T06:00:00Z'), start: 101 }, session));
+  const changed = await agent.put('/v1/settings').send({ numberSeries: { 'invoice:2627': 1, 'receipt:2627': 5 } });
+  expect(changed.status).toBe(422);
+  expect(changed.body.error).toMatchObject({ code: 'SERIES_IN_USE', details: { key: 'invoice:2627' } });
+  const removed = await agent.put('/v1/settings').send({ numberSeries: { 'receipt:2627': 5 } });
+  expect(removed.body.error).toMatchObject({ code: 'SERIES_IN_USE', details: { key: 'invoice:2627' } });
+  // Unused series and next year's start can still change; the used one may stay as it is.
+  const ok = await agent.put('/v1/settings').send({ numberSeries: { 'invoice:2627': 101, 'receipt:2627': 7, 'invoice:2728': 1 } });
+  expect(ok.status).toBe(200);
+  expect(ok.body.numberSeries).toEqual({ 'invoice:2627': 101, 'receipt:2627': 7, 'invoice:2728': 1 });
+  expect((await agent.put('/v1/settings').send({ billDueDays: 3 })).status).toBe(200);
 });
