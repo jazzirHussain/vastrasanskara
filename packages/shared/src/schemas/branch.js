@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { email, gstin, phone, stateCode } from './common.js';
 
 const prefix = z.string().trim().min(1).max(10);
+const docPrefix = z.string().trim().regex(/^[A-Z0-9-]{1,6}$/, 'Use up to 6 capital letters, digits or -');
 
 /** PUT /v1/branch body. stateCode/GSTIN consistency is checked on the merged branch. */
 export const branchPatchSchema = z
@@ -20,11 +21,11 @@ export const branchPatchSchema = z
     email: email.nullable(),
     logoKey: z.string().max(300).nullable(),
     prefixes: z.strictObject({
-      invoice: prefix,
-      creditNote: prefix,
-      receiptVoucher: prefix,
-      receipt: prefix,
-      refund: prefix,
+      invoice: docPrefix,
+      creditNote: docPrefix,
+      receiptVoucher: docPrefix,
+      receipt: docPrefix,
+      refund: docPrefix,
       expense: prefix,
       order: prefix,
     }),

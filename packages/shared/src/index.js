@@ -16,3 +16,5 @@ export * from './planning.js';
 export * from './production.js';
 export * from './schemas/production.js';
 export * from './schemas/workshop.js';
+export * from './schemas/catalog.js';
+export * from './schemas/billing.js';

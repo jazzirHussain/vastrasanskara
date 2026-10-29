@@ -26,6 +26,7 @@ export const PERMISSIONS = Object.freeze({
   SETTINGS_EDIT: 'settings.edit',
   USERS_MANAGE: 'users.manage',
   SYSTEM_MONITOR: 'system.monitor',
+  CATALOG_MANAGE: 'catalog.manage',
 });
 
 const ALL = Object.values(PERMISSIONS);
@@ -41,6 +42,7 @@ const NOT_OPERATIONS = new Set([
   P.USERS_MANAGE,
   P.SYSTEM_MONITOR,
   P.STOCK_CONSUME_OWN,
+  P.CATALOG_MANAGE,
 ]);
 
 export const ROLE_PERMISSIONS = Object.freeze({
