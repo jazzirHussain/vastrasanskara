@@ -228,3 +228,26 @@ test('the correction deadline is 30 November after the year ends', () => {
   expect(correctionDeadline('2027-04-01')).toBe('2028-11-30');
   expect(correctionDeadline('2026-12-15')).toBe('2027-11-30');
 });
+
+test('duplicate credit keys cannot exceed the line', () => {
+  const inv = computeInvoice({ lines: [line()], interState: false });
+  expect(() => computeCreditNote({
+    originalLines: inv.lines,
+    credits: [{ key: 'a', taxable: 40000 }, { key: 'a', taxable: 40000 }],
+    creditedSoFar: { a: 40000 },
+    interState: false,
+    full: false,
+  })).toThrow(expect.objectContaining({ code: 'CREDIT_EXCEEDS_LINE' }));
+});
+
+test('a voucher part must lie within the whole', () => {
+  const of = { gross: 1000, taxable: 900, cgst: 50, sgst: 50, igst: 0 };
+  expect(() => proportionalTax({ part: -1, whole: 10, of })).toThrow(RangeError);
+  expect(() => proportionalTax({ part: 11, whole: 10, of })).toThrow(RangeError);
+});
+
+test('an advance amount must be a non-negative integer', () => {
+  const parts = [{ weight: 1, rateBp: 500 }];
+  expect(() => computeAdvanceTax({ amount: -1, parts, interState: false })).toThrow(RangeError);
+  expect(() => computeAdvanceTax({ amount: 10.5, parts, interState: false })).toThrow(RangeError);
+});

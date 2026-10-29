@@ -149,6 +149,7 @@ function orderTotals(t) {
 
 /** Tax backed out of a tax-inclusive advance. Every part sums exactly to its gross. */
 export function computeAdvanceTax({ amount, parts, interState }) {
+  if (!isInt(amount) || amount < 0) throw new RangeError(`Invalid advance amount: ${amount}`);
   const grosses = allocateProRata(amount, parts.map((p) => p.weight));
   const lines = parts.map((p, i) => {
     const gross = grosses[i];
@@ -177,6 +178,9 @@ export function computeAdvanceTax({ amount, parts, interState }) {
 
 /** The share `part ÷ whole` of a document's figures; the whole returns the figures exactly. */
 export function proportionalTax({ part, whole, of }) {
+  if (!isInt(part) || !isInt(whole) || part < 0 || whole <= 0 || part > whole) {
+    throw new RangeError(`Invalid part ${part} of ${whole}`);
+  }
   if (part === whole) {
     const { gross, taxable, cgst, sgst, igst } = of;
     return { gross, taxable, cgst, sgst, igst };
@@ -199,7 +203,10 @@ export function computeCreditNote({ originalLines, credits, creditedSoFar = {}, 
     return { lines, totals: totalsOf(lines) };
   }
   if (!Array.isArray(credits) || credits.length === 0) throw new GstError('NO_LINES');
+  const seen = new Set();
   const lines = credits.map((c) => {
+    if (seen.has(c.key)) throw new GstError('CREDIT_EXCEEDS_LINE', `Line credited twice: ${c.key}`);
+    seen.add(c.key);
     const original = originalLines.find((l) => l.key === c.key);
     if (!original) throw new GstError('CREDIT_EXCEEDS_LINE', `Unknown line: ${c.key}`);
     if (!isInt(c.taxable) || c.taxable <= 0) throw new RangeError(`Invalid credit: ${c.taxable}`);
