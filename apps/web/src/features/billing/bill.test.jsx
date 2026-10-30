@@ -3,7 +3,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { computeInvoice, formatINR } from '@vs/shared';
-import { server, asDesigner } from '../../test/server.js';
+import { server, asDesigner, asOperations } from '../../test/server.js';
 import { renderApp } from '../../test/setup.js';
 import { orderDetailFixture } from '../../test/orders.js';
 import {
@@ -14,6 +14,7 @@ import {
   issuedFixture,
   lineInput,
   orderMoney,
+  orderMoneyFixture,
 } from '../../test/billing.js';
 
 afterEach(() => {
@@ -84,6 +85,11 @@ test('create bill from an order opens the draft with garments and charges', asyn
   expect(within(lineCard(2)).getByDisplayValue('Blouse — Blouse 2 (VS/ORD/2627/0007-02)')).toBeInTheDocument();
   expect(within(lineCard(3)).getByDisplayValue('Alteration — Blouse 1 (VS/ORD/2627/0007-01)')).toBeInTheDocument();
   expect(within(lineCard(3)).getByRole('textbox', { name: 'Billed as' })).toHaveValue('Alteration');
+  // ₹2,000 + ₹2,000 + ₹500 before GST, 5% on each.
+  expect(within(totals()).getByText('₹4,500.00')).toBeInTheDocument();
+  expect(within(totals()).getByText('GST 5%')).toBeInTheDocument();
+  expect(within(totals()).getByText('₹225.00')).toBeInTheDocument();
+  expect(within(totals()).getByText('₹4,725.00')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Issue bill' })).toBeEnabled();
 });
 
@@ -313,4 +319,198 @@ test('designers do not see the money panel', async () => {
   expect(screen.queryByRole('button', { name: 'Create bill' })).toBeNull();
   expect(screen.queryByText('Order value')).toBeNull();
   expect(asked).toBe(false);
+});
+
+test('a draft is read-only without the right to make bills', async () => {
+  asOperations(); // sees money, cannot make bills
+  let puts = 0;
+  server.use(
+    http.get('/v1/billing/invoices/inv1', () => HttpResponse.json({ invoice: draftFixture() })),
+    http.get('/v1/billing/orders/o1/summary', () => HttpResponse.json(orderMoneyFixture())),
+    http.put('/v1/billing/invoices/inv1', () => {
+      puts += 1;
+      return HttpResponse.json({ invoice: draftFixture() });
+    }),
+  );
+  renderApp('/bills/inv1');
+  expect(await screen.findByRole('heading', { name: 'Draft bill', level: 1 })).toBeInTheDocument();
+  expect(screen.getByText('Blouse — Blouse 1 (VS/ORD/2627/0007-01)')).toBeInTheDocument();
+  expect(within(totals()).getByText('₹2,100.00')).toBeInTheDocument();
+  expect(screen.getByText('Only staff who make bills can change this draft.')).toBeInTheDocument();
+  expect(screen.queryAllByRole('textbox')).toHaveLength(0);
+  for (const name of ['Issue bill', 'Delete draft', 'Add item', 'Remove', 'Give a discount on the whole bill']) {
+    expect(screen.queryByRole('button', { name })).toBeNull();
+  }
+  await userEvent.click(screen.getByText('Blouse — Blouse 1 (VS/ORD/2627/0007-01)'));
+  await userEvent.tab();
+  expect(puts).toBe(0);
+});
+
+test('a save refused because someone else changed the bill offers a reload', async () => {
+  asFrontDesk();
+  catalog();
+  let gets = 0;
+  let current = draftFixture();
+  server.use(
+    http.get('/v1/billing/invoices/inv1', () => {
+      gets += 1;
+      return HttpResponse.json({ invoice: current });
+    }),
+    http.put('/v1/billing/invoices/inv1', () => {
+      current = draftFixture({ lines: [lineInput({ rate: 250000 })], version: 1 }); // their change
+      return HttpResponse.json({ error: { code: 'CONFLICT', message: 'Version mismatch' } }, { status: 409 });
+    }),
+  );
+  renderApp('/bills/inv1');
+  await screen.findByRole('heading', { name: 'Draft bill', level: 1 });
+  const price = within(lineCard(1)).getByLabelText('Price (₹)');
+  await userEvent.clear(price);
+  await userEvent.type(price, '3000');
+  await userEvent.tab();
+  expect(await screen.findByText('Someone else changed this bill. Reload to see their changes.')).toBeInTheDocument();
+  const before = gets;
+  await userEvent.click(screen.getByRole('button', { name: 'Reload' }));
+  await expect.poll(() => within(lineCard(1)).getByLabelText('Price (₹)')).toHaveValue('2,500');
+  expect(gets).toBe(before + 1);
+  expect(screen.queryByText('Someone else changed this bill. Reload to see their changes.')).toBeNull();
+});
+
+/** An issued bill whose PDF link answers `answer(n)` for the n-th request; counts the requests. */
+function pdfServer(answer) {
+  const asked = { count: 0 };
+  server.use(
+    http.get('/v1/billing/invoices/inv1', () => HttpResponse.json({ invoice: issuedFixture({ pdf: { status: 'ready' } }) })),
+    http.get('/v1/billing/documents/inv1/pdf', () => {
+      asked.count += 1;
+      return answer(asked.count);
+    }),
+    http.get('https://files.test/bill.pdf', () => new HttpResponse('%PDF-1.7 bill', { headers: { 'Content-Type': 'application/pdf' } })),
+  );
+  return asked;
+}
+const readyLink = () => HttpResponse.json({ status: 'ready', url: 'https://files.test/bill.pdf', filename: 'INV-2627-0001.pdf' });
+const pendingLink = () => HttpResponse.json({ status: 'pending', url: null, filename: 'INV-2627-0001.pdf' });
+
+function mockShare(share) {
+  Object.defineProperty(navigator, 'share', { value: share, configurable: true });
+  Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
+  return () => {
+    delete navigator.share;
+    delete navigator.canShare;
+  };
+}
+
+test('print and share ask for a fresh link on every tap', async () => {
+  asFrontDesk();
+  const asked = pdfServer(readyLink);
+  vi.spyOn(window, 'open').mockImplementation(() => ({ opener: null, location: { href: '' }, close: vi.fn() }));
+  const share = vi.fn(async () => {});
+  const restore = mockShare(share);
+  try {
+    renderApp('/bills/inv1');
+    const print = await screen.findByRole('button', { name: 'Print / PDF' });
+    await expect.poll(() => print).toBeEnabled();
+    const start = asked.count;
+    await userEvent.click(print);
+    await expect.poll(() => asked.count).toBe(start + 1);
+    await userEvent.click(screen.getByRole('button', { name: 'Print / PDF' }));
+    await expect.poll(() => asked.count).toBe(start + 2);
+    await userEvent.click(screen.getByRole('button', { name: 'Share' }));
+    await expect.poll(() => share.mock.calls.length).toBe(1);
+    expect(asked.count).toBe(start + 3);
+  } finally {
+    restore();
+  }
+});
+
+test('a PDF that is not ready when tapped says so', async () => {
+  asFrontDesk();
+  pdfServer((n) => (n === 1 ? readyLink() : pendingLink()));
+  const tab = { opener: null, location: { href: '' }, close: vi.fn() };
+  vi.spyOn(window, 'open').mockReturnValue(tab);
+  renderApp('/bills/inv1');
+  const print = await screen.findByRole('button', { name: 'Print / PDF' });
+  await expect.poll(() => print).toBeEnabled();
+  await userEvent.click(print);
+  expect(await screen.findByText('The PDF is not ready yet. Try again in a minute.')).toBeInTheDocument();
+  expect(tab.close).toHaveBeenCalled();
+  expect(tab.location.href).toBe('');
+  expect(await screen.findByRole('button', { name: 'Preparing the PDF…' })).toBeDisabled();
+});
+
+test('a failed link request leaves the PDF button usable', async () => {
+  asFrontDesk();
+  const asked = pdfServer((n) =>
+    n === 1 ? HttpResponse.json({ error: { code: 'NOT_FOUND', message: 'Not found' } }, { status: 404 }) : readyLink(),
+  );
+  const tab = { opener: null, location: { href: '' }, close: vi.fn() };
+  vi.spyOn(window, 'open').mockReturnValue(tab);
+  renderApp('/bills/inv1');
+  const print = await screen.findByRole('button', { name: 'Print / PDF' });
+  await expect.poll(() => print).toBeEnabled();
+  expect(asked.count).toBe(1);
+  await userEvent.click(print);
+  await expect.poll(() => tab.location.href).toBe('https://files.test/bill.pdf');
+  expect(asked.count).toBe(2);
+});
+
+test('a PDF that takes too long stops waiting and offers to try again', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+  asFrontDesk();
+  const asked = pdfServer(pendingLink);
+  renderApp('/bills/inv1');
+  expect(await screen.findByRole('button', { name: 'Preparing the PDF…' })).toBeDisabled();
+  await vi.advanceTimersByTimeAsync(125_000);
+  expect(await screen.findByText('The PDF is taking longer than usual. Try again in a minute.')).toBeInTheDocument();
+  const stopped = asked.count;
+  expect(stopped).toBeGreaterThan(10); // it was polling every 5 s
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect(asked.count).toBe(stopped); // and has stopped
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  await user.click(screen.getByRole('button', { name: 'Try again' }));
+  await expect.poll(() => asked.count).toBe(stopped + 1);
+  expect(screen.queryByText('The PDF is taking longer than usual. Try again in a minute.')).toBeNull();
+});
+
+test('a share that fails says what to do in plain words', async () => {
+  asFrontDesk();
+  pdfServer(readyLink);
+  const restore = mockShare(
+    vi.fn(async () => {
+      throw new TypeError('DataError: internal share failure 0x80');
+    }),
+  );
+  try {
+    renderApp('/bills/inv1');
+    const share = await screen.findByRole('button', { name: 'Share' });
+    await expect.poll(() => share).toBeEnabled();
+    await userEvent.click(share);
+    expect(await screen.findByText('Couldn’t share. Use Print / PDF to download it instead.')).toBeInTheDocument();
+    expect(screen.queryByText(/0x80/)).toBeNull();
+  } finally {
+    restore();
+  }
+});
+
+test('deleting a draft goes back to the order without an error', async () => {
+  asFrontDesk();
+  catalog();
+  let deleted = false;
+  server.use(
+    http.get('/v1/billing/invoices/inv1', () =>
+      deleted
+        ? HttpResponse.json({ error: { code: 'NOT_FOUND', message: 'Not found' } }, { status: 404 })
+        : HttpResponse.json({ invoice: draftFixture() }),
+    ),
+    http.delete('/v1/billing/invoices/inv1', () => {
+      deleted = true;
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.get('/v1/orders/o1', () => HttpResponse.json(orderDetailFixture())),
+  );
+  renderApp('/bills/inv1');
+  await userEvent.click(await screen.findByRole('button', { name: 'Delete draft' }));
+  await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete draft' }));
+  expect(await screen.findByRole('heading', { name: 'VS/ORD/2627/0007', level: 1 })).toBeInTheDocument();
+  expect(screen.queryByText(/could not be found/)).toBeNull();
 });

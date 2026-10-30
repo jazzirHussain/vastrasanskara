@@ -2,7 +2,8 @@ import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Alert, Anchor, Button, Group, Loader, Modal, Stack, Text, Textarea } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { formatINR } from '@vs/shared/money.js';
+import { toMilli } from '@vs/shared/gst.js';
+import { formatINR, mulDivRound } from '@vs/shared/money.js';
 import { useAuth } from '../../auth/AuthContext.js';
 import { shortDate } from '../../components/DateLabel.jsx';
 import { PageHeader } from '../../components/PageHeader.jsx';
@@ -38,7 +39,8 @@ function Who({ invoice }) {
 
 function DeleteDraft({ invoice }) {
   const navigate = useNavigate();
-  const remove = useDeleteDraft(invoice.id);
+  // Leave the page first, then forget the bill: the page never flashes "not found".
+  const remove = useDeleteDraft(invoice.id, { onDeleted: () => navigate(invoice.order ? `/orders/${invoice.order.id}` : '/') });
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -56,7 +58,7 @@ function DeleteDraft({ invoice }) {
             <Button
               color="kumkum"
               loading={remove.isPending}
-              onClick={() => remove.mutate(undefined, { onSuccess: () => navigate(invoice.order ? `/orders/${invoice.order.id}` : '/') })}
+              onClick={() => remove.mutate()}
             >
               Delete draft
             </Button>
@@ -73,6 +75,36 @@ function DeleteDraft({ invoice }) {
  * at a time; a save with nothing new is skipped.
  */
 function DraftBill(props) {
+  const { can } = useAuth();
+  if (!can('billing.draft')) return <ReadOnlyDraft invoice={props.invoice} />;
+  return <EditableDraft {...props} />;
+}
+
+/** A draft for staff who see money but may not make bills: what is on it, nothing to change. */
+function ReadOnlyDraft({ invoice }) {
+  return (
+    <Stack gap={0} maw={880}>
+      <PageHeader title="Draft bill">
+        <Who invoice={invoice} />
+      </PageHeader>
+      <Stack gap="lg">
+        <Text size="sm" c="var(--vs-muted)">
+          Only staff who make bills can change this draft.
+        </Text>
+        <IssuedLines lines={invoice.lines} />
+        <BillTotals
+          draft
+          totals={invoice.totals}
+          rates={invoice.lines.map((l) => l.gstRateBp ?? 0)}
+          interState={invoice.placeOfSupply.interState}
+          unavailable={invoice.totals ? null : { missing: 'item' }}
+        />
+      </Stack>
+    </Stack>
+  );
+}
+
+function EditableDraft(props) {
   const catalog = useCatalogItems();
   if (catalog.isPending) return <Loader />;
   if (catalog.error) return <Alert color="red">{catalog.error.message}</Alert>;
@@ -233,11 +265,12 @@ function DraftForm({ invoice, allItems, onIssue, onReload }) {
   );
 }
 
+/** The lines as printed: description, quantity × price, discount, amount before GST. */
 function IssuedLines({ lines }) {
   return (
     <div className="vs-stack" role="list" aria-label="Lines">
       {lines.map((l) => {
-        const gross = l.taxable + l.discount + (l.invoiceDiscountShare ?? 0);
+        const gross = mulDivRound(l.rate, toMilli(l.quantity), 1000);
         return (
           <div key={l.key} role="listitem" className="vs-stack-row" style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ minWidth: 0 }}>

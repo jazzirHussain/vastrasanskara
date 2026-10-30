@@ -51,12 +51,15 @@ export function useSaveDraft(id) {
   });
 }
 
-export function useDeleteDraft(id) {
+/** Deletes a draft. `onDeleted` runs first (leave the page), then the bill is dropped from the cache. */
+export function useDeleteDraft(id, { onDeleted } = {}) {
   const queryClient = useQueryClient();
   const refresh = useRefresh();
   return useMutation({
     mutationFn: () => apiFetch(`/v1/billing/invoices/${id}`, { method: 'DELETE' }),
-    onSuccess: () => {
+    onSuccess: async () => {
+      onDeleted?.();
+      await queryClient.cancelQueries({ queryKey: invoiceKey(id) });
       queryClient.removeQueries({ queryKey: invoiceKey(id) });
       return refresh();
     },
