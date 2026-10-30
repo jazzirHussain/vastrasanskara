@@ -84,7 +84,7 @@ export const invoiceListQuery = z.strictObject({
   status: optional(z.enum(['draft', 'issued', 'cancelled'])),
   customerId: optional(id),
   orderId: optional(id),
-  payStatus: optional(z.enum(['unpaid', 'partial', 'paid'])),
+  payStatus: optional(z.enum(['unpaid', 'part_paid', 'paid'])),
   overdue: optional(z.enum(['true', 'false']).transform((v) => v === 'true')),
   from: optional(ymd),
   to: optional(ymd),
@@ -103,7 +103,7 @@ export const receiptListQuery = z.strictObject({
 });
 
 export const receivablesQuery = z.strictObject({
-  bucket: optional(z.enum(['overdue', 'd31_60', 'd61_90', 'd90_plus'])),
+  bucket: optional(z.enum(['overdue', 'not_due', 'd0_30', 'd31_60', 'd61_90', 'd90_plus'])),
   customerId: optional(id),
   cursor,
   limit,

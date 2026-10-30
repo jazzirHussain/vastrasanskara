@@ -90,6 +90,9 @@ billingDocumentSchema.index(
   { branchId: 1, type: 1, status: 1, dueDate: 1 },
   { name: 'receivables', partialFilterExpression: { type: 'invoice', 'settlement.balance': { $gt: 0 } } },
 );
+// Bill and payment lists: newest first, issued and cancelled together or apart; drafts by last change.
+billingDocumentSchema.index({ branchId: 1, type: 1, status: 1, date: -1, _id: -1 }, { name: 'bills_by_date' });
+billingDocumentSchema.index({ branchId: 1, type: 1, status: 1, updatedAt: -1, _id: -1 }, { name: 'drafts_by_update' });
 billingDocumentSchema.index({ orderId: 1, type: 1, status: 1 }, { name: 'order_docs' });
 billingDocumentSchema.index(
   { orderId: 1 },

@@ -5,20 +5,34 @@ import {
   creditNoteSchema,
   fromOrderSchema,
   invoiceDraftSchema,
+  invoiceListQuery,
+  ledgerQuery,
   issueSchema,
   paymentSchema,
+  receiptListQuery,
+  receivablesQuery,
   refundSchema,
 } from '@vs/shared/schemas/billing.js';
 import { actorFrom, requirePermission } from '../../core/auth/middleware.js';
 import { idempotent } from '../../core/idempotency.js';
 import { validate, versioned } from '../../core/validate.js';
 import { logger } from '../../logger.js';
-import { toCreditNoteJson, toInvoiceJson, toReceiptJson, toReceiptVoucherJson, toRefundJson } from './json.js';
+import {
+  toCreditNoteJson,
+  toInvoiceJson,
+  toInvoiceRowJson,
+  toReceiptJson,
+  toReceiptRowJson,
+  toReceiptVoucherJson,
+  toRefundJson,
+} from './json.js';
 import {
   cancelInvoice,
   cancelReceipt,
   createBlankDraft,
   createDraftFromOrder,
+  customerLedger,
+  customerMoneySummary,
   deleteDraft,
   getCreditNote,
   getInvoice,
@@ -29,6 +43,10 @@ import {
   issueCreditNote,
   issueInvoice,
   issueRefund,
+  listInvoices,
+  listReceipts,
+  listReceivables,
+  orderMoney,
   receiptView,
   recordPayment,
   refundView,
@@ -70,6 +88,32 @@ export function billingRouter(storage) {
   const router = Router();
   // Every billing route needs money.view: designers never see bills.
   router.use(requirePermission('money.view'));
+
+  router.get('/customers/:id/summary', async (req, res) => {
+    res.json(await customerMoneySummary(req.user.branchId, req.params.id));
+  });
+
+  router.get('/customers/:id/ledger', validate({ query: ledgerQuery }), async (req, res) => {
+    res.json(await customerLedger(req.user.branchId, req.params.id, req.validatedQuery));
+  });
+
+  router.get('/receivables', validate({ query: receivablesQuery }), async (req, res) => {
+    res.json(await listReceivables(req.user.branchId, req.validatedQuery));
+  });
+
+  router.get('/orders/:id/summary', async (req, res) => {
+    res.json(await orderMoney(req.user.branchId, req.params.id));
+  });
+
+  router.get('/invoices', validate({ query: invoiceListQuery }), async (req, res) => {
+    const { items, nextCursor } = await listInvoices(req.user.branchId, req.validatedQuery);
+    res.json({ items: items.map(toInvoiceRowJson), nextCursor });
+  });
+
+  router.get('/payments', validate({ query: receiptListQuery }), async (req, res) => {
+    const { items, nextCursor } = await listReceipts(req.user.branchId, req.validatedQuery);
+    res.json({ items: items.map(toReceiptRowJson), nextCursor });
+  });
 
   router.post('/invoices/from-order', requirePermission('billing.draft'), validate({ body: fromOrderSchema }), async (req, res) => {
     const { branchId } = req.user;

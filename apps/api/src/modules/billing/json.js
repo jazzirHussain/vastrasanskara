@@ -1,3 +1,7 @@
+import { payStatus } from '@vs/shared/billing.js';
+import { istDate } from '@vs/shared/fy.js';
+import { clock } from '../../clock.js';
+
 /** An invoice view (from invoiceView) as the API answers. */
 export function toInvoiceJson(view) {
   const { invoice } = view;
@@ -129,5 +133,40 @@ export function toRefundJson({ refund, sources }) {
     sources,
     rvReversal: refund.rvReversal ?? null,
     pdf: pdfOf(refund),
+  };
+}
+
+/** A bill row from listInvoices as the list answers. */
+export function toInvoiceRowJson({ doc, customer, order }) {
+  const issued = doc.status === 'issued';
+  const total = doc.status === 'draft' ? null : (doc.totals?.total ?? 0);
+  const balance = issued ? (doc.settlement?.balance ?? 0) : doc.status === 'cancelled' ? 0 : null;
+  return {
+    id: String(doc._id),
+    status: doc.status,
+    number: doc.number ?? null,
+    date: doc.date ?? null,
+    dueDate: doc.dueDate ?? null,
+    customer,
+    order,
+    total,
+    balance,
+    payStatus: issued ? payStatus({ total, balance }) : null,
+    overdue: issued && balance > 0 && Boolean(doc.dueDate) && istDate(clock.now()) > doc.dueDate,
+  };
+}
+
+/** A receipt row from listReceipts as the list answers. */
+export function toReceiptRowJson({ doc, customer, order }) {
+  return {
+    id: String(doc._id),
+    status: doc.status,
+    number: doc.number,
+    date: doc.date,
+    amount: doc.amount,
+    mode: doc.mode,
+    reference: doc.reference ?? '',
+    customer,
+    order,
   };
 }

@@ -336,3 +336,10 @@ export async function getOrderForBilling(branchId, orderId, session) {
   const garments = await Garment.find({ orderId: order._id }).sort({ index: 1 }).session(session ?? null).lean();
   return { order, garments };
 }
+
+/** Order numbers of the branch's orders by id, as a Map of id string to orderNo (for bill and payment lists). */
+export async function getOrderNumbers(branchId, ids) {
+  if (!ids.length) return new Map();
+  const orders = await Order.find({ branchId, _id: { $in: ids } }, { orderNo: 1 }).lean();
+  return new Map(orders.map((o) => [String(o._id), o.orderNo]));
+}
