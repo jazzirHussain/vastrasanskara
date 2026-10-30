@@ -25,3 +25,6 @@ export function billBadge(invoice) {
   const balance = invoice.balance ?? invoice.settlement?.balance ?? total;
   return of(payStatus({ total, balance }));
 }
+
+/** How a payment was made, in plain words. */
+export const MODE_LABELS = { cash: 'Cash', upi: 'UPI', card: 'Card', bank_transfer: 'Bank transfer' };

@@ -10,6 +10,7 @@ import { displayPhone } from './CustomersPage.jsx';
 import { MeasurementForm } from './MeasurementForm.jsx';
 import { MeasurementHistory } from './MeasurementHistory.jsx';
 import { useCustomer, useMeasurements, useRecordMeasurement, useUpdateCustomer } from './customersApi.js';
+import { CustomerMoney } from '../billing/CustomerMoney.jsx';
 import { CustomerOrders } from './CustomerOrders.jsx';
 
 const CHANNEL_LABELS = { whatsapp: 'WhatsApp', sms: 'SMS', email: 'Email' };
@@ -94,6 +95,8 @@ export function CustomerPage() {
           {measurements.data?.items.length > 0 && <MeasurementHistory items={measurements.data.items} garmentTypes={garmentTypes} />}
         </section>
       </div>
+
+      <CustomerMoney customer={c} />
 
       <CustomerOrders customerId={c.id} />
 

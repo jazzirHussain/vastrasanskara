@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/api.js';
 import { ORDERS_KEY } from '../orders/ordersApi.js';
 
@@ -110,4 +110,44 @@ export function useRecordPayment() {
     mutationFn: ({ body, key }) => apiFetch('/v1/billing/payments', { method: 'POST', body, idempotencyKey: key }).then((r) => r.receipt),
     onSuccess: () => refresh(),
   });
+}
+
+/** A cursor-paged list under /v1/billing, a page at a time. */
+function useBillingList(name, path, filters, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: [...BILLING_KEY, name, filters],
+    queryFn: ({ pageParam }) => apiFetch(path, { query: { ...filters, cursor: pageParam } }),
+    initialPageParam: undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    enabled,
+  });
+}
+
+/** Bills still owed, oldest due first: `{ items, totals: { count, balance, overdue } }` per page. Filters: bucket, customerId. */
+export function useReceivables(filters) {
+  return useBillingList('receivables', '/v1/billing/receivables', filters);
+}
+
+/** Bills (any status) matching status, payStatus, overdue, customerId, from, to, q. */
+export function useInvoices(filters) {
+  return useBillingList('invoices', '/v1/billing/invoices', filters);
+}
+
+/** Payments (receipts) matching from, to, mode, customerId. */
+export function useReceipts(filters) {
+  return useBillingList('receipts', '/v1/billing/payments', filters);
+}
+
+/** { billed, received, credited, refunded, outstanding, overdue, advanceHeld } for a customer. */
+export function useCustomerMoney(customerId, { enabled = true } = {}) {
+  return useQuery({
+    queryKey: [...BILLING_KEY, 'customer', customerId, 'summary'],
+    queryFn: () => apiFetch(`/v1/billing/customers/${customerId}/summary`),
+    enabled,
+  });
+}
+
+/** The customer's ledger, newest first, a page at a time. */
+export function useCustomerLedger(customerId, { enabled = true } = {}) {
+  return useBillingList(`customer-ledger-${customerId}`, `/v1/billing/customers/${customerId}/ledger`, {}, enabled);
 }

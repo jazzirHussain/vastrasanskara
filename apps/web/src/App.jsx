@@ -6,6 +6,7 @@ import { RequireAuth } from './auth/RequireAuth.jsx';
 import { RequirePermission } from './auth/RequirePermission.jsx';
 import { ResetPasswordPage } from './auth/ResetPasswordPage.jsx';
 import { BillPage } from './features/billing/BillPage.jsx';
+import { BillsPage } from './features/billing/BillsPage.jsx';
 import { CatalogPage } from './features/catalog/CatalogPage.jsx';
 import { CustomerPage } from './features/customers/CustomerPage.jsx';
 import { CustomersPage } from './features/customers/CustomersPage.jsx';
@@ -43,6 +44,7 @@ export default function App() {
               <Route path="/orders/new" element={<NewOrderPage />} />
             </Route>
             <Route element={<RequirePermission permission="money.view" />}>
+              <Route path="/bills" element={<BillsPage />} />
               <Route path="/bills/:id" element={<BillPage />} />
             </Route>
             <Route element={<RequirePermission permission="workshop.manage" />}>

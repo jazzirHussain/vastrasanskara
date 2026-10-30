@@ -80,5 +80,26 @@ test('desktop sidebar lists the pages the user may open', async () => {
   server.use(http.get('/v1/auth/me', () => HttpResponse.json(operations)));
   renderApp('/');
   const nav = await screen.findByRole('navigation', { name: 'Main' });
-  expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['Home', 'Orders', 'Production', 'New order', 'Customers']);
+  expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['Home', 'Orders', 'Bills', 'Customers', 'Production', 'New order']);
+});
+
+test('operations see Bills in the bottom bar and Production under More', async () => {
+  phoneWidth();
+  server.use(http.get('/v1/auth/me', () => HttpResponse.json(operations)));
+  renderApp('/');
+  const bar = await screen.findByRole('navigation', { name: 'Main' });
+  expect(within(bar).getAllByRole('link').map((a) => a.textContent)).toEqual(['Home', 'Orders', 'New order', 'Bills', 'Customers']);
+  expect(within(bar).queryByRole('link', { name: 'Production' })).toBeNull();
+  await userEvent.click(within(bar).getByRole('button', { name: 'More' }));
+  const more = await screen.findByRole('dialog');
+  expect(within(more).getByRole('link', { name: 'Production' })).toBeInTheDocument();
+  vi.restoreAllMocks();
+});
+test('designers keep Production in the bottom bar and have no Bills', async () => {
+  phoneWidth();
+  server.use(http.get('/v1/auth/me', () => HttpResponse.json(designer)));
+  renderApp('/');
+  const bar = await screen.findByRole('navigation', { name: 'Main' });
+  expect(within(bar).getAllByRole('link').map((a) => a.textContent)).toEqual(['Home', 'Orders', 'Customers', 'Production']);
+  vi.restoreAllMocks();
 });

@@ -37,6 +37,10 @@ export const server = setupServer(
   http.get('/v1/settings', () => HttpResponse.json(defaultSettings)),
   http.get('/v1/branch', () => HttpResponse.json(defaultBranch)),
   http.get('/v1/orders', () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get('/v1/billing/customers/:id/summary', () =>
+    HttpResponse.json({ billed: 0, received: 0, credited: 0, refunded: 0, outstanding: 0, overdue: 0, advanceHeld: 0 }),
+  ),
+  http.get('/v1/billing/customers/:id/ledger', () => HttpResponse.json({ items: [], nextCursor: null })),
   http.get('/v1/billing/orders/:id/summary', () =>
     HttpResponse.json({
       orderValue: 0,
