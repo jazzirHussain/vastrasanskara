@@ -1,3 +1,5 @@
+import { formatINR } from '@vs/shared/money.js';
+
 // Friendly text for the API's error codes; anything not listed shows the server's message.
 export const errorMessages = {
   INVALID_CREDENTIALS: 'Email or password is incorrect.',
@@ -45,6 +47,7 @@ export const errorMessages = {
   DOC_NUMBER_TOO_LONG: 'The bill number would be too long. Shorten the prefix in Settings.',
   INVALID_AMOUNT: 'An amount on this bill is not valid. Check the prices, quantities and discounts.',
   BAD_SLABS: 'An item on this bill has GST rates that do not work. Ask the owner to check the price list.',
+  ADVANCE_EXCEEDS_TOTAL: 'This is more than the order total.',
   NETWORK_ERROR: 'Cannot reach the server. Check your connection and try again.',
 };
 
@@ -57,3 +60,16 @@ export const billErrorMessages = {
 
 /** The plain message for an error on a bill screen. */
 export const billErrorMessage = (error) => billErrorMessages[error?.code] ?? error?.message;
+
+const paymentErrorMessages = {
+  IDEMPOTENCY_KEY_REUSED: 'This payment may already be saved. Check the receipts before trying again.',
+  IDEMPOTENCY_IN_PROGRESS: 'This payment may already be saved. Check the receipts before trying again.',
+};
+
+/** The plain message for an error while taking a payment (adds the limit when an advance is too big). */
+export function paymentErrorMessage(error) {
+  if (error?.code === 'ADVANCE_EXCEEDS_TOTAL' && Number.isSafeInteger(error.details?.maxAmount)) {
+    return `${error.message} The most you can take now is ${formatINR(error.details.maxAmount)}.`;
+  }
+  return paymentErrorMessages[error?.code] ?? error?.message;
+}

@@ -198,19 +198,19 @@ test('order money shows what is due, held and billed', async () => {
   const first = await get(w.ops, `/orders/${order.id}/summary`);
   expect(first).toMatchObject({
     orderValue: 450000, estimatedTotal: 504000, advanceDue: 225000, advanceHeld: 0, billed: 0, balanceDue: 0,
-    draftInvoiceId: null, invoices: [], receipts: [], refundSuggestion: null,
+    draftInvoiceId: null, invoices: [], receipts: [], refundSuggestion: null, hasUnbilled: true,
   });
 
   const paid = (await pay(w.ops, { customerId: w.customerId, orderId: order.id, amount: 100000, mode: 'cash' })).body.receipt;
   const draft = await draftFor(order);
   const mid = await get(w.ops, `/orders/${order.id}/summary`);
-  expect(mid).toMatchObject({ advanceDue: 125000, advanceHeld: 100000, billed: 0, draftInvoiceId: draft.id });
+  expect(mid).toMatchObject({ advanceDue: 125000, advanceHeld: 100000, billed: 0, draftInvoiceId: draft.id, hasUnbilled: true });
   expect(mid.receipts).toEqual([{ id: paid.id, number: paid.number, date: today(), amount: 100000, status: 'issued' }]);
 
   const bill = (await issue(w.ops, draft)).body.invoice;
   const after = await get(w.ops, `/orders/${order.id}/summary`);
   expect(after).toMatchObject({
-    advanceDue: 125000, advanceHeld: 0, billed: bill.totals.total, balanceDue: bill.totals.total - 100000, draftInvoiceId: null,
+    advanceDue: 125000, advanceHeld: 0, billed: bill.totals.total, balanceDue: bill.totals.total - 100000, draftInvoiceId: null, hasUnbilled: false,
   });
   expect(after.invoices).toEqual([{ id: bill.id, number: bill.number, status: 'issued', total: bill.totals.total, balance: bill.totals.total - 100000 }]);
   expect((await w.ops.agent.get(`/v1/billing/orders/${new mongoose.Types.ObjectId()}/summary`)).status).toBe(404);

@@ -62,7 +62,7 @@ async function billableFor(branchId, order, garments, session) {
 
 const newLine = (fields) => ({ garmentId: null, stageEventId: null, quantity: 1, discount: 0, discountReason: '', ...fields });
 
-async function proposeLines(branchId, order, allGarments, session) {
+export async function proposeLines(branchId, order, allGarments, session) {
   const settings = await readSettings(branchId, session);
   const label = (type) => settings.garmentTypes.find((t) => t.key === type)?.label ?? type;
   const { garments, events, hasRushBilled } = await billableFor(branchId, order, allGarments, session);

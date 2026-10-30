@@ -142,6 +142,7 @@ export function orderMoneyFixture(fields = {}) {
     advanceHeld: 0,
     billed: 0,
     balanceDue: 0,
+    hasUnbilled: true,
     draftInvoiceId: null,
     invoices: [],
     receipts: [],

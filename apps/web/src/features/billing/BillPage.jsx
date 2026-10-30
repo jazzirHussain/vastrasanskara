@@ -19,6 +19,7 @@ import { billBadge } from './billStatus.js';
 import { checkForm, formFrom, previewTotals, toBody } from './draftForm.js';
 import { IssueDialog } from './IssueDialog.jsx';
 import { PdfButtons } from './PdfButtons.jsx';
+import { TakePaymentDialog } from './TakePaymentDialog.jsx';
 
 const usePhone = () => useMediaQuery(PHONE_QUERY, false, { getInitialValueInEffect: false });
 
@@ -292,9 +293,12 @@ function IssuedLines({ lines }) {
 
 /** An issued or cancelled bill, exactly as printed: nothing on it can be changed. */
 function IssuedBill({ invoice }) {
+  const { can } = useAuth();
+  const [paying, setPaying] = useState(false);
   const badge = billBadge(invoice);
   const issued = invoice.status === 'issued';
   const rates = invoice.lines.map((l) => l.gstRateBp ?? 0);
+  const owed = issued ? (invoice.settlement?.balance ?? 0) : 0;
   return (
     <Stack gap={0} maw={880}>
       <PageHeader title={invoice.number}>
@@ -315,6 +319,11 @@ function IssuedBill({ invoice }) {
 
       <Stack gap="lg">
         <PdfButtons docId={invoice.id} number={invoice.number} />
+        {owed > 0 && can('payments.record') && (
+          <Button size="lg" onClick={() => setPaying(true)} style={{ alignSelf: 'flex-start' }}>
+            Take payment
+          </Button>
+        )}
         <IssuedLines lines={invoice.lines} />
         <BillTotals
           totals={invoice.totals}
@@ -330,6 +339,9 @@ function IssuedBill({ invoice }) {
           </Text>
         )}
       </Stack>
+      {paying && (
+        <TakePaymentDialog customer={invoice.customer} invoice={invoice} defaultAmount={owed} billBalance={owed} onDone={() => setPaying(false)} />
+      )}
     </Stack>
   );
 }

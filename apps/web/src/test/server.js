@@ -45,6 +45,7 @@ export const server = setupServer(
       advanceHeld: 0,
       billed: 0,
       balanceDue: 0,
+      hasUnbilled: true,
       draftInvoiceId: null,
       invoices: [],
       receipts: [],

@@ -99,3 +99,15 @@ export function useOrderMoney(orderId, { enabled = true } = {}) {
     enabled,
   });
 }
+
+/**
+ * Records a payment: `{ body, key }`, where `key` is the Idempotency-Key made when the dialog
+ * opened and sent again on every retry. Resolves to the receipt (with its voucher, if one was made).
+ */
+export function useRecordPayment() {
+  const refresh = useRefresh();
+  return useMutation({
+    mutationFn: ({ body, key }) => apiFetch('/v1/billing/payments', { method: 'POST', body, idempotencyKey: key }).then((r) => r.receipt),
+    onSuccess: () => refresh(),
+  });
+}
