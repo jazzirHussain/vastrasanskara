@@ -497,6 +497,8 @@ export async function issueInvoice(branchId, id, { version }, actor) {
       // Once saved the bill is fixed, so the voucher adjustments are worked out before the save.
       const { advanceApplied, adjustments } = await applyAdvance(invoice, calc.totals.total, { date, actor }, session);
       invoice.advanceAdjustments = adjustments;
+      // What the printed bill shows beside its total (the snapshot is read by the PDF alone).
+      invoice.snapshot = { ...invoice.snapshot, advanceApplied, balanceDue: calc.totals.total - advanceApplied };
       invoice.increment();
       await invoice.save({ session });
       await recomputeSettlement(invoice._id, session);

@@ -32,6 +32,7 @@ import {
   receiptView,
   recordPayment,
   refundView,
+  pdfLink,
   updateDraft,
 } from './service.js';
 
@@ -65,7 +66,7 @@ async function respondCommitted(req, res, kind, doc, extra = {}) {
   res.status(201).json(body);
 }
 
-export function billingRouter(_storage) {
+export function billingRouter(storage) {
   const router = Router();
   // Every billing route needs money.view: designers never see bills.
   router.use(requirePermission('money.view'));
@@ -80,6 +81,10 @@ export function billingRouter(_storage) {
     const { branchId } = req.user;
     const invoice = await createBlankDraft(branchId, req.body.customerId, actorFrom(req));
     res.status(201).json({ invoice: await jsonOf(branchId, invoice) });
+  });
+
+  router.get('/documents/:id/pdf', async (req, res) => {
+    res.json(await pdfLink(req.user.branchId, req.user, req.params.id, storage));
   });
 
   router.get('/invoices/:id', async (req, res) => {

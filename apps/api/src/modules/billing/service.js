@@ -11,3 +11,4 @@ export {
 } from './invoices.js';
 export { cancelReceipt, getReceipt, getReceiptVoucher, orderEstimate, receiptView, recordPayment } from './payments.js';
 export { getCreditNote, getRefund, issueCreditNote, issueRefund, refundView, suggestedRefund } from './corrections.js';
+export { canReadBillingPdf, pdfLink, renderPendingPdfs } from './pdfs.js';

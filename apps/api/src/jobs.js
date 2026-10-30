@@ -5,3 +5,4 @@ import './core/jobs/jobs.js';
 import './core/notify/jobs.js';
 import './core/backup/jobs.js';
 import './modules/production/jobs.js';
+import './modules/billing/jobs.js';
