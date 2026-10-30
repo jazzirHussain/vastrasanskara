@@ -540,6 +540,10 @@ export async function issueInvoice(branchId, id, { version }, actor) {
             amount: formatINR(calc.totals.total),
             balance: formatINR(calc.totals.total - advanceApplied),
             dueDate: displayDate(dueDate),
+            paymentLine:
+              calc.totals.total - advanceApplied > 0
+                ? `Amount to pay: ${formatINR(calc.totals.total - advanceApplied)}. Please pay by ${displayDate(dueDate)}.`
+                : 'Paid in full, thank you.',
           },
           attachments: [{ key: invoice.pdf.key, filename: pdfFilename(number) }],
         },

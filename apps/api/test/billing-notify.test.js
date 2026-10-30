@@ -8,7 +8,8 @@ import { Outbox } from '../src/core/notify/models.js';
 import { Customer } from '../src/modules/customers/model.js';
 import { Settings } from '../src/modules/settings/model.js';
 import { Branch } from '../src/modules/branches/model.js';
-import { Invoice } from '../src/modules/billing/model.js';
+import { AuditLog } from '../src/core/audit/model.js';
+import { Invoice, Receipt } from '../src/modules/billing/model.js';
 import { runDailyBillingChecks } from '../src/modules/billing/daily.js';
 
 useTestDb();
@@ -76,12 +77,52 @@ test('a client without email consent is skipped', async () => {
 
 test('a failed issue queues nothing', async () => {
   const w = await setup();
-  const order = await w.takeOrder();
-  const draft = await draftFor(order);
-  await Branch.updateOne({}, { gstin: null });
+  const draft = await draftFor(await w.takeOrder());
+  // Fails after the message is queued, inside the same transaction.
+  vi.spyOn(Invoice, 'findById').mockImplementation(() => {
+    throw new Error('boom');
+  });
   const r = await issue(w.ops, draft);
-  expect(r.status).toBe(422);
+  expect(r.status).toBeGreaterThanOrEqual(500);
+  vi.restoreAllMocks();
   expect(await Outbox.countDocuments({ event: 'invoice.issued' })).toBe(0);
+  expect((await Invoice.findById(draft.id).lean()).status).toBe('draft');
+});
+
+test('a failed payment queues nothing', async () => {
+  const w = await setup();
+  const order = await w.takeOrder();
+  vi.spyOn(Receipt, 'findById').mockImplementation(() => {
+    throw new Error('boom');
+  });
+  const r = await pay(w.ops, { customerId: w.customerId, orderId: order.id, amount: 100000, mode: 'cash' });
+  expect(r.status).toBeGreaterThanOrEqual(500);
+  vi.restoreAllMocks();
+  expect(await Outbox.countDocuments({ event: 'order.confirmed' })).toBe(0);
+  expect(await Receipt.countDocuments()).toBe(0);
+});
+
+test('paying a bill does not send order confirmed', async () => {
+  const w = await setup();
+  const { bill } = await issued(w);
+  ok(await pay(w.ops, { customerId: w.customerId, invoiceId: bill.id, amount: 100000, mode: 'cash' }));
+  expect(await Outbox.countDocuments({ event: 'order.confirmed' })).toBe(0);
+});
+
+test('a bill paid by advance says paid in full', async () => {
+  const w = await setup();
+  const order = await w.takeOrder();
+  ok(await pay(w.ops, { customerId: w.customerId, orderId: order.id, amount: 504000, mode: 'cash' }));
+  ok(await issue(w.ops, await draftFor(order)));
+  const [row] = await rows('invoice.issued');
+  expect(row.vars.paymentLine).toBe('Paid in full, thank you.');
+});
+
+test('a bill with a balance asks for the balance and due date', async () => {
+  const w = await setup();
+  await issued(w);
+  const [row] = await rows('invoice.issued');
+  expect(row.vars.paymentLine).toMatch(/^Amount to pay: ₹.*\. Please pay by /);
 });
 
 test('reminders go the day after due, then weekly, four at most', async () => {
@@ -113,10 +154,12 @@ test('paused reminders are skipped and resume', async () => {
   const day = addDaysYmd(await dueOf(bill), 1);
   const put = (paused) => w.admin.agent.put(`/v1/billing/invoices/${bill.id}/reminders`).send({ paused });
   ok(await put(true), 200);
+  expect(await AuditLog.countDocuments({ action: 'reminders_paused', entityId: bill.id })).toBe(1);
   await run('10:00', day);
   expect(await rows('invoice.overdue')).toHaveLength(0);
   expect((await rows('invoice.overdue_digest')).length).toBeGreaterThan(0);
   ok(await put(false), 200);
+  expect(await AuditLog.countDocuments({ action: 'reminders_resumed', entityId: bill.id })).toBe(1);
   await run('10:15', day);
   expect(await rows('invoice.overdue')).toHaveLength(1);
 });
@@ -163,14 +206,14 @@ test('the collections summary waits for closing time and goes once', async () =>
 });
 
 test('a later closing time is respected and a quiet day still gets a summary', async () => {
-  const w = await setup();
+  await setup();
   await Settings.updateOne({ branchId: (await Branch.findOne())._id }, { $set: { 'values.closingTime': '21:00' } }, { upsert: true });
   await run('20:30');
   expect(await rows('billing.collections_summary')).toHaveLength(0);
   await run('21:00');
   const [row] = await rows('billing.collections_summary');
   expect(row.vars).toMatchObject({ count: 0, total: '₹0.00', byMode: 'No payments today' });
-  expect(w.admin).toBeTruthy();
+  expect(await rows('billing.collections_summary')).toHaveLength(2);
 });
 
 test('only admins pause reminders', async () => {

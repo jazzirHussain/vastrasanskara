@@ -22,7 +22,7 @@ defineEvent('invoice.issued', {
   templates: {
     email: {
       subject: 'Your bill {invoiceNo}',
-      body: 'Hello {customerName},\n\nYour bill {invoiceNo} for {amount} is attached.\n\nAmount to pay: {balance}. Please pay by {dueDate}.',
+      body: 'Hello {customerName},\n\nYour bill {invoiceNo} for {amount} is attached.\n\n{paymentLine}',
     },
   },
 });

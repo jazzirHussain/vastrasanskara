@@ -339,9 +339,9 @@ export async function recordPayment(branchId, input, actor) {
         rvNumber = rv.number;
       }
 
-      // The first receipt of an order confirms it (the dedupe key is the order, so a later
-      // payment, or one retried, sends nothing more).
-      if (order) {
+      // The order's first advance confirms it (the dedupe key is the order, so later advances,
+      // or one retried, send nothing more). Paying a bill is not a confirmation.
+      if (advance && order) {
         const attachments = [{ key: receipt.pdf.key, filename: pdfFilename(number) }];
         if (rvPdf) attachments.push({ key: rvPdf.key, filename: pdfFilename(rvNumber) });
         await emit(
