@@ -7,6 +7,7 @@ import { billingHelpers } from './helpers/billing.js';
 import { today } from './helpers/production.js';
 import { clock } from '../src/clock.js';
 import { Branch } from '../src/modules/branches/model.js';
+import { Garment } from '../src/modules/orders/model.js';
 import { BillingDocument, Invoice } from '../src/modules/billing/model.js';
 import { ledgerFilter, receivablesFilter } from '../src/modules/billing/ledger.js';
 
@@ -214,6 +215,35 @@ test('order money shows what is due, held and billed', async () => {
   });
   expect(after.invoices).toEqual([{ id: bill.id, number: bill.number, status: 'issued', total: bill.totals.total, balance: bill.totals.total - 100000 }]);
   expect((await w.ops.agent.get(`/v1/billing/orders/${new mongoose.Types.ObjectId()}/summary`)).status).toBe(404);
+});
+
+test('order money says whether anything is left to bill', async () => {
+  const w = await world();
+  const unbilled = async (order) => (await get(w.ops, `/orders/${order.id}/summary`)).hasUnbilled;
+
+  // Only rejected or cancelled garments remain: nothing to bill.
+  const dead = await w.takeOrder({ prices: [100000, 200000] });
+  await Garment.updateMany({ _id: { $in: dead.garments.map((g) => g.id) } }, { status: 'cancelled' });
+  expect(await unbilled(dead)).toBe(false);
+
+  // One garment billed, one not: still something to bill.
+  const part = await w.takeOrder({ prices: [100000, 200000] });
+  const second = await Garment.findById(part.garments[1].id).lean();
+  await Garment.updateOne({ _id: second._id }, { status: 'cancelled' });
+  await issued(w.ops, part);
+  expect(await unbilled(part)).toBe(false);
+  await Garment.updateOne({ _id: second._id }, { status: second.status });
+  expect(await unbilled(part)).toBe(true);
+
+  // Every garment billed, but a rush fee not yet billed (the price list gained it later).
+  const rush = await w.takeOrder({ priority: 'rush' });
+  await issued(w.ops, rush);
+  expect(await unbilled(rush)).toBe(false);
+  await w.addItem({
+    name: 'Rush charge', kind: 'extra_charge', supplyType: 'service', hsnSac: '998821', defaultPrice: 100000,
+    gstSlabs: [{ upToUnitPrice: null, rateBp: 1800 }], chargeFor: 'rush',
+  });
+  expect(await unbilled(rush)).toBe(true);
 });
 
 test('bill and payment lists filter by customer, status and date', async () => {

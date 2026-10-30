@@ -45,6 +45,9 @@ export function OrderMoneyPanel({ order }) {
   const canBill = can('billing.draft') && live;
   const canPay = can('payments.record') && live;
   const hasIssuedBill = m.invoices.some((b) => b.status === 'issued');
+  // Money owed on bills is paid as "payment"; with none owed, more garments still to bill take an advance.
+  const owesOnBills = m.balanceDue > 0;
+  const payAction = owesOnBills ? 'Take payment' : !hasIssuedBill || m.hasUnbilled ? 'Take advance' : null;
 
   return (
     <section aria-label="Money" className="vs-panel" style={{ padding: 20, marginBottom: 24 }}>
@@ -78,9 +81,9 @@ export function OrderMoneyPanel({ order }) {
                   Everything on this order is billed
                 </Text>
               ))}
-            {canPay && (
+            {canPay && payAction && (
               <Button size="md" variant="default" onClick={() => setPaying(true)}>
-                {hasIssuedBill ? 'Take payment' : 'Take advance'}
+                {payAction}
               </Button>
             )}
           </Group>
@@ -89,8 +92,8 @@ export function OrderMoneyPanel({ order }) {
           <TakePaymentDialog
             customer={order.customer}
             order={order}
-            defaultAmount={hasIssuedBill ? m.balanceDue : m.advanceDue}
-            billBalance={hasIssuedBill ? m.balanceDue : 0}
+            defaultAmount={owesOnBills ? m.balanceDue : m.advanceDue}
+            billBalance={m.balanceDue}
             onDone={() => setPaying(false)}
           />
         )}

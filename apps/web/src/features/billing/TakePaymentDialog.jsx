@@ -50,7 +50,7 @@ function paiseOf(value) {
  */
 export function TakePaymentDialog({ customer, order = null, invoice = null, defaultAmount = 0, billBalance = 0, onDone }) {
   const phone = useMediaQuery(PHONE_QUERY, false, { getInitialValueInEffect: false });
-  const [key] = useState(() => crypto.randomUUID());
+  const [key, setKey] = useState(() => crypto.randomUUID());
   const record = useRecordPayment();
   const [amount, setAmount] = useState(() => rupeeText(defaultAmount));
   const [mode, setMode] = useState('cash');
@@ -63,6 +63,14 @@ export function TakePaymentDialog({ customer, order = null, invoice = null, defa
   const receipt = record.data;
   const kept = paise !== null && billBalance > 0 && paise > billBalance ? paise - billBalance : 0;
   const networkDown = record.error?.code === 'NETWORK_ERROR';
+  // After a dropped connection the payment may or may not be saved: the details stay as sent so
+  // "Try again" is the same payment with the same key. "Start again" makes a new one.
+  const locked = networkDown;
+
+  function startAgain() {
+    setKey(crypto.randomUUID());
+    record.reset();
+  }
 
   function save() {
     record.mutate({
@@ -83,10 +91,11 @@ export function TakePaymentDialog({ customer, order = null, invoice = null, defa
   return (
     <Modal
       opened
-      onClose={onDone}
       title={receipt ? 'Payment saved' : `Take payment from ${customer.name}`}
       centered={!phone}
       fullScreen={phone}
+      onClose={record.isPending ? () => {} : onDone}
+      withCloseButton={!record.isPending}
       closeOnClickOutside={!record.isPending && !receipt}
       closeOnEscape={!record.isPending}
     >
@@ -116,6 +125,7 @@ export function TakePaymentDialog({ customer, order = null, invoice = null, defa
             thousandSeparator=""
             value={amount}
             onChange={(v) => setAmount(v === '' ? '' : String(v))}
+            disabled={locked}
             data-autofocus
           />
 
@@ -130,6 +140,7 @@ export function TakePaymentDialog({ customer, order = null, invoice = null, defa
                   size="lg"
                   variant={mode === m.value ? 'filled' : 'default'}
                   aria-pressed={mode === m.value}
+                  disabled={locked}
                   onClick={() => setMode(m.value)}
                 >
                   {m.label}
@@ -139,22 +150,23 @@ export function TakePaymentDialog({ customer, order = null, invoice = null, defa
           </div>
 
           {mode !== 'cash' && (
-            <TextInput label={REFERENCE_LABEL[mode]} size="md" maxLength={100} value={reference} onChange={(e) => setReference(e.currentTarget.value)} />
+            <TextInput label={REFERENCE_LABEL[mode]} size="md" maxLength={100} disabled={locked} value={reference} onChange={(e) => setReference(e.currentTarget.value)} />
           )}
-          <TextInput label="Note (optional)" size="md" maxLength={300} value={note} onChange={(e) => setNote(e.currentTarget.value)} />
+          <TextInput label="Note (optional)" size="md" maxLength={300} disabled={locked} value={note} onChange={(e) => setNote(e.currentTarget.value)} />
 
           {earlier ? (
             <TextInput
               label="Date received"
               type="date"
               size="md"
+              disabled={locked}
               max={istDate(new Date())}
               value={receivedOn}
               onChange={(e) => setReceivedOn(e.currentTarget.value)}
               description="The receipt is dated today; this day is noted on it."
             />
           ) : (
-            <Anchor component="button" type="button" size="sm" onClick={() => setEarlier(true)} style={{ alignSelf: 'flex-start' }}>
+            <Anchor component="button" type="button" size="sm" disabled={locked} onClick={() => setEarlier(true)} style={{ alignSelf: 'flex-start' }}>
               Paid on an earlier day?
             </Anchor>
           )}
@@ -169,6 +181,11 @@ export function TakePaymentDialog({ customer, order = null, invoice = null, defa
           <Button size="lg" fullWidth loading={record.isPending} disabled={paise === null} onClick={save}>
             {networkDown ? 'Try again' : paise === null ? 'Enter the amount' : `Save payment of ${formatINR(paise)}`}
           </Button>
+          {networkDown && (
+            <Button size="md" variant="subtle" fullWidth onClick={startAgain}>
+              Start again
+            </Button>
+          )}
         </Stack>
       )}
     </Modal>

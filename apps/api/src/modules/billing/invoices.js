@@ -62,7 +62,17 @@ async function billableFor(branchId, order, garments, session) {
 
 const newLine = (fields) => ({ garmentId: null, stageEventId: null, quantity: 1, discount: 0, discountReason: '', ...fields });
 
-export async function proposeLines(branchId, order, allGarments, session) {
+/**
+ * Whether a new bill would have anything on it: the same rule as proposeLines, answered from the
+ * first billable garment, charge or rush fee without looking up any price-list items.
+ */
+export async function hasUnbilled(branchId, order, garments) {
+  const { garments: billable, events, hasRushBilled } = await billableFor(branchId, order, garments);
+  if (billable.length || events.length) return true;
+  return order.priority === 'rush' && !hasRushBilled && Boolean(await itemForCharge(branchId, 'rush'));
+}
+
+async function proposeLines(branchId, order, allGarments, session) {
   const settings = await readSettings(branchId, session);
   const label = (type) => settings.garmentTypes.find((t) => t.key === type)?.label ?? type;
   const { garments, events, hasRushBilled } = await billableFor(branchId, order, allGarments, session);

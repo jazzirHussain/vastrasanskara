@@ -163,3 +163,61 @@ test('with a bill issued the order offers Take payment; with nothing left to bil
   await userEvent.click(within(panel).getByRole('button', { name: 'Take payment' }));
   expect(await screen.findByLabelText('Amount (₹)')).toHaveValue('1100');
 });
+
+test('the dialog cannot be closed while the payment is being saved', async () => {
+  asFrontDesk();
+  orderMoney({ advanceDue: 200000 });
+  let release;
+  const gate = new Promise((resolve) => (release = resolve));
+  const posts = paymentsServer(async () => {
+    await gate;
+    return HttpResponse.json({ receipt: receiptFixture() }, { status: 201 });
+  });
+  const dialog = await openOrderDialog('Take advance');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Save payment of ₹2,000.00' }));
+  await vi.waitFor(() => expect(posts).toHaveLength(1));
+  expect(document.querySelector('.mantine-Modal-close')).toBeNull();
+  await userEvent.keyboard('{Escape}');
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  release();
+  expect(await within(dialog).findByText('Receipt RCPT/2627/0004 saved')).toBeInTheDocument();
+});
+
+test('after a network error the details are locked until Try again or Start again', async () => {
+  asFrontDesk();
+  orderMoney({ advanceDue: 200000 });
+  const posts = paymentsServer((n) => (n === 1 ? HttpResponse.error() : HttpResponse.json({ receipt: receiptFixture() }, { status: 201 })));
+  const dialog = await openOrderDialog('Take advance');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Save payment of ₹2,000.00' }));
+  await within(dialog).findByText(/Cannot reach the server/);
+  expect(within(dialog).getByLabelText('Amount (₹)')).toBeDisabled();
+  expect(within(dialog).getByRole('button', { name: 'UPI' })).toBeDisabled();
+
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Start again' }));
+  expect(within(dialog).queryByText(/Cannot reach the server/)).toBeNull();
+  const amount = within(dialog).getByLabelText('Amount (₹)');
+  expect(amount).toBeEnabled();
+  await userEvent.clear(amount);
+  await userEvent.type(amount, '1500');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Save payment of ₹1,500.00' }));
+  await within(dialog).findByText('Receipt RCPT/2627/0004 saved');
+  expect(posts[1].key).not.toBe(posts[0].key);
+  expect(posts[1].body.amount).toBe(150000);
+});
+
+test('after part of an order is billed and paid, the action is Take advance for the rest', async () => {
+  asFrontDesk();
+  orderMoney({
+    hasUnbilled: true,
+    advanceDue: 80000,
+    billed: 210000,
+    balanceDue: 0,
+    invoices: [{ id: 'inv0', number: 'INV/2627/0001', status: 'issued', total: 210000, balance: 0 }],
+  });
+  const posts = paymentsServer();
+  const dialog = await openOrderDialog('Take advance');
+  expect(within(dialog).getByLabelText('Amount (₹)')).toHaveValue('800');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Save payment of ₹800.00' }));
+  await within(dialog).findByText('Receipt RCPT/2627/0004 saved');
+  expect(posts[0].body).toMatchObject({ orderId: 'o1', invoiceId: null, amount: 80000 });
+});

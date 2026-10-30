@@ -18,7 +18,7 @@ import { getCustomer, getCustomerNames } from '../customers/service.js';
 import { getOrderForBilling, getOrderNumbers } from '../orders/service.js';
 import { readSettings } from '../settings/service.js';
 import { suggestedRefund } from './corrections.js';
-import { proposeLines } from './invoices.js';
+import { hasUnbilled } from './invoices.js';
 import { Allocation, BillingDocument, Invoice, Receipt } from './model.js';
 import { orderEstimate } from './payments.js';
 
@@ -232,7 +232,7 @@ export async function orderMoney(branchId, orderId) {
     billed: issuedBills.reduce((s, b) => s + b.totals.total, 0),
     balanceDue: issuedBills.reduce((s, b) => s + b.settlement.balance, 0),
     // Whether a new bill would have anything on it (garments, charges or a rush fee not yet billed).
-    hasUnbilled: (await proposeLines(branchId, order, garments)).length > 0,
+    hasUnbilled: await hasUnbilled(branchId, order, garments),
     draftInvoiceId: bills.find((b) => b.status === 'draft')?._id.toString() ?? null,
     invoices: bills
       .filter((b) => b.status !== 'draft')
