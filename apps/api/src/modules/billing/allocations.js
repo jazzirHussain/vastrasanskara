@@ -106,6 +106,17 @@ export async function releaseInvoice(invoice, amount, reason, actor, session) {
   return written;
 }
 
+/** The settlement a bill should show, from its allocation rows and issued credit notes. */
+export function settlementOf(invoice, rows, notes) {
+  const cancelled = invoice.status === 'cancelled';
+  const paid = rows.reduce((s, r) => s + r.amount, 0);
+  const credited = notes.reduce((s, n) => s + n.totals.total, 0);
+  // A cancelled bill has given all its money back as advance and is owed nothing.
+  const advanceApplied = cancelled ? 0 : rows.filter((r) => r.reason === 'advance_applied').reduce((s, r) => s + r.amount, 0);
+  const balance = cancelled ? 0 : invoice.totals.total - paid - credited;
+  return { advanceApplied, paid, credited, balance };
+}
+
 /**
  * Recomputes the bill's settlement cache from its allocations and issued credit notes (never
  * incremented) and saves it. Returns { advanceApplied, paid, credited, balance }.
@@ -117,13 +128,7 @@ export async function recomputeSettlement(invoiceId, session) {
   const rows = await Allocation.find({ invoiceId }, { amount: 1, reason: 1 }).session(session).lean();
   const notes = await CreditNote.find({ invoiceId, status: 'issued' }, { 'totals.total': 1 }).session(session).lean();
 
-  const cancelled = invoice.status === 'cancelled';
-  const paid = rows.reduce((s, r) => s + r.amount, 0);
-  const credited = notes.reduce((s, n) => s + n.totals.total, 0);
-  // A cancelled bill has given all its money back as advance and is owed nothing.
-  const advanceApplied = cancelled ? 0 : rows.filter((r) => r.reason === 'advance_applied').reduce((s, r) => s + r.amount, 0);
-  const balance = cancelled ? 0 : invoice.totals.total - paid - credited;
-  const settlement = { advanceApplied, paid, credited, balance };
+  const settlement = settlementOf(invoice, rows, notes);
 
   invoice.settlement = settlement;
   await invoice.save({ session });

@@ -39,6 +39,9 @@ for (const op of [
 ]) {
   auditSchema.pre(op, { document: false, query: true }, refuse);
 }
+auditSchema.pre('save', function onlyInserts() {
+  if (!this.isNew) refuse();
+});
 auditSchema.pre(['updateOne', 'deleteOne'], { document: true, query: false }, refuse);
 
 export const AuditLog = mongoose.models.AuditLog ?? mongoose.model('AuditLog', auditSchema);

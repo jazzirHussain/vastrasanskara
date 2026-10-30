@@ -27,6 +27,15 @@ test('records a new set every time, never overwrites', async () => {
   await expect(Measurement.updateOne({ customerId: id }, { notes: 'x' })).rejects.toThrow('append-only');
   await expect(Measurement.deleteMany({ customerId: id })).rejects.toThrow('append-only');
 });
+test('a loaded measurement cannot be changed and saved', async () => {
+  const { agent } = await loginAs(app, { roles: ['operations'] });
+  const id = await customerOf(agent);
+  await agent.post(`/v1/customers/${id}/measurements`).send(blouse(34));
+  const loaded = await Measurement.findOne({ customerId: id });
+  loaded.notes = 'edited';
+  await expect(loaded.save()).rejects.toThrow('append-only');
+  expect((await Measurement.findOne({ customerId: id })).notes).toBe('');
+});
 test('latest per garment type', async () => {
   const { agent } = await loginAs(app, { roles: ['operations'] });
   const id = await customerOf(agent);

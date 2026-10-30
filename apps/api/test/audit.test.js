@@ -56,6 +56,13 @@ test('mongoose updates and deletes are refused', async () => {
   await expect(AuditLog.findOneAndDelete({ branchId })).rejects.toThrow(/append-only/);
   expect(await verifyAuditChain(branchId)).toEqual({ ok: true, checked: 1 });
 });
+test('a loaded entry cannot be changed and saved', async () => {
+  await write();
+  const loaded = await AuditLog.findOne({ branchId });
+  loaded.action = 'tampered';
+  await expect(loaded.save()).rejects.toThrow(/append-only/);
+  expect(await verifyAuditChain(branchId)).toEqual({ ok: true, checked: 1 });
+});
 test('requires a transaction session', async () => {
   await expect(recordAudit({ branchId, entityType: 't', entityId: '1', action: 'x', actor: {} })).rejects.toThrow(/transaction/);
 });
