@@ -109,6 +109,8 @@ export function ItemModal({ item, onClose }) {
   const taken = save.error?.code === 'CATALOG_MAPPING_TAKEN';
 
   function chooseKind(kind) {
+    // Suggestions are for new items only: an existing item's GST and supply type never change by themselves.
+    if (item) return set({ kind });
     const slabsAreDefault = same(form.gstSlabs, CLOTHING_SLABS) || same(form.gstSlabs, ONE_RATE_SLABS);
     set({
       kind,

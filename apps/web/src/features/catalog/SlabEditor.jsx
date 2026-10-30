@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { ActionIcon, Button, Group, NumberInput, Radio, Select, Stack, Text } from '@mantine/core';
 import { GST_RATES_BP } from '@vs/shared/gst.js';
 import { rupeesToPaise } from '@vs/shared/money.js';
@@ -11,6 +12,29 @@ export const ONE_RATE_SLABS = [{ upToUnitPrice: null, rateBp: 1800 }];
 const RATE_OPTIONS = GST_RATES_BP.map((bp) => ({ value: String(bp), label: `${bp / 100}%` }));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const rupees = (paise) => paise / 100;
+const AMOUNT = /^\d+(\.\d{1,2})?$/;
+let rowCounter = 0;
+const newRowId = () => `slab-${++rowCounter}`;
+
+/** A rupee amount field that keeps what is typed ("12.", empty) and passes on only valid, positive amounts. */
+function AmountInput({ paise, onCommit, ...props }) {
+  const [text, setText] = useState(String(rupees(paise)));
+  useEffect(() => {
+    // Follow outside changes (a preset) but never overwrite a half-typed value.
+    if (AMOUNT.test(text) && rupeesToPaise(text) !== paise) setText(String(rupees(paise)));
+  }, [paise]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <NumberInput
+      {...props}
+      value={text}
+      onChange={(v) => {
+        const next = String(v);
+        setText(next);
+        if (AMOUNT.test(next) && rupeesToPaise(next) > 0) onCommit(rupeesToPaise(next));
+      }}
+    />
+  );
+}
 
 function presetOf(slabs) {
   if (same(slabs, CLOTHING_SLABS)) return 'clothing';
@@ -25,6 +49,8 @@ function presetOf(slabs) {
 export function SlabEditor({ value, onChange, error, showSlabs, onShowSlabs }) {
   const preset = presetOf(value);
   const advanced = showSlabs || preset === 'custom';
+  const ids = useRef([]);
+  if (ids.current.length !== value.length) ids.current = value.map(newRowId);
 
   function setRow(index, patch) {
     onChange(value.map((s, i) => (i === index ? { ...s, ...patch } : s)));
@@ -33,6 +59,7 @@ export function SlabEditor({ value, onChange, error, showSlabs, onShowSlabs }) {
     const last = value.length - 1;
     const before = value.slice(0, last);
     const ceiling = (before.at(-1)?.upToUnitPrice ?? 0) + 100000;
+    ids.current = [...ids.current.slice(0, last), newRowId(), ids.current[last]];
     onChange([...before, { upToUnitPrice: ceiling, rateBp: value[last].rateBp }, value[last]]);
   }
 
@@ -77,27 +104,20 @@ export function SlabEditor({ value, onChange, error, showSlabs, onShowSlabs }) {
           {value.map((slab, index) => {
             const last = index === value.length - 1;
             return (
-              <Group key={index} align="flex-end" wrap="nowrap" gap="xs">
+              <Group key={ids.current[index]} align="flex-end" wrap="nowrap" gap="xs">
                 {last ? (
                   <Text style={{ flex: 1 }} size="sm">
                     {index === 0 ? 'Every price' : 'Above that'}
                   </Text>
                 ) : (
-                  <NumberInput
+                  <AmountInput
                     style={{ flex: 1 }}
                     label="Up to (₹ a piece)"
-                    min={1}
                     decimalScale={2}
                     thousandSeparator=","
                     thousandsGroupStyle="lakh"
-                    value={rupees(slab.upToUnitPrice)}
-                    onChange={(v) => {
-                      try {
-                        setRow(index, { upToUnitPrice: rupeesToPaise(String(v)) });
-                      } catch {
-                        // Half-typed amount (for example "12."): keep the last good value.
-                      }
-                    }}
+                    paise={slab.upToUnitPrice}
+                    onCommit={(upToUnitPrice) => setRow(index, { upToUnitPrice })}
                   />
                 )}
                 <Select
@@ -115,6 +135,7 @@ export function SlabEditor({ value, onChange, error, showSlabs, onShowSlabs }) {
                   aria-label={`Remove slab ${index + 1}`}
                   disabled={value.length === 1}
                   onClick={() => {
+                    ids.current = ids.current.filter((_, i) => i !== index);
                     const next = value.filter((_, i) => i !== index);
                     onChange(last ? next.map((s, i) => (i === next.length - 1 ? { ...s, upToUnitPrice: null } : s)) : next);
                   }}

@@ -148,3 +148,61 @@ test('operations and designers do not see Price list', async () => {
   expect(await screen.findByRole('link', { name: 'Orders' })).toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'Price list' })).toBeNull();
 });
+
+test("editing an item's kind keeps its GST", async () => {
+  asAdmin();
+  const flat = { ...blouse, kind: 'garment', supplyType: 'goods', hsnSac: '6204', gstSlabs: [{ upToUnitPrice: null, rateBp: 1800 }], garmentTypes: [] };
+  items([flat]);
+  let patch;
+  server.use(
+    http.patch('/v1/catalog/items/:id', async ({ request }) => {
+      patch = await request.json();
+      return HttpResponse.json({ ...flat, ...patch, version: 4 });
+    }),
+  );
+  renderApp('/catalog');
+  await userEvent.click(await screen.findByRole('button', { name: 'Edit Blouse stitching' }));
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.click(within(dialog).getByRole('radio', { name: 'Stitching' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Save item' }));
+  await expect.poll(() => patch).toEqual({ version: 3, kind: 'stitching_service' });
+});
+
+test('typing a decimal slab limit keeps what was typed', async () => {
+  asAdmin();
+  items([blouse]);
+  let patch;
+  server.use(
+    http.patch('/v1/catalog/items/:id', async ({ request }) => {
+      patch = await request.json();
+      return HttpResponse.json({ ...blouse, ...patch, version: 4 });
+    }),
+  );
+  renderApp('/catalog');
+  await userEvent.click(await screen.findByRole('button', { name: 'Edit Blouse stitching' }));
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Edit slabs' }));
+  const limit = within(dialog).getByLabelText('Up to (₹ a piece)');
+  await userEvent.clear(limit);
+  await userEvent.type(limit, '12.5');
+  expect(limit).toHaveValue('12.5');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Save item' }));
+  await expect.poll(() => patch).toEqual({
+    version: 3,
+    gstSlabs: [{ upToUnitPrice: 1250, rateBp: 500 }, { upToUnitPrice: null, rateBp: 1800 }],
+  });
+});
+
+test('a conflict offers reload', async () => {
+  asAdmin();
+  items([blouse]);
+  server.use(http.patch('/v1/catalog/items/:id', () => HttpResponse.json({ error: { code: 'CONFLICT' } }, { status: 409 })));
+  renderApp('/catalog');
+  await userEvent.click(await screen.findByRole('button', { name: 'Edit Blouse stitching' }));
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.type(within(dialog).getByLabelText('Name'), ' two');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Save item' }));
+  expect(await within(dialog).findByText('Someone else changed this. Reload and try again.')).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Reload' }));
+  await expect.poll(() => screen.queryByRole('dialog')).toBeNull();
+});
