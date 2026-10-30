@@ -14,6 +14,11 @@ const STATUSES = {
   batch: ['Batch', 'indigo'],
   with_vendor: ['With vendor', 'haldi'],
   alteration: ['Alteration open', 'haldi'],
+  draft: ['Draft', 'muted'],
+  unpaid: ['Unpaid', 'haldi'],
+  part_paid: ['Part paid', 'haldi'],
+  paid: ['Paid', 'neem'],
+  overdue: ['Overdue', 'kumkum'],
 };
 
 const TINTS = {
@@ -24,7 +29,7 @@ const TINTS = {
   muted: ['var(--vs-muted)', '#EEEFF4'],
 };
 
-/** Order and garment statuses and flags (rush, late, tight), coloured by meaning. */
+/** Order, garment and bill statuses and flags (rush, late, tight), coloured by meaning. */
 export function StatusBadge({ status, label }) {
   const [text, tone] = STATUSES[status] ?? [status, 'muted'];
   const [color, background] = TINTS[tone];

@@ -31,5 +31,29 @@ export const errorMessages = {
   PERIOD_NOT_ENDED: 'A month can be locked only after it has ended.',
   ALREADY_LOCKED: 'This month is already locked.',
   NOT_LOCKED: 'This month is not locked.',
+  DOCUMENT_IMMUTABLE: 'This bill has been issued and cannot be changed.',
+  NOTHING_TO_BILL: 'Everything on this order is already billed.',
+  NO_LINES: 'Add at least one item to the bill.',
+  ITEM_REQUIRED: 'Choose what each line is billed as.',
+  PRICE_NEEDED: 'Enter a price for every line.',
+  ADDRESS_REQUIRED: 'Add the customer’s address. It is needed on bills of ₹50,000 or more.',
+  BRANCH_GSTIN_MISSING: 'Add the boutique’s GSTIN in Settings before issuing bills.',
+  GARMENT_NOT_BILLABLE: 'A garment on this bill was rejected or cancelled. Remove it and try again.',
+  ALREADY_BILLED: 'Part of this bill is already on another bill.',
+  DISCOUNT_EXCEEDS_LINE: 'A discount is more than the price of its line.',
+  DISCOUNT_EXCEEDS_TOTAL: 'The discount is more than the bill.',
+  DOC_NUMBER_TOO_LONG: 'The bill number would be too long. Shorten the prefix in Settings.',
+  INVALID_AMOUNT: 'An amount on this bill is not valid. Check the prices, quantities and discounts.',
+  BAD_SLABS: 'An item on this bill has GST rates that do not work. Ask the owner to check the price list.',
   NETWORK_ERROR: 'Cannot reach the server. Check your connection and try again.',
 };
+
+// Where a code means something different on a bill than on an order.
+export const billErrorMessages = {
+  IDEMPOTENCY_KEY_REUSED: 'This bill may already have been issued. Reload the page to check.',
+  IDEMPOTENCY_IN_PROGRESS: 'This bill is still being issued. Wait a moment, then reload the page.',
+  VALIDATION_FAILED: 'Some details on this bill are not valid. Check each line and try again.',
+};
+
+/** The plain message for an error on a bill screen. */
+export const billErrorMessage = (error) => billErrorMessages[error?.code] ?? error?.message;

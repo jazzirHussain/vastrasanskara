@@ -335,3 +335,26 @@ body {
     display: none;
   }
 }
+
+/* A bill in an order's money panel: number, total and badge on one tappable row. */
+.vs-bill-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-height: 44px;
+  padding: 6px 10px;
+  margin: 0 -10px;
+  border-radius: 6px;
+  color: var(--vs-ink);
+  text-decoration: none;
+}
+
+.vs-bill-link:hover {
+  background: var(--vs-chalk);
+}
+
+.vs-bill-link:focus-visible {
+  outline: 2px solid var(--vs-indigo);
+  outline-offset: 1px;
+}

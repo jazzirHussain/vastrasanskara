@@ -29,7 +29,7 @@ export const defaultBranch = {
   prefixes: { invoice: 'INV', creditNote: 'CN', receiptVoucher: 'RV', receipt: 'RCPT', refund: 'RF', expense: 'EXP', order: 'VS/ORD' },
 };
 
-// Defaults: nobody is signed in, no notifications, default settings and branch.
+// Defaults: nobody is signed in, no notifications, default settings and branch, no money on orders.
 // Tests override with server.use().
 export const server = setupServer(
   http.get('/v1/auth/me', notAuthenticated),
@@ -37,6 +37,20 @@ export const server = setupServer(
   http.get('/v1/settings', () => HttpResponse.json(defaultSettings)),
   http.get('/v1/branch', () => HttpResponse.json(defaultBranch)),
   http.get('/v1/orders', () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get('/v1/billing/orders/:id/summary', () =>
+    HttpResponse.json({
+      orderValue: 0,
+      estimatedTotal: 0,
+      advanceDue: 0,
+      advanceHeld: 0,
+      billed: 0,
+      balanceDue: 0,
+      draftInvoiceId: null,
+      invoices: [],
+      receipts: [],
+      refundSuggestion: null,
+    }),
+  ),
 );
 
 export function asAdmin() {
