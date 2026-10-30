@@ -89,7 +89,21 @@ test('a balance that disagrees with its payments is found', async () => {
   ok(r, 200);
   expect(r.body.ok).toBe(false);
   expect(r.body.balances.problems).toEqual([
-    { id: first.id, number: first.number, stored: 1, expected: stored.settlement.balance },
+    { id: first.id, number: first.number, fields: ['balance'], stored: { ...stored.settlement, balance: 1 }, expected: stored.settlement },
+  ]);
+});
+
+test('a changed payment total is found even when the balance still adds up', async () => {
+  const { admin, first } = await trail();
+  const stored = await Invoice.findById(first.id).lean();
+  await Invoice.collection.updateOne({ _id: stored._id }, { $set: { 'settlement.paid': stored.settlement.paid + 5 } });
+  const r = await verify(admin);
+  expect(r.body.ok).toBe(false);
+  expect(r.body.balances.problems).toEqual([
+    {
+      id: first.id, number: first.number, fields: ['paid'],
+      stored: { ...stored.settlement, paid: stored.settlement.paid + 5 }, expected: stored.settlement,
+    },
   ]);
 });
 

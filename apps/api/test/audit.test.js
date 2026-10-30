@@ -1,4 +1,4 @@
-import { test, expect } from 'vitest';
+import { test, expect, vi, afterEach } from 'vitest';
 import mongoose from 'mongoose';
 import { useTestDb } from './helpers/db.js';
 import { withTransaction } from '../src/core/db.js';
@@ -62,6 +62,43 @@ test('a loaded entry cannot be changed and saved', async () => {
   loaded.action = 'tampered';
   await expect(loaded.save()).rejects.toThrow(/append-only/);
   expect(await verifyAuditChain(branchId)).toEqual({ ok: true, checked: 1 });
+});
+afterEach(() => vi.restoreAllMocks());
+// Runs `before` once, just before the chain check reads the counters collection.
+function beforeCounterRead(before) {
+  const real = mongoose.connection.collection.bind(mongoose.connection);
+  let armed = true;
+  vi.spyOn(mongoose.connection, 'collection').mockImplementation((name) => {
+    const coll = real(name);
+    if (name !== 'counters') return coll;
+    return new Proxy(coll, {
+      get: (t, p) => {
+        if (p === 'findOne' && armed) return async (...a) => { armed = false; return before(t, a); };
+        return typeof t[p] === 'function' ? t[p].bind(t) : t[p];
+      },
+    });
+  });
+}
+test('an entry written while the check runs is not reported', async () => {
+  await write(); await write(); await write(); await write();
+  // Counter read says 3 although a fourth entry already exists: that entry belongs to a later check.
+  beforeCounterRead(async () => ({ value: 3 }));
+  const spied = await verifyAuditChain(branchId);
+  vi.restoreAllMocks();
+  expect(spied).toEqual({ ok: true, checked: 3 });
+  expect(await verifyAuditChain(branchId)).toEqual({ ok: true, checked: 4 });
+});
+test('an entry committed just before the counter is read is not a missing entry', async () => {
+  await write(); await write();
+  beforeCounterRead(async (coll, a) => { await write(); return coll.findOne(...a); });
+  expect(await verifyAuditChain(branchId)).toMatchObject({ ok: true });
+});
+test('the first break names the entry that broke', async () => {
+  await write(); await write({ entityType: 'invoice', entityId: 'abc' }); await write();
+  await AuditLog.collection.updateOne({ branchId, seq: 2 }, { $set: { action: 'tampered' } });
+  expect(await verifyAuditChain(branchId)).toEqual({
+    ok: false, checked: 1, firstBreak: { seq: 2, reason: 'hash_mismatch', entityType: 'invoice', entityId: 'abc' },
+  });
 });
 test('requires a transaction session', async () => {
   await expect(recordAudit({ branchId, entityType: 't', entityId: '1', action: 'x', actor: {} })).rejects.toThrow(/transaction/);

@@ -55,9 +55,18 @@ async function checkBalances(branchId) {
       Allocation.find({ invoiceId: invoice._id }, { amount: 1, reason: 1 }).lean(),
       CreditNote.find({ invoiceId: invoice._id, status: 'issued' }, { 'totals.total': 1 }).lean(),
     ]);
-    const expected = settlementOf(invoice, rows, notes).balance;
-    const stored = invoice.settlement?.balance;
-    if (stored !== expected) collect(out, { id: String(invoice._id), number: invoice.number, stored, expected });
+    const expected = settlementOf(invoice, rows, notes);
+    const stored = invoice.settlement ?? {};
+    const fields = Object.keys(expected).filter((f) => stored[f] !== expected[f]);
+    if (fields.length) {
+      collect(out, {
+        id: String(invoice._id),
+        number: invoice.number,
+        fields,
+        stored: Object.fromEntries(Object.keys(expected).map((f) => [f, stored[f] ?? null])),
+        expected,
+      });
+    }
   }
   return out;
 }
