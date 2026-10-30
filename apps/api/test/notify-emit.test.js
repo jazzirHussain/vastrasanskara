@@ -74,3 +74,18 @@ test('password reset goes to the user from data.userId, on time and with address
   });
   expect(entry.scheduledFor).toEqual(new Date('2026-10-22T16:30:00Z'));
 });
+test('notBefore holds a message', async () => {
+  const now = new Date('2026-10-22T06:30:00Z');
+  vi.spyOn(clock, 'now').mockReturnValue(now);
+  const u = await createTestUser({ roles: ['admin'] });
+  client = { kind: 'client', id: 'c3', name: 'C', addresses: { email: 'c@x.com' }, consent: { email: true } };
+  const later = new Date(now.getTime() + 120_000);
+  await emit('test.client', { branchId: B, refId: 'nb1' }, { notBefore: later });
+  await emit('system.backup_failed', { branchId: u.branchId, refId: 'nb2' }, { notBefore: later });
+  await emit('test.client', { branchId: B, refId: 'nb3' }, { notBefore: new Date(now.getTime() - 60_000) });
+  const when = async (refId) => (await Outbox.findOne({ dedupeKey: new RegExp(`:${refId}:`) })).scheduledFor;
+  expect(await when('nb1')).toEqual(later);
+  expect(await when('nb2')).toEqual(later);
+  expect(await when('nb3')).toEqual(now);
+  vi.restoreAllMocks();
+});

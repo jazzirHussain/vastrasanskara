@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   billingReasonSchema,
+  remindersSchema,
   blankInvoiceSchema,
   creditNoteSchema,
   fromOrderSchema,
@@ -50,6 +51,7 @@ import {
   receiptView,
   recordPayment,
   refundView,
+  setReminderPause,
   pdfLink,
   updateDraft,
 } from './service.js';
@@ -165,6 +167,17 @@ export function billingRouter(storage) {
     async (req, res) => {
       const { branchId } = req.user;
       const invoice = await cancelInvoice(branchId, req.params.id, req.body, actorFrom(req));
+      res.json({ invoice: await jsonOf(branchId, invoice) });
+    },
+  );
+
+  router.put(
+    '/invoices/:id/reminders',
+    requirePermission('billing.cancel'),
+    validate({ body: remindersSchema }),
+    async (req, res) => {
+      const { branchId } = req.user;
+      const invoice = await setReminderPause(branchId, req.params.id, req.body, actorFrom(req));
       res.json({ invoice: await jsonOf(branchId, invoice) });
     },
   );

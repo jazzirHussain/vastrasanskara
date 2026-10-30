@@ -1,16 +1,19 @@
 import mongoose from 'mongoose';
-import { financialYear, istDate } from '@vs/shared/fy.js';
+import { displayDate, financialYear, istDate } from '@vs/shared/fy.js';
 import { computeAdvanceTax, computeInvoice, placeOfSupply } from '@vs/shared/gst.js';
-import { amountInWords, mulDivRound } from '@vs/shared/money.js';
+import { amountInWords, formatINR, mulDivRound } from '@vs/shared/money.js';
 import { clock } from '../../clock.js';
 import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
+import { emit } from '../../core/notify/emit.js';
 import { businessRule, notFound, validationError } from '../../core/errors.js';
 import { getBranch } from '../branches/service.js';
 import { getItemsByIds, itemForGarmentType } from '../catalog/service.js';
 import { getCustomer } from '../customers/service.js';
 import { getOrderForBilling } from '../orders/service.js';
 import { assertPeriodOpen } from '../periods/service.js';
+import { PDF_WAIT_MS, pdfFilename } from './invoices.js';
+import './notifications.js';
 import { allocate, availableByReceipt, recomputeSettlement } from './allocations.js';
 import { customerSnapshot, guardCustomerMoney, newPdfKey, sellerSnapshot, takeDocumentNumber, toImmutableError } from './documents.js';
 import { Allocation, Invoice, Receipt, ReceiptVoucher } from './model.js';
@@ -202,7 +205,9 @@ export async function recordPayment(branchId, input, actor) {
       const month = date.slice(0, 7);
       const withVoucher = advance && advance.serviceShare > 0;
       if (withVoucher && !branch.gstin) throw businessRule('BRANCH_GSTIN_MISSING', 'Add the shop GSTIN before issuing bills');
+      let rvNumber = null;
       const rvId = withVoucher ? new mongoose.Types.ObjectId() : null;
+      const rvPdf = withVoucher ? pdfFor(branchId, now) : null;
 
       const { number } = await takeDocumentNumber({ branchId, docType: 'receipt', now }, session);
       const against = invoice ? { invoiceNo: invoice.number } : order ? { orderNo: order.orderNo } : null;
@@ -311,7 +316,7 @@ export async function recordPayment(branchId, input, actor) {
                 against: { orderNo: order.orderNo },
                 receiptNo: number,
               },
-              pdf: pdfFor(branchId, now),
+              pdf: rvPdf,
               issuedAt: now,
               issuedBy: actor.userId,
               createdBy: actor.userId,
@@ -330,6 +335,31 @@ export async function recordPayment(branchId, input, actor) {
             actor,
           },
           session,
+        );
+        rvNumber = rv.number;
+      }
+
+      // The first receipt of an order confirms it (the dedupe key is the order, so a later
+      // payment, or one retried, sends nothing more).
+      if (order) {
+        const attachments = [{ key: receipt.pdf.key, filename: pdfFilename(number) }];
+        if (rvPdf) attachments.push({ key: rvPdf.key, filename: pdfFilename(rvNumber) });
+        await emit(
+          'order.confirmed',
+          {
+            branchId,
+            refId: String(order._id),
+            data: { customerId: customer._id },
+            vars: {
+              customerName: customer.name,
+              orderNo: order.orderNo,
+              amount: formatINR(input.amount),
+              receiptNo: number,
+              pickupDate: displayDate(order.pickupDate),
+            },
+            attachments,
+          },
+          { session, notBefore: new Date(now.getTime() + PDF_WAIT_MS) },
         );
       }
       return Receipt.findById(receipt._id).session(session).lean();

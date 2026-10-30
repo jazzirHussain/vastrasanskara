@@ -1,11 +1,12 @@
 import mongoose from 'mongoose';
 import { payStatus } from '@vs/shared/billing.js';
-import { addDaysYmd, istDate } from '@vs/shared/fy.js';
+import { addDaysYmd, displayDate, istDate } from '@vs/shared/fy.js';
 import { GstError, RULE46_ADDRESS_THRESHOLD, computeInvoice, placeOfSupply } from '@vs/shared/gst.js';
-import { amountInWords } from '@vs/shared/money.js';
+import { amountInWords, formatINR } from '@vs/shared/money.js';
 import { clock } from '../../clock.js';
 import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
+import { emit } from '../../core/notify/emit.js';
 import { businessRule, conflict, forbidden, notFound, validationError } from '../../core/errors.js';
 import { getBranch } from '../branches/service.js';
 import { getItemsByIds, itemForCharge, itemForGarmentType } from '../catalog/service.js';
@@ -14,6 +15,7 @@ import { getOrderForBilling } from '../orders/service.js';
 import { assertPeriodOpen, isPeriodLocked } from '../periods/service.js';
 import { listChargeableEvents } from '../production/service.js';
 import { readSettings } from '../settings/service.js';
+import './notifications.js';
 import { allocate, availableByReceipt, recomputeSettlement, releaseInvoice, voucherShare } from './allocations.js';
 import {
   customerSnapshot,
@@ -414,6 +416,9 @@ function checkAddress(customer, total) {
   }
 }
 
+export const PDF_WAIT_MS = 2 * 60_000;
+export const pdfFilename = (number) => `${number.replace(/\//g, '-')}.pdf`;
+
 /**
  * Issues a draft bill at `version`: re-checks it against the items, customer, branch and order
  * as they are now, takes the next number, fixes the snapshot, applies the advance held and
@@ -521,6 +526,24 @@ export async function issueInvoice(branchId, id, { version }, actor) {
           actor,
         },
         session,
+      );
+      // The client's copy waits two minutes for the PDF to be rendered; delivery retries if not.
+      await emit(
+        'invoice.issued',
+        {
+          branchId,
+          refId: String(invoice._id),
+          data: { customerId: invoice.customerId },
+          vars: {
+            customerName: customer.name,
+            invoiceNo: number,
+            amount: formatINR(calc.totals.total),
+            balance: formatINR(calc.totals.total - advanceApplied),
+            dueDate: displayDate(dueDate),
+          },
+          attachments: [{ key: invoice.pdf.key, filename: pdfFilename(number) }],
+        },
+        { session, notBefore: new Date(now.getTime() + PDF_WAIT_MS) },
       );
       return Invoice.findById(invoice._id).session(session).lean();
     });
@@ -715,4 +738,41 @@ async function issuedView(branchId, invoice, session) {
 export async function invoiceView(branchId, invoice, session) {
   const view = invoice.status === 'draft' ? await draftView(branchId, invoice, session) : await issuedView(branchId, invoice, session);
   return { ...view, amountInWords: view.totals ? amountInWords(view.totals.total) : null };
+}
+
+/**
+ * Pauses or resumes the overdue reminders of an issued bill (admin). Audited; the bill's
+ * number, figures and snapshot are untouched.
+ */
+export async function setReminderPause(branchId, id, { paused }, actor) {
+  try {
+    return await withTransaction(async (session) => {
+      const invoice = await loadInvoice(branchId, id, session);
+      if (invoice.status !== 'issued') throw businessRule('INVALID_STATUS', 'Only an issued bill has reminders');
+      const before = Boolean(invoice.remindersPaused);
+      if (before !== paused) {
+        const { matchedCount } = await Invoice.updateOne(
+          { _id: invoice._id, status: 'issued' },
+          { $set: { remindersPaused: paused, updatedBy: actor.userId } },
+          { session },
+        );
+        if (matchedCount !== 1) throw conflict();
+        await recordAudit(
+          {
+            branchId,
+            entityType: 'invoice',
+            entityId: invoice._id,
+            action: paused ? 'reminders_paused' : 'reminders_resumed',
+            before: { remindersPaused: before },
+            after: { remindersPaused: paused },
+            actor,
+          },
+          session,
+        );
+      }
+      return Invoice.findById(invoice._id).session(session).lean();
+    });
+  } catch (err) {
+    throw toImmutableError(err);
+  }
 }
