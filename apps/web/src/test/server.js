@@ -10,7 +10,7 @@ export const adminUser = {
   name: 'Owner',
   email: 'owner@x.com',
   roles: ['admin'],
-  permissions: ['users.manage', 'settings.edit', 'system.monitor', 'money.view'],
+  permissions: ['users.manage', 'settings.edit', 'system.monitor', 'money.view', 'catalog.manage'],
   branchId: 'b1',
 };
 

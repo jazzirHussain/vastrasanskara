@@ -5,6 +5,7 @@ import { LoginPage } from './auth/LoginPage.jsx';
 import { RequireAuth } from './auth/RequireAuth.jsx';
 import { RequirePermission } from './auth/RequirePermission.jsx';
 import { ResetPasswordPage } from './auth/ResetPasswordPage.jsx';
+import { CatalogPage } from './features/catalog/CatalogPage.jsx';
 import { CustomerPage } from './features/customers/CustomerPage.jsx';
 import { CustomersPage } from './features/customers/CustomersPage.jsx';
 import { HomePage } from './features/home/HomePage.jsx';
@@ -42,6 +43,9 @@ export default function App() {
             </Route>
             <Route element={<RequirePermission permission="workshop.manage" />}>
               <Route path="/workshop" element={<WorkshopPage />} />
+            </Route>
+            <Route element={<RequirePermission permission="catalog.manage" />}>
+              <Route path="/catalog" element={<CatalogPage />} />
             </Route>
             <Route element={<RequirePermission permission="users.manage" />}>
               <Route path="/users" element={<UsersPage />} />

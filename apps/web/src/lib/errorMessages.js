@@ -26,5 +26,10 @@ export const errorMessages = {
   WITH_VENDOR: 'This garment is with a vendor. Record it as back first.',
   REWORK_TARGET_INVALID: 'Choose an earlier stage that was not skipped.',
   PHONE_TAKEN: 'A customer with this phone already exists.',
+  NOT_FOUND: 'This could not be found. It may have been removed. Reload and try again.',
+  CATALOG_MAPPING_TAKEN: 'Another item already bills this. Change that item first.',
+  PERIOD_NOT_ENDED: 'A month can be locked only after it has ended.',
+  ALREADY_LOCKED: 'This month is already locked.',
+  NOT_LOCKED: 'This month is not locked.',
   NETWORK_ERROR: 'Cannot reach the server. Check your connection and try again.',
 };

@@ -5,6 +5,7 @@ import {
   IconLayoutKanban,
   IconNeedleThread,
   IconPlus,
+  IconTags,
   IconTool,
   IconUsersGroup,
 } from '@tabler/icons-react';
@@ -19,6 +20,7 @@ export const navItems = [
   { label: 'Production', path: '/production', permission: 'orders.read.own', icon: IconLayoutKanban, phone: 'bar' },
   { label: 'New order', path: '/orders/new', permission: 'orders.write', icon: IconPlus, phone: 'primary' },
   { label: 'Customers', path: '/customers', permission: 'customers.read', icon: IconAddressBook, phone: 'bar' },
+  { label: 'Price list', path: '/catalog', permission: 'catalog.manage', icon: IconTags, phone: 'more' },
   { label: 'Workshop', path: '/workshop', permission: 'workshop.manage', icon: IconTool, phone: 'more' },
   { label: 'Users', path: '/users', permission: 'users.manage', icon: IconUsersGroup, phone: 'more' },
   { label: 'Settings', path: '/settings', permission: 'settings.edit', icon: IconAdjustmentsHorizontal, phone: 'more' },
