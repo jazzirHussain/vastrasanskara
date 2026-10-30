@@ -13,11 +13,11 @@ import { TakePaymentDialog } from './TakePaymentDialog.jsx';
 
 function Tile({ label, paise, tone }) {
   return (
-    <div className="vs-panel" style={{ padding: 14 }}>
-      <Text size="sm" c="var(--vs-muted)">
+    <div className="vs-panel" style={{ padding: 12, minWidth: 0 }}>
+      <Text size="xs" c="var(--vs-muted)" style={{ whiteSpace: 'nowrap' }}>
         {label}
       </Text>
-      <Money paise={paise} style={{ fontSize: 24, fontWeight: 700, color: tone }} />
+      <Money paise={paise} style={{ fontSize: 'clamp(15px, 4.4vw, 24px)', fontWeight: 700, color: tone, overflowWrap: 'anywhere' }} />
     </div>
   );
 }
@@ -68,14 +68,15 @@ const columns = [
     header: 'Amount',
     align: 'right',
     render: (e) => {
-      const strike = e.status === 'cancelled' ? 'line-through' : undefined;
+      // The ledger does not carry a cancelled entry's original amount, so say it is cancelled.
+      if (e.status === 'cancelled') return <Text span size="sm" c="var(--vs-muted)">Cancelled</Text>;
       // Money coming in (payments, credit notes) reads "+"; bills and refunds are what the customer owes.
       return e.credit > 0 ? (
-        <span style={{ color: 'var(--vs-neem)', textDecoration: strike }}>
+        <span style={{ color: 'var(--vs-neem)' }}>
           +<Money paise={e.credit} />
         </span>
       ) : (
-        <Money paise={e.debit} style={{ textDecoration: strike }} />
+        <Money paise={e.debit} />
       );
     },
   },
@@ -102,11 +103,16 @@ export function CustomerMoney({ customer }) {
       {summary.error && <Alert color="red">{summary.error.message}</Alert>}
       {summary.isPending && <Loader size="sm" />}
       {s && (
-        <SimpleGrid cols={{ base: 1, xs: 3 }} spacing="sm" mb="md">
+        <SimpleGrid cols={3} spacing="xs" mb="md">
           <Tile label="Owed" paise={s.outstanding} />
           <Tile label="Overdue" paise={s.overdue} tone={s.overdue > 0 ? 'var(--vs-kumkum)' : undefined} />
           <Tile label="Advance held" paise={s.advanceHeld} />
         </SimpleGrid>
+      )}
+      {rows.length > 0 && (
+        <Text fw={600} mb="xs">
+          Bills and payments
+        </Text>
       )}
       {ledger.isPending && <Loader size="sm" />}
       {ledger.error && <Alert color="red">{ledger.error.message}</Alert>}

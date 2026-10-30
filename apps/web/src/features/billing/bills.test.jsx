@@ -180,10 +180,16 @@ test("the customer's money shows owed, advance and the ledger", async () => {
   expect(await within(money).findByText('Bill INV/2627/0012')).toBeInTheDocument();
   expect(within(money).getByText('Payment (UPI)')).toBeInTheDocument();
   expect(within(money).getByText('Payment (Cash)')).toHaveStyle({ textDecoration: 'line-through' });
-  expect(within(money).getByText('Cancelled')).toBeInTheDocument();
+  expect(within(money).getAllByText('Cancelled')).toHaveLength(2); // the badge and the amount
   expect(within(money).queryByRole('button', { name: 'Refund' })).toBeNull();
   await userEvent.click(within(money).getByRole('button', { name: 'Take payment' }));
-  expect(await screen.findByRole('dialog', { name: 'Take payment from Asha Rao' })).toBeInTheDocument();
+  const dialog = await screen.findByRole('dialog', { name: 'Take payment from Asha Rao' });
+  // On account: the dialog starts at what is owed, and says more than that is kept as advance.
+  const amount = within(dialog).getByLabelText('Amount (₹)');
+  expect(amount).toHaveValue('1500');
+  await userEvent.clear(amount);
+  await userEvent.type(amount, '2000');
+  expect(within(dialog).getByText('₹1,500.00 will pay their bills, ₹500.00 will be kept as advance.')).toBeInTheDocument();
 });
 
 test('designers have no Bills menu', async () => {
@@ -191,4 +197,45 @@ test('designers have no Bills menu', async () => {
   renderApp('/');
   await screen.findByRole('navigation', { name: 'Main' });
   expect(screen.queryByRole('link', { name: 'Bills' })).toBeNull();
+});
+
+test('show more asks for the next page and adds its rows', async () => {
+  asFrontDesk();
+  const cursors = [];
+  server.use(
+    http.get('/v1/billing/receivables', ({ request }) => {
+      const cursor = new URL(request.url).searchParams.get('cursor');
+      cursors.push(cursor);
+      const totals = { count: 2, balance: 200000, overdue: 150000 };
+      return HttpResponse.json(
+        cursor
+          ? { items: [owedRow({ invoice: { id: 'inv2', number: 'INV/2627/0002', date: ago(3), dueDate: ago(1), total: 50000, balance: 50000 }, customer: { id: 'c2', name: 'Meera Iyer' } })], totals, nextCursor: null }
+          : { items: [owedRow()], totals, nextCursor: 'next-1' },
+      );
+    }),
+  );
+  renderApp('/bills');
+  await screen.findByText('INV/2627/0001');
+  await userEvent.click(screen.getByRole('button', { name: 'Show more' }));
+  expect(await screen.findByText('INV/2627/0002')).toBeInTheDocument();
+  expect(screen.getByText('INV/2627/0001')).toBeInTheDocument();
+  expect(cursors).toEqual([null, 'next-1']);
+  expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+});
+
+test('a designer on a customer page makes no billing request', async () => {
+  asDesigner();
+  const billing = [];
+  server.events.on('request:start', ({ request }) => {
+    if (new URL(request.url).pathname.startsWith('/v1/billing')) billing.push(request.url);
+  });
+  server.use(
+    http.get('/v1/customers/c1', () => HttpResponse.json(customerFixture())),
+    http.get('/v1/customers/c1/measurements', () => HttpResponse.json({ items: [] })),
+  );
+  renderApp('/customers/c1');
+  expect(await screen.findByRole('heading', { name: 'Asha Rao', level: 1 })).toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Money' })).toBeNull();
+  expect(billing).toEqual([]);
+  server.events.removeAllListeners();
 });

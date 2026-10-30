@@ -59,6 +59,7 @@ export function BillsTab() {
         leftSection={<IconSearch size={16} aria-hidden="true" />}
         value={search}
         onChange={(e) => setSearch(e.currentTarget.value)}
+        maxLength={30}
         maw={420}
       />
       <Chip.Group multiple={false} value={filter} onChange={setFilter}>

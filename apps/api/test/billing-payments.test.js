@@ -333,3 +333,33 @@ test('a receipt voucher needs the shop GSTIN', async () => {
   // Goods only (no voucher) is still a receipt.
   ok(await pay(ops, { customerId, orderId: (await takeOrder({ prices: [100000] })).id, amount: 50000, mode: 'cash' }));
 });
+
+test('a payment on account pays the oldest bills first', async () => {
+  const { ops, customerId, takeOrder } = await world();
+  const first = (await issue(ops, await draftFor(await takeOrder({ prices: [450000] })))).body.invoice; // ₹5,040
+  const second = (await issue(ops, await draftFor(await takeOrder({ prices: [450000] })))).body.invoice; // ₹5,040
+  const r = await pay(ops, { customerId, amount: 600000, mode: 'upi' });
+  ok(r);
+  expect(r.body.receipt).toMatchObject({
+    allocations: [
+      { invoiceId: first.id, amount: 504000 },
+      { invoiceId: second.id, amount: 96000 },
+    ],
+    unallocated: 0,
+    receiptVoucher: null,
+    order: null,
+  });
+  const settlement = async (id) => (await ops.agent.get(`/v1/billing/invoices/${id}`)).body.invoice.settlement;
+  expect(await settlement(first.id)).toMatchObject({ balance: 0, payStatus: 'paid' });
+  expect(await settlement(second.id)).toMatchObject({ paid: 96000, balance: 408000 });
+
+  // More than is owed: the rest stays as advance, with no voucher.
+  const more = await pay(ops, { customerId, amount: 500000, mode: 'cash' });
+  ok(more);
+  expect(more.body.receipt).toMatchObject({ allocations: [{ invoiceId: second.id, amount: 408000 }], unallocated: 92000, receiptVoucher: null });
+  expect(await ReceiptVoucher.countDocuments()).toBe(0);
+  const audit = await AuditLog.findOne({ entityType: 'receipt', entityId: more.body.receipt.id }).lean();
+  // The audit entry says which bills got how much.
+  expect(JSON.stringify(audit.changes)).toContain(second.id);
+  expect(JSON.stringify(audit.changes)).toContain('408000');
+});

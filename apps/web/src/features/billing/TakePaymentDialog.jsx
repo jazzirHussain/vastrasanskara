@@ -42,7 +42,8 @@ function paiseOf(value) {
 /**
  * Takes a payment from `customer` ({ id, name }): for a bill (`invoice`), for an order's bills
  * (`order`; the server pays the oldest bill first), or as an advance (`order` with nothing
- * billed). `defaultAmount` is what is due; `billBalance` is how much of a payment would pay
+ * billed), or on account (neither: the server pays the customer's oldest bills first).
+ * `defaultAmount` is what is due; `billBalance` is how much of a payment would pay
  * bills, so anything above it is said to be kept as advance before saving.
  *
  * Mounted once per opening: the Idempotency-Key is made here and sent again on every retry, so a
@@ -173,7 +174,7 @@ export function TakePaymentDialog({ customer, order = null, invoice = null, defa
 
           {kept > 0 && (
             <Alert color="indigo">
-              {formatINR(billBalance)} will pay the bill, {formatINR(kept)} will be kept as advance.
+              {formatINR(billBalance)} will pay {invoice || order ? 'the bill' : 'their bills'}, {formatINR(kept)} will be kept as advance.
             </Alert>
           )}
           {record.error && <Alert color="red">{paymentErrorMessage(record.error)}</Alert>}

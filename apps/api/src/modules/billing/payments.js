@@ -164,7 +164,8 @@ const pdfFor = (branchId, now) => ({ key: newPdfKey(branchId, now), status: 'pen
  * Records money received from a customer as a receipt, in one transaction dated today (IST):
  * against a bill (paid up to its balance; the rest stays on the bill's order as advance), for an
  * order (its issued bills first, oldest first; the rest is the order's advance, with a receipt
- * voucher for its service share of what is not yet billed), or as an advance with no order.
+ * voucher for its service share of what is not yet billed), or on account (no order, no bill:
+ * the customer's issued bills with a balance, oldest first; the rest is advance with no voucher).
  */
 export async function recordPayment(branchId, input, actor) {
   try {
@@ -187,7 +188,10 @@ export async function recordPayment(branchId, input, actor) {
         ? [invoice]
         : loaded
           ? await Invoice.find({ branchId, orderId: loaded.order._id, status: 'issued' }).sort({ date: 1, _id: 1 }).session(session).lean()
-          : [];
+          : await Invoice.find({ branchId, customerId: customer._id, status: 'issued', 'settlement.balance': { $gt: 0 } })
+              .sort({ date: 1, _id: 1 })
+              .session(session)
+              .lean();
       const plan = await planBills(bills, input.amount, session);
       const allocated = plan.reduce((sum, p) => sum + p.amount, 0);
       const left = input.amount - allocated;
