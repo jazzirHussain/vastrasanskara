@@ -1,8 +1,11 @@
+import { displayDate } from '@vs/shared/fy.js';
 import { formatINR } from '@vs/shared/money.js';
 
 // Pure: a stored snapshot in, a pdfmake document definition out. Nothing here reads the database,
 // so a document prints as it was issued, whatever has changed since.
 
+// "Blouse — Blouse (GN)" reads better as "Blouse (GN)".
+const tidy = (text) => String(text ?? '').replace(/^(.+?) — \1(?= \(|$)/, '$1');
 const inr = (paise) => formatINR(paise ?? 0);
 const pct = (bp) => `${(bp ?? 0) / 100}%`;
 const GREY = '#555555';
@@ -45,8 +48,8 @@ function titleBlock(snapshot, subtitle) {
       {
         stack: [
           { text: `No. ${snapshot.number}`, bold: true, fontSize: 12, alignment: 'right' },
-          { text: `Date: ${snapshot.date}`, alignment: 'right' },
-          ...(snapshot.dueDate ? [{ text: `Due date: ${snapshot.dueDate}`, alignment: 'right' }] : []),
+          { text: `Date: ${displayDate(snapshot.date)}`, alignment: 'right' },
+          ...(snapshot.dueDate ? [{ text: `Due date: ${displayDate(snapshot.dueDate)}`, alignment: 'right' }] : []),
         ],
         width: 'auto',
       },
@@ -165,7 +168,7 @@ function linesTable(snapshot) {
   ];
   const body = (snapshot.lines ?? []).map((l) => [
     cell(l.item?.hsnSac ?? l.hsnSac ?? ''),
-    cell(l.description),
+    cell(tidy(l.description)),
     right(`${l.quantity}${l.item?.unit ? ` ${l.item.unit}` : ''}`),
     right(inr(l.rate)),
     right(l.discount ? inr(l.discount) : '-'),
@@ -231,7 +234,7 @@ function creditNoteDefinition(snapshot, { logo }) {
   const inter = Boolean(snapshot.placeOfSupply?.interState);
   const header = [head('HSN/SAC'), head('Description'), head('Taxable', 'right'), head('GST', 'right'), ...taxHeads(inter), head('Total', 'right')];
   const body = (snapshot.lines ?? []).map((l) => [
-    cell(l.hsnSac ?? ''), cell(l.description), right(inr(l.taxable)), right(pct(l.gstRateBp)),
+    cell(l.hsnSac ?? ''), cell(tidy(l.description)), right(inr(l.taxable)), right(pct(l.gstRateBp)),
     ...taxCells(l, inter), right(inr(l.total), { bold: true }),
   ]);
   return base(snapshot, [
@@ -241,7 +244,7 @@ function creditNoteDefinition(snapshot, { logo }) {
     partiesRow(snapshot),
     {
       stack: [
-        { text: `Against bill ${snapshot.original?.number} dated ${snapshot.original?.date}`, bold: true },
+        { text: `Against bill ${snapshot.original?.number} dated ${displayDate(snapshot.original?.date)}`, bold: true },
         { text: `Reason: ${snapshot.reason || '-'}` },
       ],
       margin: [0, 0, 0, 8],
@@ -278,7 +281,7 @@ function receiptDefinition(snapshot, { logo }) {
       ['For', against],
       ['Paid by', modeName(snapshot.mode)],
       ...(snapshot.reference ? [['Reference', snapshot.reference]] : []),
-      ...(snapshot.receivedOn ? [['Received on', snapshot.receivedOn]] : []),
+      ...(snapshot.receivedOn ? [['Received on', displayDate(snapshot.receivedOn)]] : []),
     ]),
     { text: 'Amount received', color: GREY, fontSize: 8, margin: [0, 12, 0, 0] },
     { text: inr(snapshot.amount), bold: true, fontSize: 22 },

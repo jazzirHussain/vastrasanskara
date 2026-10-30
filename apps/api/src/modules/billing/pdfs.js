@@ -19,7 +19,11 @@ async function logoOf(storage, key) {
     const chunks = [];
     for await (const chunk of Readable.from(await storage.getObject(key))) chunks.push(Buffer.from(chunk));
     const data = Buffer.concat(chunks);
-    const mime = data[0] === 0x89 ? 'image/png' : 'image/jpeg';
+    // pdfkit embeds only PNG and JPEG; anything else (webp, heic, pdf) is skipped.
+    const isPng = data.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const isJpeg = data[0] === 0xff && data[1] === 0xd8;
+    if (!isPng && !isJpeg) return undefined;
+    const mime = isPng ? 'image/png' : 'image/jpeg';
     return `data:${mime};base64,${data.toString('base64')}`;
   } catch {
     return undefined; // a missing logo never stops a bill
@@ -43,7 +47,7 @@ async function fail(doc, err, now) {
   const attempts = (doc.pdf.attempts ?? 0) + 1;
   const minutes = BACKOFF_MINUTES[Math.min(attempts, BACKOFF_MINUTES.length) - 1];
   await BillingDocument.updateOne(
-    { _id: doc._id },
+    { _id: doc._id, 'pdf.status': 'rendering', 'pdf.lockedAt': doc.pdf.lockedAt },
     {
       $set: {
         'pdf.status': 'pending',
@@ -54,7 +58,7 @@ async function fail(doc, err, now) {
       },
     },
   );
-  logger.error({ err, docId: String(doc._id), attempts }, 'billing PDF render failed');
+  logger.error({ error: err?.message, code: err?.code, docId: String(doc._id), attempts }, 'billing PDF render failed');
   if (attempts === ALERT_AT_ATTEMPT) {
     await emitToAllBranches('system.job_failed', {
       refId: `pdf:${doc._id}`,
@@ -72,10 +76,16 @@ export async function renderPendingPdfs({ storage, now = clock.now(), limit = 20
     if (!doc) break;
     try {
       const logo = await logoOf(storage, doc.snapshot?.seller?.logoKey);
-      const body = await renderPdf(documentDefinition(doc.snapshot, { logo }));
+      let body;
+      try {
+        body = await renderPdf(documentDefinition(doc.snapshot, { logo }));
+      } catch (err) {
+        if (!logo) throw err;
+        body = await renderPdf(documentDefinition(doc.snapshot)); // a logo that will not embed never blocks a bill
+      }
       await storage.putObject({ key: doc.pdf.key, body, contentType: 'application/pdf' });
       await BillingDocument.updateOne(
-        { _id: doc._id },
+        { _id: doc._id, 'pdf.status': 'rendering', 'pdf.lockedAt': doc.pdf.lockedAt },
         {
           $set: {
             'pdf.status': 'ready',

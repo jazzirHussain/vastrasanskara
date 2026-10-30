@@ -5,6 +5,7 @@ import { useTestDb } from './helpers/db.js';
 import { buildTestApp } from './helpers/app.js';
 import { billingHelpers } from './helpers/billing.js';
 import { clock } from '../src/clock.js';
+import { Branch } from '../src/modules/branches/model.js';
 import { Customer } from '../src/modules/customers/model.js';
 import { BillingDocument } from '../src/modules/billing/model.js';
 import { renderPendingPdfs } from '../src/modules/billing/service.js';
@@ -156,4 +157,29 @@ test('a receipt voucher lays out and renders as a PDF', async () => {
   const def = documentDefinition(snapshot);
   expect(text(def)).toContain('RV/2627/0001');
   expect((await renderPdf(def)).subarray(0, 4).toString()).toBe('%PDF');
+});
+
+test('a logo that cannot be embedded does not block the bill', async () => {
+  const { ops, takeOrder } = await world();
+  const logoKey = `${(await Branch.findOne())._id}/branch_logo/2026/00000000-0000-0000-0000-000000000000.webp`;
+  await storage.putObject({ key: logoKey, body: Buffer.from('RIFF....WEBPVP8 '), contentType: 'image/webp' });
+  await Branch.updateOne({}, { logoKey });
+  const bill = await issued(ops, await takeOrder());
+  expect(await renderPendingPdfs({ storage })).toEqual({ rendered: 1, failed: 0 });
+  expect((await BillingDocument.findById(bill.id).lean()).pdf.status).toBe('ready');
+});
+
+test('the printed bill shows readable dates, the shop contact and each line once', async () => {
+  const { ops, takeOrder } = await world();
+  await Branch.updateOne({}, { phone: '080 2345 6789', email: 'shop@vastra.test', address: { line1: '12 Temple Road', city: 'Mysuru', pincode: '570001' } });
+  const bill = await issued(ops, await takeOrder());
+  const snap = (await BillingDocument.findById(bill.id).lean()).snapshot;
+  const t = text(documentDefinition(snap));
+  for (const s of ['080 2345 6789', 'shop@vastra.test', '12 Temple Road', 'Mysuru 570001']) expect(t, s).toContain(s);
+  expect(t).toMatch(/Date: \d{1,2} [A-Z][a-z]{2} \d{4}/);
+  expect(t).toMatch(/Due date: \d{1,2} [A-Z][a-z]{2} \d{4}/);
+  expect(t).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  const lines = documentDefinition({ ...snap, lines: [{ ...snap.lines[0], description: 'Blouse — Blouse (VS/ORD/1)' }] });
+  expect(text(lines)).toContain('Blouse (VS/ORD/1)');
+  expect(text(lines)).not.toContain('Blouse — Blouse');
 });
