@@ -1,4 +1,5 @@
 import { test, expect, vi, beforeEach, afterEach } from 'vitest';
+import mongoose from 'mongoose';
 import { addDaysYmd } from '@vs/shared';
 import { useTestDb } from './helpers/db.js';
 import { buildTestApp } from './helpers/app.js';
@@ -11,7 +12,13 @@ import {
   inputTaxSummary,
   monthSummary,
 } from '../src/modules/expenses/service.js';
-import { expenseListFilter } from '../src/modules/expenses/queries.js';
+import {
+  activeMatch,
+  expenseListFilter,
+  listExpenses,
+  monthFacetPipeline,
+  recentPayees,
+} from '../src/modules/expenses/queries.js';
 
 useTestDb();
 const app = buildTestApp();
@@ -291,20 +298,149 @@ test('expense cost totals for any date range, with the part bought as stock', as
   expect(await expenseCostTotal(branchId, { from: '2027-01-01', to: '2027-01-31' })).toEqual({ cost: 0, purchaseCost: 0 });
 });
 
-test('expense queries use indexes', async () => {
+test("figures and suggestions leave out other branches' expenses", async () => {
+  const { ops, branchId, vendor29 } = await world();
+  const foreign = new mongoose.Types.ObjectId();
+  const own = [
+    await added(ops, { date: '2026-10-05', total: 30000, category: 'rent', payee: { name: 'Own Oct Shop' } }),
+    await added(ops, { date: '2026-11-02', total: 50000, category: 'rent', payee: { name: 'Own Free Text Shop' } }),
+    await added(ops, { date: '2026-11-03', total: 118000, category: 'courier', payee: { vendorId: vendor29.id }, gst: gstBill() }),
+  ];
+  const theirs = [
+    await added(ops, { date: '2026-10-06', total: 900000, category: 'rent', payee: { name: 'Other Branch Shop' } }),
+    await added(ops, {
+      date: '2026-11-04', total: 236000, category: 'courier', payee: { vendorId: vendor29.id },
+      gst: gstBill({ taxable: 200000, cgst: 18000, sgst: 18000, igst: 0 }),
+    }),
+    await added(ops, { date: '2026-11-05', total: 77000, category: 'electricity', payee: { name: 'Other Branch Shop' } }),
+  ];
+  for (const e of theirs) await Expense.updateOne({ _id: e.id }, { branchId: foreign });
+
+  const novList = await listExpenses(branchId, { month: NOV, limit: 100 });
+  expect(novList.items.map((i) => String(i._id)).sort()).toEqual([own[1].id, own[2].id].sort());
+  const octList = await listExpenses(branchId, { month: OCT, limit: 100 });
+  expect(octList.items.map((i) => String(i._id))).toEqual([own[0].id]);
+
+  const summary = await monthSummary(branchId, NOV);
+  expect(summary).toMatchObject({ total: 168000, count: 2, previousMonthTotal: 30000, missingBill: 1 });
+  expect(summary.byCategory.map((r) => [r.category.key, r.total, r.count])).toEqual([
+    ['courier', 118000, 1],
+    ['rent', 50000, 1],
+  ]);
+  expect(summary.byMode.reduce((t, r) => t + r.total, 0)).toBe(168000);
+  expect(summary.gst).toMatchObject({ count: 1, taxable: 100000, cgst: 9000, sgst: 9000 });
+
+  expect(await expenseTotalsByCategory(branchId, { from: '2026-10-01', to: '2026-11-30' })).toEqual([
+    { category: 'courier', total: 118000, count: 1 },
+    { category: 'rent', total: 80000, count: 2 },
+  ]);
+  expect(await inputTaxSummary(branchId, { from: '2026-10-01', to: '2026-11-30' })).toMatchObject({ count: 1, cgst: 9000, sgst: 9000 });
+  expect(await expenseCostTotal(branchId, { from: '2026-10-01', to: '2026-11-30' })).toEqual({ cost: 30000 + 50000 + 100000, purchaseCost: 0 });
+  expect((await recentPayees(branchId)).recent.map((p) => p.name)).toEqual(['Own Free Text Shop', 'Own Oct Shop']);
+
+  // The other branch's own figures show the seeding did what the test relies on.
+  expect(await monthSummary(String(foreign), NOV)).toMatchObject({ total: 313000, count: 2, previousMonthTotal: 900000 });
+  expect((await recentPayees(String(foreign))).recent.map((p) => p.name)).toEqual(['Other Branch Shop']);
+});
+
+test('voided GST bills count for nothing in the GST, cost and last-month figures', async () => {
+  const { ops, branchId, vendor29 } = await world();
+  const payee = { vendorId: vendor29.id };
+  await added(ops, { date: '2026-10-10', payee, gst: gstBill({ billDate: '2026-10-10' }) });
+  const big = { taxable: 500000, cgst: 45000, sgst: 45000 }; // 590000 with GST
+  const octVoid = await added(ops, { date: '2026-10-11', payee, gst: gstBill({ billDate: '2026-10-11', ...big }), total: 590000 });
+  await added(ops, { date: '2026-11-02', payee, gst: gstBill() });
+  const novVoid = await added(ops, { date: '2026-11-03', payee, gst: gstBill(big), total: 590000 });
+  for (const e of [octVoid, novVoid]) {
+    ok(await ops.agent.post(`/v1/expenses/${e.id}/void`).send({ version: e.version, reason: 'Entered twice' }));
+  }
+
+  const nov = await monthSummary(branchId, NOV);
+  expect(nov).toMatchObject({ total: 118000, count: 1, previousMonthTotal: 118000 });
+  expect(nov.gst).toEqual({
+    count: 1,
+    taxable: 100000,
+    cgst: 9000,
+    sgst: 9000,
+    igst: 0,
+    itc: { cgst: 9000, sgst: 9000, igst: 0 },
+    ineligible: { cgst: 0, sgst: 0, igst: 0 },
+  });
+  expect(await inputTaxSummary(branchId, { from: '2026-11-01', to: '2026-11-30' })).toMatchObject({ count: 1, taxable: 100000, cgst: 9000 });
+  expect(await inputTaxSummary(branchId, { from: '2026-10-01', to: '2026-10-31' })).toMatchObject({ count: 1, taxable: 100000, cgst: 9000 });
+  expect(await expenseCostTotal(branchId, { from: '2026-11-01', to: '2026-11-30' })).toEqual({ cost: 100000, purchaseCost: 0 });
+
+  const oct = await monthSummary(branchId, OCT);
+  expect(oct).toMatchObject({ total: 118000, count: 1, previousMonthTotal: 0 });
+  expect(oct.gst).toMatchObject({ count: 1, taxable: 100000 });
+});
+
+test('month figures include the first and last day of the month only', async () => {
+  const { ops, branchId } = await world();
+  // Totals are powers of ten so each sum shows exactly which expenses it took.
+  const dated = [
+    ['2026-08-31', 1000000], // neither
+    ['2026-09-01', 1], // September
+    ['2026-09-30', 10], // September
+    ['2026-10-01', 100], // October
+    ['2026-10-15', 10000], // October
+    ['2026-10-31', 1000], // October
+    ['2026-11-01', 100000], // November
+    ['2025-11-30', 9000000], // neither
+    ['2025-12-01', 300000], // December, last year
+    ['2025-12-31', 500000], // December, last year
+    ['2026-01-01', 2000], // January
+    ['2026-01-31', 4000], // January
+    ['2026-02-01', 8000000], // neither
+  ];
+  for (const [date, total] of dated) await added(ops, { date, total });
+
+  const octList = await listExpenses(branchId, { month: OCT, limit: 100 });
+  expect(octList.items).toHaveLength(3);
+  expect(await monthSummary(branchId, OCT)).toMatchObject({ total: 11100, count: 3, previousMonthTotal: 11 });
+  expect(await monthSummary(branchId, NOV)).toMatchObject({ total: 100000, count: 1, previousMonthTotal: 11100 });
+  expect(await monthSummary(branchId, '2026-09')).toMatchObject({ total: 11, count: 2, previousMonthTotal: 1000000 });
+  expect(await monthSummary(branchId, '2026-01')).toMatchObject({ total: 6000, count: 2, previousMonthTotal: 800000 });
+});
+
+test('the month figures and the list filter use the by_date index', async () => {
   const { branchId } = await world();
-  const stages = (plan) => JSON.stringify(plan);
-  const filters = [
-    expenseListFilter(branchId, { month: NOV }),
+  // The index names used by the winning plan of an explained find or aggregate.
+  const winning = (explained) => {
+    const plan = explained.queryPlanner?.winningPlan ?? explained.stages.find((st) => st.$cursor).$cursor.queryPlanner.winningPlan;
+    const names = [];
+    const walk = (node) => {
+      if (!node || typeof node !== 'object') return;
+      if (node.stage === 'IXSCAN') names.push(node.indexName);
+      if (node.stage === 'COLLSCAN') names.push('COLLSCAN');
+      walk(node.inputStage);
+      for (const child of node.inputStages ?? []) walk(child);
+    };
+    walk(plan);
+    return names;
+  };
+
+  // The list of a month: the real filter, sorted as listExpenses sorts it.
+  const listPlan = await Expense.find(expenseListFilter(branchId, { month: NOV }))
+    .sort({ date: -1, _id: -1 })
+    .explain('queryPlanner');
+  expect(winning(listPlan)).toEqual(['by_date']);
+
+  // The month figures: the real $facet pipeline.
+  const facetPlan = await Expense.aggregate(monthFacetPipeline(branchId, NOV)).explain('queryPlanner');
+  expect(winning(facetPlan)).toEqual(['by_date']);
+
+  // A date range's category totals, GST and cost sums: the real match.
+  const rangeMatch = activeMatch(branchId, { from: '2026-10-01', to: '2026-11-30' });
+  const rangePlan = await Expense.aggregate([{ $match: rangeMatch }, { $group: { _id: '$category', total: { $sum: '$total' } } }]).explain('queryPlanner');
+  expect(winning(rangePlan)).toEqual(['by_date']);
+
+  // Filters that add a category or a no-bill check still avoid a full scan.
+  for (const filter of [
     expenseListFilter(branchId, { month: NOV, category: 'rent' }),
     expenseListFilter(branchId, { from: '2026-10-01', to: '2026-11-30', noBill: true }),
-  ];
-  for (const filter of filters) {
+  ]) {
     const plan = await Expense.find(filter).sort({ date: -1, _id: -1 }).explain('queryPlanner');
-    expect(stages(plan.queryPlanner.winningPlan)).not.toContain('COLLSCAN');
+    expect(winning(plan)).not.toContain('COLLSCAN');
   }
-  const match = { branchId: filters[0].branchId, date: { $gte: '2026-11-01', $lte: '2026-11-31' }, status: 'active' };
-  const plan = await Expense.aggregate([{ $match: match }, { $group: { _id: '$category', total: { $sum: '$total' } } }]).explain('queryPlanner');
-  expect(stages(plan)).not.toContain('COLLSCAN');
-  expect(stages(plan)).toContain('IXSCAN');
 });

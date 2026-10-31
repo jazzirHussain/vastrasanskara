@@ -83,7 +83,8 @@ function gstSummaryOf(row) {
   };
 }
 
-const activeMatch = (branchId, range) => ({ branchId: oid(branchId), date: rangeOf(range), status: 'active' });
+/** The match of every figure: one branch, a date range, active expenses only (exported for the index test). */
+export const activeMatch = (branchId, range) => ({ branchId: oid(branchId), date: rangeOf(range), status: 'active' });
 
 /** Spend per category in a date range, biggest first: [{ category, total, count }]. */
 export async function expenseTotalsByCategory(branchId, { from, to }) {
@@ -124,22 +125,27 @@ export async function expenseCostTotal(branchId, { from, to }) {
   return { cost: row?.cost ?? 0, purchaseCost: row?.purchaseCost ?? 0 };
 }
 
+/** The aggregate behind monthSummary's month figures (exported for the index test). */
+export function monthFacetPipeline(branchId, month) {
+  return [
+    { $match: activeMatch(branchId, { from: `${month}-01`, to: `${month}-31` }) },
+    {
+      $facet: {
+        overall: [{ $group: { _id: null, total: { $sum: '$total' }, count: { $sum: 1 } } }],
+        byCategory: [{ $group: { _id: '$category', total: { $sum: '$total' }, count: { $sum: 1 } } }, { $sort: { total: -1, _id: 1 } }],
+        byMode: [{ $group: { _id: '$mode', total: { $sum: '$total' } } }, { $sort: { total: -1, _id: 1 } }],
+        gst: [{ $match: { gst: { $ne: null } } }, { $group: { _id: null, ...GST_GROUP } }],
+        missingBill: [{ $match: NO_BILL }, { $count: 'n' }],
+      },
+    },
+  ];
+}
+
 /** The month's total by category and way of paying, last month's total, GST and bills missing photos. */
 export async function monthSummary(branchId, month) {
   const previous = previousMonth(month);
   const [[facets], [before], settings, locked] = await Promise.all([
-    Expense.aggregate([
-      { $match: activeMatch(branchId, { from: `${month}-01`, to: `${month}-31` }) },
-      {
-        $facet: {
-          overall: [{ $group: { _id: null, total: { $sum: '$total' }, count: { $sum: 1 } } }],
-          byCategory: [{ $group: { _id: '$category', total: { $sum: '$total' }, count: { $sum: 1 } } }, { $sort: { total: -1, _id: 1 } }],
-          byMode: [{ $group: { _id: '$mode', total: { $sum: '$total' } } }, { $sort: { total: -1, _id: 1 } }],
-          gst: [{ $match: { gst: { $ne: null } } }, { $group: { _id: null, ...GST_GROUP } }],
-          missingBill: [{ $match: NO_BILL }, { $count: 'n' }],
-        },
-      },
-    ]),
+    Expense.aggregate(monthFacetPipeline(branchId, month)),
     Expense.aggregate([
       { $match: activeMatch(branchId, { from: `${previous}-01`, to: `${previous}-31` }) },
       { $group: { _id: null, total: { $sum: '$total' } } },
