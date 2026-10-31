@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { expenseSchema } from '@vs/shared/schemas/expenses.js';
+import { expensePatchSchema, expenseSchema, expenseVoidSchema } from '@vs/shared/schemas/expenses.js';
 import { actorFrom, requirePermission } from '../../core/auth/middleware.js';
 import { idempotent } from '../../core/idempotency.js';
-import { validate } from '../../core/validate.js';
+import { validate, versioned } from '../../core/validate.js';
 import { logger } from '../../logger.js';
 import { toExpenseJson } from './json.js';
-import { createExpense, expenseJsonContext, getExpense } from './service.js';
+import { createExpense, expenseJsonContext, getExpense, updateExpense, voidExpense } from './service.js';
 
 const jsonOf = async (branchId, expense) => toExpenseJson(expense, await expenseJsonContext(branchId, expense));
 
@@ -37,6 +37,18 @@ export function expensesRouter(storage) {
   router.get('/:id', requirePermission('expenses.view'), async (req, res) => {
     const { branchId } = req.user;
     res.json({ expense: await jsonOf(branchId, await getExpense(branchId, req.params.id)) });
+  });
+
+  router.patch('/:id', requirePermission('expenses.write'), validate({ body: versioned(expensePatchSchema) }), async (req, res) => {
+    const { branchId } = req.user;
+    const expense = await updateExpense(branchId, req.params.id, req.body, actorFrom(req), { storage });
+    res.json({ expense: await jsonOf(branchId, expense) });
+  });
+
+  router.post('/:id/void', requirePermission('expenses.write'), validate({ body: versioned(expenseVoidSchema) }), async (req, res) => {
+    const { branchId } = req.user;
+    const expense = await voidExpense(branchId, req.params.id, req.body, actorFrom(req));
+    res.json({ expense: await jsonOf(branchId, expense) });
   });
 
   return router;

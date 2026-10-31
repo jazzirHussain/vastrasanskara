@@ -1,11 +1,13 @@
 import mongoose from 'mongoose';
+import { z } from 'zod';
 import { formatExpenseNumber } from '@vs/shared/expenses.js';
 import { financialYear, istDate, istDayBounds } from '@vs/shared/fy.js';
-import { expenseSchema } from '@vs/shared/schemas/expenses.js';
+import { checkExpenseRules, expenseSchema } from '@vs/shared/schemas/expenses.js';
 import { clock } from '../../clock.js';
+import { diff } from '../../core/audit/diff.js';
 import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
-import { AppError, businessRule, notFound, validationError } from '../../core/errors.js';
+import { AppError, businessRule, conflict, notFound, validationError } from '../../core/errors.js';
 import { nextDocumentNumber } from '../../core/numbering.js';
 import { parseOrThrow } from '../../core/validate.js';
 import { getBranch } from '../branches/service.js';
@@ -46,17 +48,18 @@ function auditView(expense) {
  * Checks bill photos before saving: each key must be an expense_bill upload of this branch and
  * be in storage. Answers the attachments with the stored type and size.
  */
-async function checkAttachments(branchId, storage, attachments) {
-  if (!attachments.length) return [];
-  if (!storage) throw new Error('createExpense needs storage to check bill photos');
+async function checkAttachments(branchId, storage, attachments, known = new Set()) {
+  if (!attachments.some((a) => !known.has(a.key))) return attachments;
+  if (!storage) throw new Error('Saving an expense needs storage to check bill photos');
   const pattern = new RegExp(
     `^${escapeRegex(String(branchId))}/expense_bill/\\d{4}/[0-9a-f-]{36}\\.(jpg|png|webp|heic|pdf)$`,
   );
   attachments.forEach((a, i) => {
-    if (!pattern.test(a.key)) throw fieldError(`attachments.${i}.key`, 'Not a bill photo upload');
+    if (!known.has(a.key) && !pattern.test(a.key)) throw fieldError(`attachments.${i}.key`, 'Not a bill photo upload');
   });
   return Promise.all(
     attachments.map(async (a, index) => {
+      if (known.has(a.key)) return a;
       const head = await storage.headObject(a.key);
       if (!head) throw new AppError(400, 'ATTACHMENT_NOT_UPLOADED', 'A photo has not finished uploading', { index });
       return { key: a.key, name: a.name, contentType: head.contentType, size: head.size };
@@ -170,6 +173,158 @@ export async function createExpense(
   const options = { attachments, source, sourceRef };
   if (session) return insertExpense(branchId, fields, actor, options, session);
   return withTransaction((s) => insertExpense(branchId, fields, actor, options, s));
+}
+
+// Merged edits are re-checked with the same cross-field rules as a new expense.
+const mergedRules = z.any().superRefine(checkExpenseRules);
+
+const linkInput = (link) => (link ? { kind: link.kind, id: String(link.garmentId ?? link.batchId ?? link.orderId) } : null);
+
+/** A stored expense in the shape of the request body (for merging an edit and re-checking it). */
+function inputView(expense) {
+  const { gst } = expense;
+  return {
+    date: expense.date,
+    category: expense.category,
+    note: expense.note,
+    payee: {
+      vendorId: expense.payee.vendorId ? String(expense.payee.vendorId) : null,
+      name: expense.payee.name,
+      gstin: expense.payee.gstin ?? null,
+      stateCode: expense.payee.stateCode ?? null,
+    },
+    total: expense.total,
+    mode: expense.mode,
+    reference: expense.reference,
+    gst: gst
+      ? {
+          billNo: gst.billNo, billDate: gst.billDate, rateBp: gst.rateBp ?? null, taxable: gst.taxable,
+          cgst: gst.cgst, sgst: gst.sgst, igst: gst.igst, itcEligible: gst.itcEligible,
+        }
+      : null,
+    attachments: (expense.attachments ?? []).map((a) => ({ key: a.key, name: a.name })),
+    link: linkInput(expense.link),
+  };
+}
+
+/**
+ * Whether an edit's payee is the stored one: the same vendor (its snapshot is kept, even when the
+ * vendor is now inactive), or the same typed name, GSTIN and state.
+ */
+function samePayee(stored, input) {
+  if (input.vendorId || stored.vendorId) return String(input.vendorId ?? '') === String(stored.vendorId ?? '');
+  const gstin = input.gstin ?? null;
+  const stateCode = input.stateCode ?? (gstin ? gstin.slice(0, 2) : null);
+  return input.name === stored.name && gstin === (stored.gstin ?? null) && stateCode === (stored.stateCode ?? null);
+}
+
+const sameLink = (stored, input) => JSON.stringify(linkInput(stored)) === JSON.stringify(input ?? null);
+
+/** Loads an expense for a write at `version`: 404, or 409 on a stale version. */
+async function loadForWrite(branchId, id, version, session) {
+  if (!mongoose.isValidObjectId(id)) throw notFound();
+  const expense = await Expense.findOne({ _id: id, branchId }).session(session);
+  if (!expense) throw notFound();
+  if (expense.__v !== version) throw conflict();
+  return expense;
+}
+
+/**
+ * Edits an expense at `version`. Only the fields sent change; the merged expense is re-checked as
+ * a new one would be. Its month must be open, and so must the month it moves to (within the same
+ * financial year, so the number stays in its series). New bill photos are checked against storage
+ * first. Audited only when something changed.
+ */
+export async function updateExpense(branchId, id, { version, patch }, actor, { storage } = {}) {
+  let checked = null;
+  if (patch.attachments) {
+    const current = await getExpense(branchId, id);
+    const known = new Set((current.attachments ?? []).map((a) => a.key));
+    checked = await checkAttachments(branchId, storage, patch.attachments, known);
+  }
+
+  return withTransaction(async (session) => {
+    const now = clock.now();
+    const expense = await loadForWrite(branchId, id, version, session);
+    if (expense.status === 'voided') throw businessRule('EXPENSE_VOIDED', 'This expense was voided and cannot be changed');
+    await assertPeriodOpen(branchId, expense.date, session);
+
+    if (patch.date !== undefined && patch.date !== expense.date) {
+      if (patch.date > istDate(now)) throw businessRule('EXPENSE_DATE_IN_FUTURE', 'The date cannot be in the future');
+      if (financialYear(istDayBounds(patch.date).start).code !== expense.fyCode) {
+        throw businessRule('EXPENSE_FY_CHANGE', 'An expense cannot move to another financial year');
+      }
+      await assertPeriodOpen(branchId, patch.date, session);
+    }
+
+    const stored = expense.toObject();
+    const merged = parseOrThrow(mergedRules, { ...inputView(stored), ...patch });
+
+    if (merged.category !== stored.category) assertCategoryUsable(await readSettings(branchId, session), merged.category);
+
+    const payee = samePayee(stored.payee, merged.payee) ? stored.payee : await payeeFor(branchId, merged.payee, session);
+    if (merged.gst && !payee.gstin) throw fieldError('payee.gstin', "A GST bill shows the supplier's GSTIN");
+
+    let { link } = stored;
+    if (!sameLink(stored.link, merged.link)) {
+      // Task 5 resolves links to a garment, batch or order.
+      if (merged.link) throw fieldError('link', 'Not available yet');
+      link = null;
+    }
+
+    let attachments = stored.attachments;
+    if (checked) {
+      const byKey = new Map(stored.attachments.map((a) => [a.key, a]));
+      attachments = checked.map((a) => {
+        const meta = byKey.get(a.key) ?? (a.contentType ? a : null);
+        // On the expense when checked but gone now: someone saved in between.
+        if (!meta) throw conflict();
+        return { key: a.key, name: a.name, contentType: meta.contentType, size: meta.size };
+      });
+    }
+
+    const before = auditView(stored);
+    expense.set({
+      date: merged.date,
+      month: merged.date.slice(0, 7),
+      category: merged.category,
+      note: merged.note,
+      payee,
+      total: merged.total,
+      mode: merged.mode,
+      reference: merged.reference,
+      gst: merged.gst ? { ...merged.gst, interState: merged.gst.igst > 0 } : null,
+      attachments,
+      link,
+      updatedBy: actor.userId ?? null,
+    });
+    expense.increment();
+    await expense.save({ session });
+    const after = auditView(expense.toObject());
+    if (diff(before, after).length) {
+      await recordAudit({ branchId, entityType: 'expense', entityId: expense._id, action: 'update', before, after, actor }, session);
+    }
+    return expense.toObject();
+  });
+}
+
+/** Voids an expense at `version` with a reason. Permanent; its month must be open. */
+export async function voidExpense(branchId, id, { version, patch: { reason } }, actor) {
+  return withTransaction(async (session) => {
+    const now = clock.now();
+    const expense = await loadForWrite(branchId, id, version, session);
+    if (expense.status === 'voided') throw businessRule('ALREADY_VOIDED', 'This expense is already voided');
+    await assertPeriodOpen(branchId, expense.date, session);
+    const before = auditView(expense.toObject());
+    expense.set({ status: 'voided', void: { reason, at: now, by: actor.userId }, updatedBy: actor.userId ?? null });
+    expense.increment();
+    await expense.save({ session });
+    await recordAudit(
+      { branchId, entityType: 'expense', entityId: expense._id, action: 'void', before, after: auditView(expense.toObject()), actor },
+      session,
+    );
+    return expense.toObject();
+  });
 }
 
 /** One of the branch's expenses, or 404. */
