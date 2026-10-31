@@ -198,5 +198,10 @@ purchaseRequestSchema.plugin(commonFields);
 purchaseRequestSchema.index({ branchId: 1, status: 1, createdAt: 1, _id: 1 }, { name: 'by_status' });
 purchaseRequestSchema.index({ branchId: 1, stockItemId: 1, status: 1 }, { name: 'open_for_item' });
 purchaseRequestSchema.index({ 'needs.garmentId': 1 }, { name: 'needs' });
+// At most one open shortfall request per item, so two reservations at once cannot open two.
+purchaseRequestSchema.index(
+  { branchId: 1, stockItemId: 1 },
+  { name: 'one_open_shortfall', unique: true, partialFilterExpression: { status: 'requested', reason: 'shortfall' } },
+);
 
 export const PurchaseRequest = mongoose.models.PurchaseRequest ?? mongoose.model('PurchaseRequest', purchaseRequestSchema);

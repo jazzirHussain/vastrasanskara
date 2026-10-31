@@ -12,6 +12,7 @@ import { movePickupDate, settleOrderAfterStageChange } from '../orders/lifecycle
 import { getGarment, isOrderInScope, listOpenGarments, today } from '../orders/service.js';
 import { getUserNames } from '../users/service.js';
 import { readSettings } from '../settings/service.js';
+import { copyGarmentMaterials, garmentFacts, releaseGarments } from '../stock/service.js';
 import { getVendorNames, isActiveVendor } from '../vendors/service.js';
 import { areActiveWorkers, getWorkerNames } from '../workers/service.js';
 import { StageEvent } from './model.js';
@@ -83,10 +84,14 @@ async function notifyStageEvent({ garment, order, previousStage, changes, event,
 
 /**
  * A rejected garment is never charged; the owner's resolution is kept on it, and a remake is a
- * new garment on the same order. Returns the `rejection` to save with the garment.
+ * new garment on the same order. Its unused materials go back to stock; a remake plans the same
+ * materials again. Returns the `rejection` to save with the garment.
  */
 async function resolveRejection(item, input, actor, session) {
+  const { branchId, _id: garmentId } = item.garment;
   const remake = input.resolution === 'remake' ? await remakeGarment(item, actor, session) : null;
+  if (remake) await copyGarmentMaterials(branchId, garmentId, garmentFacts(remake), actor, session);
+  else await releaseGarments(branchId, [garmentId], actor, session);
   await recordAudit(
     {
       branchId: item.garment.branchId,

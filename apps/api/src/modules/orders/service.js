@@ -14,6 +14,7 @@ import { getBranch } from '../branches/service.js';
 import { customerIdsByNamePrefix, getCustomer, getCustomerNames } from '../customers/service.js';
 import { getMeasurement } from '../measurements/service.js';
 import { readSettings } from '../settings/service.js';
+import { garmentFacts, planNewGarments } from '../stock/service.js';
 import { getUserNames, isActiveDesigner } from '../users/service.js';
 import { Garment, Order } from './model.js';
 
@@ -101,12 +102,13 @@ export async function checkGarmentInputs(branchId, { customerId, pickupDate, gar
 
 /**
  * Garment documents for the lines, numbered from `startIndex`. A line with quantity N becomes
- * N garments sharing a new batchId.
+ * N garments sharing a new batchId. Materials are not kept on the garment (the stock module
+ * holds them; see planGarmentMaterials).
  */
 export function buildGarments({ branchId, order, garments, startIndex, settings, actor }) {
   const docs = [];
   let index = startIndex;
-  for (const { quantity, ...line } of garments) {
+  for (const { quantity, materials, ...line } of garments) {
     const batchId = quantity > 1 ? new ObjectId() : null;
     const dueDate = line.dueDate ?? null;
     const plan = stagePlanFor({ orderDate: today(), dueDate: dueDate ?? order.pickupDate, settings, type: line.type });
@@ -129,6 +131,16 @@ export function buildGarments({ branchId, order, garments, startIndex, settings,
     }
   }
   return docs;
+}
+
+/**
+ * Lists each line's materials on the garments made from it (`created` in buildGarments order;
+ * every garment of a batch gets the list) and reserves them, in `session`.
+ */
+export async function planGarmentMaterials(branchId, lines, created, actor, session) {
+  const materials = lines.flatMap((line) => Array.from({ length: line.quantity }, () => line.materials ?? []));
+  const garments = created.map((g, i) => ({ ...garmentFacts(g), materials: materials[i] }));
+  await planNewGarments(branchId, garments, actor, session);
 }
 
 async function checkParties(branchId, { customerId, designerId }) {
@@ -180,6 +192,7 @@ export async function createOrder(branchId, input, actor) {
       session,
       ordered: true,
     });
+    await planGarmentMaterials(branchId, garments, garmentDocs, actor, session);
     await recordAudit(
       {
         branchId,
@@ -214,17 +227,24 @@ export async function getOrder(branchId, user, orderId) {
   return { order, garments, customer };
 }
 
-/** A garment of an order in the user's scope; 404 otherwise. */
-export async function getGarment(branchId, user, garmentId) {
+/** A garment of an order in the user's scope (read in `session` when given); 404 otherwise. */
+export async function getGarment(branchId, user, garmentId, session) {
   if (!mongoose.isValidObjectId(garmentId)) throw notFound();
-  const garment = await Garment.findOne({ _id: garmentId, branchId }).lean();
-  if (!garment || !(await isOrderInScope(user, garment.orderId))) throw notFound();
+  const garment = await Garment.findOne({ _id: garmentId, branchId }).session(session ?? null).lean();
+  if (!garment || !(await isOrderInScope(user, garment.orderId, session))) throw notFound();
   return garment;
 }
 
 /** Whether the order belongs to the user's branch and scope. */
-export async function isOrderInScope(user, orderId) {
-  return Boolean(await Order.exists({ _id: orderId, branchId: user.branchId, ...orderScope(user) }));
+export async function isOrderInScope(user, orderId, session) {
+  return Boolean(await Order.exists({ _id: orderId, branchId: user.branchId, ...orderScope(user) }).session(session ?? null));
+}
+
+/** The status of one of the branch's orders (read in `session` when given), or 404. */
+export async function getOrderStatus(branchId, orderId, session) {
+  const order = await Order.findOne({ _id: orderId, branchId }, { status: 1 }).session(session ?? null).lean();
+  if (!order) throw notFound();
+  return order.status;
 }
 
 /** Whether the user may read a garment reference file: they can read an order that uses it. */

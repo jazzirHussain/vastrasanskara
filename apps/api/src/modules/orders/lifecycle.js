@@ -4,6 +4,7 @@ import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
 import { businessRule, validationError } from '../../core/errors.js';
 import { readSettings } from '../settings/service.js';
+import { releaseGarments } from '../stock/service.js';
 import { isActiveDesigner } from '../users/service.js';
 import { Garment } from './model.js';
 import { assertStatus, loadOrderForChange, replanGarment, today } from './service.js';
@@ -159,7 +160,7 @@ export function refundPercentFor(schedule, furthestStage) {
 /**
  * Cancels an active or held order: records the furthest stage any garment reached and the
  * refund percent from the schedule (the amount is worked out against payments in billing),
- * and cancels every unfinished garment.
+ * cancels every unfinished garment, and puts their unused materials back.
  */
 export async function cancelOrder(branchId, orderId, { version, patch: { reason } }, actor) {
   const settings = await readSettings(branchId);
@@ -172,8 +173,11 @@ export async function cancelOrder(branchId, orderId, { version, patch: { reason 
       (furthest, g) => (stageIndex(g.currentStage) > stageIndex(furthest) ? g.currentStage : furthest),
       'order_taken',
     );
-    for (const g of garments) if (!SETTLED.has(g.status)) g.status = 'cancelled';
+    const cancelled = garments.filter((g) => !SETTLED.has(g.status));
+    for (const g of cancelled) g.status = 'cancelled';
     await saveGarments(garments, actor, session);
+    // Materials not yet used go back to free stock (used ones were cut).
+    await releaseGarments(branchId, cancelled.map((g) => g._id), actor, session);
 
     order.status = 'cancelled';
     closeOpenHold(order);

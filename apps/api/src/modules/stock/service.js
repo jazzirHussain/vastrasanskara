@@ -8,7 +8,16 @@ import { StockItem } from './model.js';
 import { getItem } from './queries.js';
 
 export { moveStock } from './ledger.js';
-export { getItem, listItems, listMovements, lowStockItems } from './queries.js';
+export { garmentMaterialsView, getItem, listItems, listMovements, lowStockItems, pickerItems } from './queries.js';
+export {
+  addShortfall,
+  copyGarmentMaterials,
+  dropNeeds,
+  garmentFacts,
+  planNewGarments,
+  releaseGarments,
+  setGarmentMaterials,
+} from './reservations.js';
 
 const EDITABLE = [
   'name', 'brand', 'category', 'colour', 'usageUnit', 'purchaseUnit', 'factor', 'step', 'reorderLevel', 'sellingPrice', 'active',
