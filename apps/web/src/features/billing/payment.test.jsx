@@ -83,6 +83,7 @@ test('a retry after a network error reuses the key', async () => {
   expect(await within(dialog).findByText('Receipt RCPT/2627/0004 saved')).toBeInTheDocument();
   expect(posts).toHaveLength(2);
   expect(posts[1].key).toBe(posts[0].key);
+  expect(within(dialog).queryByText(/may already be saved/)).toBeNull();
 });
 
 test('paying more than the bill says the rest is kept as advance', async () => {
@@ -193,8 +194,13 @@ test('after a network error the details are locked until Try again or Start agai
   expect(within(dialog).getByLabelText('Amount (₹)')).toBeDisabled();
   expect(within(dialog).getByRole('button', { name: 'UPI' })).toBeDisabled();
 
+  const warning = "The first payment may already be saved. Check the customer's payments before taking it again.";
+  expect(within(dialog).queryByText(warning)).toBeNull();
+
   await userEvent.click(within(dialog).getByRole('button', { name: 'Start again' }));
   expect(within(dialog).queryByText(/Cannot reach the server/)).toBeNull();
+  // A new payment gets a new key, so the first one, if it was saved, would not stop it.
+  expect(within(dialog).getByText(warning)).toBeInTheDocument();
   const amount = within(dialog).getByLabelText('Amount (₹)');
   expect(amount).toBeEnabled();
   await userEvent.clear(amount);

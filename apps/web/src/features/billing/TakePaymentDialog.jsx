@@ -36,17 +36,21 @@ export function TakePaymentDialog({ customer, order = null, invoice = null, defa
   const [note, setNote] = useState('');
   const [earlier, setEarlier] = useState(false);
   const [receivedOn, setReceivedOn] = useState('');
+  // Set once staff start again after a dropped connection: the first payment may have been saved.
+  const [maybeSaved, setMaybeSaved] = useState(false);
 
   const paise = paiseOf(amount);
   const receipt = record.data;
   const kept = paise !== null && billBalance > 0 && paise > billBalance ? paise - billBalance : 0;
   const networkDown = record.error?.code === 'NETWORK_ERROR';
   // After a dropped connection the payment may or may not be saved: the details stay as sent so
-  // "Try again" is the same payment with the same key. "Start again" makes a new one.
+  // "Try again" is the same payment with the same key (safe). "Start again" makes a new one, so
+  // staff are warned to check the first was not saved before taking the money again.
   const locked = networkDown;
 
   function startAgain() {
     setKey(crypto.randomUUID());
+    setMaybeSaved(true);
     record.reset();
   }
 
@@ -153,6 +157,9 @@ export function TakePaymentDialog({ customer, order = null, invoice = null, defa
             <Alert color="indigo">
               {formatINR(billBalance)} will pay {invoice || order ? 'the bill' : 'their bills'}, {formatINR(kept)} will be kept as advance.
             </Alert>
+          )}
+          {maybeSaved && (
+            <Alert color="haldi">{"The first payment may already be saved. Check the customer's payments before taking it again."}</Alert>
           )}
           {record.error && <Alert color="red">{paymentErrorMessage(record.error)}</Alert>}
 
