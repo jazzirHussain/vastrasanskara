@@ -57,6 +57,12 @@ export const errorMessages = {
   RECEIPT_REFUNDED: 'Part of this payment was refunded, so it cannot be cancelled.',
   VOUCHER_ADJUSTED: 'This advance is already on a bill. Cancel the bill first.',
   SERIES_IN_USE: 'This number series has started this year and cannot be changed.',
+  EXPENSE_DATE_IN_FUTURE: 'The date cannot be in the future.',
+  EXPENSE_FY_CHANGE: 'An expense cannot move to another financial year. Void it and add it again.',
+  EXPENSE_VOIDED: 'This expense was voided and cannot be changed.',
+  ALREADY_VOIDED: 'This expense is already voided.',
+  ATTACHMENT_NOT_UPLOADED: 'A bill photo did not finish uploading. Add it again.',
+  CATEGORY_REMOVED: 'Categories cannot be removed. Hide them instead.',
   NETWORK_ERROR: 'Cannot reach the server. Check your connection and try again.',
 };
 
@@ -75,6 +81,13 @@ export function messageFor(code, serverMessage, details) {
 }
 
 // Where a code means something different on a bill than on an order.
+/** Why a bill photo did not upload, in plain words (by API error code). */
+export const billPhotoErrorMessages = {
+  FILE_TOO_LARGE: 'This file is too big. The most is 10 MB.',
+  FILE_TYPE_NOT_ALLOWED: "This kind of file can't be added. Use a photo or a PDF.",
+};
+export const billPhotoErrorMessage = (error) => billPhotoErrorMessages[error?.code] ?? 'This did not upload. Remove it and add it again.';
+
 export const billErrorMessages = {
   IDEMPOTENCY_KEY_REUSED: 'This bill may already have been issued. Reload the page to check.',
   IDEMPOTENCY_IN_PROGRESS: 'This bill is still being issued. Wait a moment, then reload the page.',

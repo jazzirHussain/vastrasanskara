@@ -38,6 +38,21 @@ export const server = setupServer(
   http.get('/v1/settings', () => HttpResponse.json(defaultSettings)),
   http.get('/v1/branch', () => HttpResponse.json(defaultBranch)),
   http.get('/v1/orders', () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get('/v1/expenses/payees', () => HttpResponse.json({ vendors: [], recent: [] })),
+  http.get('/v1/expenses', () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get('/v1/expenses/summary', ({ request }) =>
+    HttpResponse.json({
+      month: new URL(request.url).searchParams.get('month'),
+      total: 0,
+      count: 0,
+      previousMonthTotal: 0,
+      byCategory: [],
+      byMode: [],
+      gst: { count: 0, taxable: 0, cgst: 0, sgst: 0, igst: 0, itc: { cgst: 0, sgst: 0, igst: 0 }, ineligible: { cgst: 0, sgst: 0, igst: 0 } },
+      missingBill: 0,
+      locked: false,
+    }),
+  ),
   http.get('/v1/billing/customers/:id/summary', () =>
     HttpResponse.json({ billed: 0, received: 0, credited: 0, refunded: 0, outstanding: 0, overdue: 0, advanceHeld: 0 }),
   ),

@@ -20,6 +20,7 @@ export const PERMISSIONS = Object.freeze({
   PERIODS_LOCK: 'periods.lock',
   AUDIT_VERIFY: 'audit.verify',
   REPORTS_EXPORT: 'reports.export',
+  EXPENSES_VIEW: 'expenses.view',
   EXPENSES_WRITE: 'expenses.write',
   STOCK_WRITE: 'stock.write',
   STOCK_CONSUME_OWN: 'stock.consume.own',

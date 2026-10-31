@@ -5,6 +5,9 @@ import { AuditLog } from '../src/core/audit/model.js';
 import { getQuietHours } from '../src/core/notify/catalog.js';
 import { withTransaction } from '../src/core/db.js';
 import { nextDocumentNumber } from '../src/core/numbering.js';
+import { DEFAULT_EXPENSE_CATEGORIES } from '@vs/shared';
+import { Settings } from '../src/modules/settings/model.js';
+import { readSettings } from '../src/modules/settings/service.js';
 useTestDb();
 const app = buildTestApp();
 
@@ -73,4 +76,36 @@ test('a used number series cannot be restarted', async () => {
   expect(ok.status).toBe(200);
   expect(ok.body.numberSeries).toEqual({ 'invoice:2627': 101, 'receipt:2627': 7, 'invoice:2728': 1 });
   expect((await agent.put('/v1/settings').send({ billDueDays: 3 })).status).toBe(200);
+});
+
+test('expense categories cannot be removed, only hidden', async () => {
+  const { agent } = await loginAs(app, { roles: ['admin'] });
+  const categories = DEFAULT_EXPENSE_CATEGORIES.map((c) => ({ ...c }));
+  const added = await agent.put('/v1/settings').send({ expenseCategories: [...categories, { key: 'tailoring_tools', label: 'Tailoring tools', active: true }] });
+  expect(added.status, JSON.stringify(added.body)).toBe(200);
+  const removed = await agent.put('/v1/settings').send({ expenseCategories: categories });
+  expect(removed.status).toBe(422);
+  expect(removed.body.error).toEqual({
+    code: 'CATEGORY_REMOVED', message: 'Categories cannot be removed. Hide them instead.', details: { key: 'tailoring_tools' },
+  });
+  // Hiding it and renaming another is fine.
+  const hidden = categories.map((c) => (c.key === 'rent' ? { ...c, label: 'Shop rent' } : c));
+  const r = await agent.put('/v1/settings').send({ expenseCategories: [...hidden, { key: 'tailoring_tools', label: 'Tailoring tools', active: false }] });
+  expect(r.status, JSON.stringify(r.body)).toBe(200);
+  expect(r.body.expenseCategories.find((c) => c.key === 'rent').label).toBe('Shop rent');
+  expect(r.body.expenseCategories.at(-1)).toEqual({ key: 'tailoring_tools', label: 'Tailoring tools', active: false });
+});
+
+test('settings saved before expenses get the default categories', async () => {
+  const { agent, user } = await loginAs(app, { roles: ['admin'] });
+  // A settings document stored before M5: no expenseCategories key.
+  await Settings.collection.insertOne({ branchId: user.branchId, values: { billDueDays: 4 }, __v: 0 });
+  const read = await readSettings(user.branchId);
+  expect(read.billDueDays).toBe(4);
+  expect(read.expenseCategories).toEqual(DEFAULT_EXPENSE_CATEGORIES);
+  expect((await agent.get('/v1/settings')).body.expenseCategories).toEqual(DEFAULT_EXPENSE_CATEGORIES);
+  // It can still be saved, and the defaults are stored with it.
+  const r = await agent.put('/v1/settings').send({ billDueDays: 5 });
+  expect(r.status, JSON.stringify(r.body)).toBe(200);
+  expect((await Settings.findOne({ branchId: user.branchId }).lean()).values.expenseCategories).toEqual(DEFAULT_EXPENSE_CATEGORIES);
 });

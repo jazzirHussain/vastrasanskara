@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { Button, Loader, Stack, Text, Title } from '@mantine/core';
+import { IconReceiptRupee } from '@tabler/icons-react';
 import { addDaysYmd } from '@vs/shared/fy.js';
 import { useAuth } from '../../auth/AuthContext.js';
 import { todayYmd } from '../../components/DateLabel.jsx';
@@ -39,6 +40,11 @@ export function HomePage() {
   return (
     <Stack gap={0}>
       <PageHeader title={`Welcome, ${user.name}`} />
+      {can('expenses.write') && (
+        <Button component={Link} to="/expenses/new" variant="outline" size="md" leftSection={<IconReceiptRupee size={20} aria-hidden />} mb="xl" style={{ alignSelf: 'flex-start' }}>
+          Add expense
+        </Button>
+      )}
       {canRead && (
         <>
           <OrdersSection

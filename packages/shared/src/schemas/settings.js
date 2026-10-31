@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { STAGE_KEYS } from '../stages.js';
-import { hhmm, paise } from './common.js';
+import { DEFAULT_EXPENSE_CATEGORIES } from '../expenses.js';
+import { categoryKey, hhmm, paise } from './common.js';
 
 const stageKey = z.enum(STAGE_KEYS);
 const stageDays = z.partialRecord(stageKey, z.int().min(0).max(60));
@@ -19,6 +20,21 @@ const garmentTypes = z
   )
   .max(100)
   .refine((types) => new Set(types.map((t) => t.key)).size === types.length, 'Garment type keys must be unique');
+
+// The kinds of spending the house records. Keys are never removed (hide instead); labels can change.
+const expenseCategories = z
+  .array(z.strictObject({ key: categoryKey, label: z.string().trim().min(1).max(40), active: z.boolean() }))
+  .min(1)
+  .max(50)
+  .superRefine((cats, ctx) => {
+    if (new Set(cats.map((c) => c.key)).size !== cats.length) {
+      ctx.addIssue({ code: 'custom', message: 'Category keys must be unique' });
+    }
+    if (new Set(cats.map((c) => c.label.toLowerCase())).size !== cats.length) {
+      ctx.addIssue({ code: 'custom', message: 'Two categories cannot have the same name' });
+    }
+    if (!cats.some((c) => c.active)) ctx.addIssue({ code: 'custom', message: 'Keep at least one category showing' });
+  });
 
 export const settingsSchema = z.strictObject({
   advancePercent: z.int().min(0).max(100),
@@ -49,6 +65,7 @@ export const settingsSchema = z.strictObject({
   dailyJobTime: hhmm,
   closingTime: hhmm,
   garmentTypes,
+  expenseCategories,
 });
 
 /** A PUT /v1/settings body: any subset of top-level settings (each replaced whole). */
@@ -57,6 +74,7 @@ export const settingsPatchSchema = settingsSchema.partial();
 const NIGHT = { start: '21:00', end: '09:00' };
 
 export const DEFAULT_SETTINGS = Object.freeze({
+  expenseCategories: DEFAULT_EXPENSE_CATEGORIES.map((c) => ({ ...c })),
   advancePercent: 100,
   billDueDays: 0,
   cancellationRefundSchedule: [],

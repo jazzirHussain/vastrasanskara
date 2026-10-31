@@ -1,12 +1,14 @@
 import { canReadGarmentFile } from '../../modules/orders/service.js';
 import { canReadBillingPdf } from '../../modules/billing/service.js';
 import { canReadStagePhoto } from '../../modules/production/service.js';
+import { canReadExpenseFile } from '../../modules/expenses/service.js';
 
 export const ALLOWED_TYPES = Object.freeze({
   'image/jpeg': 'jpg',
   'image/png': 'png',
   'image/webp': 'webp',
   'image/heic': 'heic',
+  'image/heif': 'heif',
   'application/pdf': 'pdf',
 });
 export const MAX_UPLOAD_BYTES = 10485760;
@@ -47,4 +49,9 @@ registerFilePurpose('billing_pdf', {
   allowedTypes: [],
   canWrite: () => false,
   canRead: (user, key) => canReadBillingPdf(user, key),
+});
+registerFilePurpose('expense_bill', {
+  allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'],
+  canWrite: (user) => user.permissions.has('expenses.write'),
+  canRead: (user, key) => canReadExpenseFile(user, key),
 });

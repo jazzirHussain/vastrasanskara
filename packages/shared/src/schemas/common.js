@@ -31,3 +31,6 @@ export const paise = z.int().nonnegative();
 export const billingAmount = paise.max(1_000_000_000);
 
 export const password = z.string().min(10).max(200);
+
+/** An expense category key (stable, never removed once used). */
+export const categoryKey = z.string().regex(/^[a-z0-9_]{1,40}$/, 'Use lowercase letters, digits and _');

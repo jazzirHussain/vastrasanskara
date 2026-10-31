@@ -28,6 +28,15 @@ function periods(overrides = {}) {
 /** The row of a month, found by its name. */
 const rowOf = async (name) => (await screen.findByText(name)).closest('[data-month]');
 
+test('locking a month says expenses are locked too', async () => {
+  asOwner();
+  periods();
+  renderApp('/accounts');
+  const row = await rowOf('September 2026');
+  await userEvent.click(within(row).getByRole('button', { name: 'Lock month' }));
+  expect(await screen.findByText(/No bills, payments, refunds or expenses can be added, changed, voided or cancelled in a locked month\./)).toBeInTheDocument();
+});
+
 test('locking a month asks to confirm', async () => {
   asOwner();
   periods();
@@ -43,7 +52,7 @@ test('locking a month asks to confirm', async () => {
   await userEvent.click(within(row).getByRole('button', { name: 'Lock month' }));
   const dialog = await screen.findByRole('dialog');
   expect(
-    within(dialog).getByText('Lock September 2026? Do this after you file GSTR-1. No bills, payments or refunds can be added, changed or cancelled in a locked month.'),
+    within(dialog).getByText('Lock September 2026? Do this after you file GSTR-1. No bills, payments, refunds or expenses can be added, changed, voided or cancelled in a locked month.'),
   ).toBeInTheDocument();
   expect(posts).toHaveLength(0);
   await userEvent.type(within(dialog).getByLabelText('Note (optional)'), 'GSTR-1 filed');

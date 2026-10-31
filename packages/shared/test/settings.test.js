@@ -24,3 +24,19 @@ test('user schemas', () => {
   expect(updateUserSchema.safeParse({}).success).toBe(false);
   expect(updateUserSchema.safeParse({ active: false }).success).toBe(true);
 });
+
+test('default settings carry the expense categories', () => {
+  expect(DEFAULT_SETTINGS.expenseCategories).toHaveLength(15);
+  expect(DEFAULT_SETTINGS.expenseCategories.map((c) => c.key)).toContain('material_purchase');
+  expect(settingsPatchSchema.safeParse({ expenseCategories: DEFAULT_SETTINGS.expenseCategories }).success).toBe(true);
+});
+test('category keys and labels are unique and one stays active', () => {
+  const cats = (...rows) => ({ expenseCategories: rows.map(([key, label, active = true]) => ({ key, label, active })) });
+  const ok = (v) => settingsPatchSchema.safeParse(v).success;
+  expect(ok(cats(['a', 'Alpha'], ['b', 'Beta', false]))).toBe(true);
+  expect(ok(cats(['a', 'Alpha'], ['a', 'Beta']))).toBe(false);
+  expect(ok(cats(['a', 'Alpha'], ['b', ' alpha ']))).toBe(false);
+  expect(ok(cats(['a', 'Alpha', false]))).toBe(false);
+  expect(ok(cats(['A b', 'Alpha']))).toBe(false);
+  expect(ok({ expenseCategories: [] })).toBe(false);
+});

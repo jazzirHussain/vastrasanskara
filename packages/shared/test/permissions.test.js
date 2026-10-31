@@ -27,3 +27,13 @@ test('designers have no billing permission', () => {
     expect(mine.has(p)).toBe(false);
   }
 });
+test('expenses.view is for admin and operations only', () => {
+  expect(can(['admin'], 'expenses.view')).toBe(true);
+  expect(can(['operations'], 'expenses.view')).toBe(true);
+  expect(can(['designer'], 'expenses.view')).toBe(false);
+});
+test('designers have no expense permission', () => {
+  const mine = permissionsFor(['designer']);
+  expect(mine.has('expenses.view')).toBe(false);
+  expect(mine.has('expenses.write')).toBe(false);
+});

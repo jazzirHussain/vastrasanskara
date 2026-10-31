@@ -61,6 +61,12 @@ export async function updateVendor(branchId, id, { version, patch }, actor) {
   });
 }
 
+/** One of the branch's vendors (active or not), or null (also for an invalid id). */
+export async function getVendor(branchId, id, session) {
+  if (!mongoose.isValidObjectId(id)) return null;
+  return Vendor.findOne({ _id: id, branchId }).session(session ?? null).lean();
+}
+
 /** Names of the branch's vendors, by id. */
 export async function getVendorNames(branchId, ids) {
   const unique = [...new Set(ids.filter(Boolean).map(String))];
