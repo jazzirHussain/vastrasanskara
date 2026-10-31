@@ -112,3 +112,10 @@ test('the other stock bodies and queries', () => {
   expect(requestsQuery.safeParse({ status: 'nope' }).success).toBe(false);
   expect(pickerQuery.safeParse({ q: 'x'.repeat(41) }).success).toBe(false);
 });
+
+test('costs are bounded amounts', () => {
+  const huge = Number.MAX_SAFE_INTEGER;
+  expect(stockItemSchema.safeParse({ ...item, opening: { quantity: 5000, unitCost: huge } }).success).toBe(false);
+  expect(stockCountSchema.safeParse({ counted: 1, expectedOnHand: 0, unitCost: huge, reason: 'x' }).success).toBe(false);
+  expect(stockItemSchema.safeParse({ ...item, opening: { quantity: 5000, unitCost: 1_000_000_000 } }).success).toBe(true);
+});

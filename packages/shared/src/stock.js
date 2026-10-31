@@ -38,6 +38,7 @@ function checkBalance(b) {
   for (const k of ['onHand', 'reserved', 'value']) {
     if (!isInt(b?.[k]) || b[k] < 0) throw new RangeError(`Invalid balance ${k}: ${b?.[k]}`);
   }
+  if (b.reserved > b.onHand) throw new RangeError('Reserved cannot exceed on hand');
 }
 
 function result(input, next, valueChange) {
@@ -77,6 +78,7 @@ export function applyMovement(balance, movement) {
   const out = type === 'consume' || type === 'sale' ? q > 0 : type === 'adjust' && q < 0;
   if (out) {
     const n = Math.abs(q);
+    if (fromReserved > n) throw new RangeError('fromReserved cannot exceed the quantity taken out');
     const valueChange = n === onHand ? -value : -mulDivRound(value, n, onHand || 1);
     return result(balance, { onHand: onHand - n, reserved: reserved - fromReserved, value: value + valueChange }, valueChange);
   }

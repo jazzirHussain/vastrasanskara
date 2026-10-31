@@ -76,7 +76,7 @@ test('nothing goes negative', () => {
     { type: 'release', quantity: 4001 },
     { type: 'consume', quantity: 10001 },
     { type: 'sale', quantity: 6001 },
-    { type: 'consume', quantity: 1000, fromReserved: 4001 },
+    { type: 'consume', quantity: 5000, fromReserved: 4001 },
     { type: 'purchase_in', quantity: -6001, cost: 100 },
     { type: 'purchase_in', quantity: -1000, cost: 10001 },
   ];
@@ -130,4 +130,15 @@ test('put back is valued at what the garment paid', () => {
   expect(usedReturnCost({ usedQty: 3000, usedCost: 1000 }, 3000)).toBe(1000);
   expect(usedReturnCost({ usedQty: 3000, usedCost: 1000 }, 9000)).toBe(1000);
   expect(usedReturnCost({ usedQty: 0, usedCost: 0 }, 1000)).toBe(0);
+});
+
+test('a movement never releases more reservation than it takes out', () => {
+  const s = shelf(10000, 4000, 10000);
+  expect(() => applyMovement(s, { type: 'consume', quantity: 1000, fromReserved: 4000 })).toThrow(RangeError);
+  expect(() => applyMovement(s, { type: 'sale', quantity: 1000, fromReserved: 1001 })).toThrow(RangeError);
+  expect(applyMovement(s, { type: 'consume', quantity: 1000, fromReserved: 1000 }).balance.reserved).toBe(3000);
+});
+
+test('a balance cannot reserve more than is on hand', () => {
+  expect(() => applyMovement(shelf(1000, 2000, 500), { type: 'reserve', quantity: 1 })).toThrow(RangeError);
 });

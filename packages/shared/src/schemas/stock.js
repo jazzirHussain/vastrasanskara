@@ -31,7 +31,7 @@ export const stockItemSchema = z.strictObject({
   step: itemFields.step.default(1000),
   reorderLevel: itemFields.reorderLevel.default(0),
   sellingPrice: itemFields.sellingPrice.default(null),
-  opening: z.strictObject({ quantity: qty, unitCost: paise }).nullable().default(null),
+  opening: z.strictObject({ quantity: qty, unitCost: billingAmount }).nullable().default(null),
 });
 
 /** PATCH /v1/stock/items/:id (with `version`): any subset. */
@@ -44,7 +44,7 @@ export const stockItemPatchSchema = z
 export const stockCountSchema = z.strictObject({
   counted: qtyOrZero,
   expectedOnHand: qtyOrZero,
-  unitCost: paise.optional(),
+  unitCost: billingAmount.optional(),
   reason: z.string().trim().min(1).max(300),
 });
 
