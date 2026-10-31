@@ -12,7 +12,7 @@ import { movePickupDate, settleOrderAfterStageChange } from '../orders/lifecycle
 import { getGarment, isOrderInScope, listOpenGarments, today } from '../orders/service.js';
 import { getUserNames } from '../users/service.js';
 import { readSettings } from '../settings/service.js';
-import { copyGarmentMaterials, garmentFacts, releaseGarments } from '../stock/service.js';
+import { consumeAtMaterialsReady, copyGarmentMaterials, garmentFacts, releaseGarments } from '../stock/service.js';
 import { getVendorNames, isActiveVendor } from '../vendors/service.js';
 import { areActiveWorkers, getWorkerNames } from '../workers/service.js';
 import { StageEvent } from './model.js';
@@ -22,6 +22,8 @@ const { ObjectId } = mongoose.Types;
 
 // Inputs every event keeps as given (the rest comes from the production rules).
 const EVENT_FIELDS = ['workerIds', 'remarks', 'photoKeys', 'reason', 'resolution', 'chargeable', 'chargeAmount'];
+// Completing or skipping Materials ready uses the garment's materials.
+const USES_MATERIALS = ['complete', 'skip'];
 const stageLabel = (key) => STAGES.find((s) => s.key === key)?.label ?? key;
 
 /** Workers and vendor must be active ones of the branch; photos must be this branch's stage photos. */
@@ -124,9 +126,12 @@ export async function recordStageAction(branchId, user, input, actor) {
     const bulkId = loaded.length > 1 ? new ObjectId() : null;
     const events = [];
     const applied = [];
+    const materialsReady = [];
     for (const item of loaded) {
       const previousStage = item.garment.currentStage;
+      const wasMaterialsReady = workingStage(item.garment) === 'materials_ready';
       const { changes, event } = applyRules(item.garment, input, day);
+      if (wasMaterialsReady && USES_MATERIALS.includes(input.action)) materialsReady.push(garmentFacts(item.garment));
       applied.push({ ...item, previousStage, changes });
       if (input.action === 'alteration') {
         replanForAlteration(item, { readyBy: input.readyBy, settings });
@@ -145,6 +150,8 @@ export async function recordStageAction(branchId, user, input, actor) {
         bulkId,
       });
     }
+    // The planned materials become used; not enough stock fails the whole action.
+    await consumeAtMaterialsReady(branchId, materialsReady, input.materialsUsed, actor, session);
     const saved = await StageEvent.create(events, { session, ordered: true });
     const customerNames = await getCustomerNames(branchId, loaded.map(({ order }) => order.customerId));
     for (const [i, item] of applied.entries()) {

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  materialChangeSchema,
   materialLinesSchema,
   movementsQuery,
   pickerQuery,
@@ -18,6 +19,7 @@ import { getGarment, getOrderStatus } from '../orders/service.js';
 import { getUserNames } from '../users/service.js';
 import { toItemJson, toMovementJson } from './json.js';
 import {
+  changeUsedMaterials,
   countStock,
   createItem,
   garmentFacts,
@@ -33,6 +35,7 @@ import {
 
 const OPEN_ORDER = ['active', 'on_hold'];
 const materialsBody = versioned(z.strictObject({ lines: materialLinesSchema }));
+const usedBody = versioned(materialChangeSchema);
 
 const moneyOf = (req) => req.user.permissions.has('money.view');
 
@@ -95,23 +98,44 @@ export function stockRouter(_storage) {
     },
   );
 
+  /**
+   * Changes a garment's materials in one transaction: the garment and its order's status are read
+   * inside it, so a Materials ready or a cancellation at the same moment is seen on retry. Answers
+   * the card.
+   */
+  async function onOpenGarment(req, res, change) {
+    const { branchId } = req.user;
+    const garmentId = await withTransaction(async (session) => {
+      const garment = await getGarment(branchId, req.user, req.params.id, session);
+      if (!OPEN_ORDER.includes(await getOrderStatus(branchId, garment.orderId, session))) {
+        throw businessRule('INVALID_STATUS', 'This order cannot be changed in its current status');
+      }
+      await change(garmentFacts(garment), session);
+      return garment._id;
+    });
+    res.json(await garmentMaterialsView(branchId, garmentId));
+  }
+
   router.put(
     '/garments/:id/materials',
     requireAnyPermission('stock.write', 'stock.consume.own'),
     validate({ body: materialsBody }),
-    async (req, res) => {
-      const { branchId } = req.user;
+    (req, res) => {
       const { version, patch } = req.body;
-      // Read in the transaction, so a Materials ready or a cancellation at the same moment is seen on retry.
-      const garmentId = await withTransaction(async (session) => {
-        const garment = await getGarment(branchId, req.user, req.params.id, session);
-        if (!OPEN_ORDER.includes(await getOrderStatus(branchId, garment.orderId, session))) {
-          throw businessRule('INVALID_STATUS', 'This order cannot be changed in its current status');
-        }
-        await setGarmentMaterials(branchId, garmentFacts(garment), { version, lines: patch.lines }, actorFrom(req), session);
-        return garment._id;
-      });
-      res.json(await garmentMaterialsView(branchId, garmentId));
+      return onOpenGarment(req, res, (garment, session) =>
+        setGarmentMaterials(req.user.branchId, garment, { version, lines: patch.lines }, actorFrom(req), session));
+    },
+  );
+
+  // "Used more" / "Put back" after Materials ready: same scope as the plan.
+  router.post(
+    '/garments/:id/materials/used',
+    requireAnyPermission('stock.write', 'stock.consume.own'),
+    validate({ body: usedBody }),
+    (req, res) => {
+      const { version, patch } = req.body;
+      return onOpenGarment(req, res, (garment, session) =>
+        changeUsedMaterials(req.user.branchId, garment, { version, ...patch }, actorFrom(req), session));
     },
   );
 

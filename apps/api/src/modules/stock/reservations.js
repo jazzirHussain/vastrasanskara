@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { workingStage } from '@vs/shared/production.js';
 import { stageIndex } from '@vs/shared/stages.js';
+import { usedReturnCost } from '@vs/shared/stock.js';
 import { clock } from '../../clock.js';
 import { businessRule, conflict, validationError } from '../../core/errors.js';
 import { moveStock, readItemForMove } from './ledger.js';
@@ -33,20 +34,21 @@ export function garmentFacts(garment) {
   };
 }
 
-const chooseItem = (i) => ({ path: `materials.${i}.stockItemId`, message: 'Choose an item from stock' });
+const materialsPath = (i) => `materials.${i}.stockItemId`;
 
 /**
  * The branch's items for `lines`, as a Map by id string. Each line's item must exist; it must be
- * in use (active) unless `mayBeInactive(line)` says otherwise. 400 on `materials.<i>.stockItemId`.
+ * in use (active) unless `mayBeInactive(line)` says otherwise. 400 on `pathOf(i)`
+ * (`materials.<i>.stockItemId`) "Choose an item from stock".
  */
-async function itemsFor(branchId, lines, session, mayBeInactive = () => false) {
+async function itemsFor(branchId, lines, session, mayBeInactive = () => false, pathOf = materialsPath) {
   const ids = [...new Set(lines.map((l) => String(l.stockItemId).toLowerCase()))];
   const items = ids.length ? await StockItem.find({ _id: { $in: ids.map(oid) }, branchId }).session(session).lean() : [];
   const byId = new Map(items.map((it) => [String(it._id), it]));
   const issues = [];
   for (const [i, l] of lines.entries()) {
     const it = byId.get(String(l.stockItemId).toLowerCase());
-    if (!it || (!it.active && !mayBeInactive(l))) issues.push(chooseItem(i));
+    if (!it || (!it.active && !mayBeInactive(l))) issues.push({ path: pathOf(i), message: 'Choose an item from stock' });
   }
   if (issues.length) throw validationError(issues);
   return byId;
@@ -253,6 +255,122 @@ export async function setGarmentMaterials(branchId, garment, { version, lines },
     if (current(stockItemId, ['planned', 'used'])) continue;
     const reserved = await reserveOrRequest(branchId, stockItemId, garment, quantity, actor, session);
     doc.lines.push({ stockItemId: oid(stockItemId), planned: quantity, reserved, state: 'planned' });
+  }
+
+  doc.updatedBy = actor?.userId ?? null;
+  if (!doc.isNew) doc.increment();
+  else doc.__v = 1;
+  await doc.save({ session });
+  return doc.toObject();
+}
+
+/**
+ * Materials ready is done (completed or skipped) for the garments (facts): each planned line
+ * becomes used. The quantity is the designer's `used` entry for that garment and item when sent,
+ * else the plan; it is taken from the line's reservation first and from free stock for any extra,
+ * and what is left of the reservation goes back. 0 releases the whole line. The garments' needs
+ * on "requested" requests are dropped. Not enough free stock → 422 STOCK_INSUFFICIENT (the
+ * caller's transaction then fails whole). A `used` entry for an item that is not planned on its
+ * garment → 400 `materialsUsed.<i>`.
+ */
+export async function consumeAtMaterialsReady(branchId, garments, used, actor, session) {
+  if (!garments.length) return;
+  const docs = await GarmentMaterials.find({ garmentId: { $in: garments.map((g) => oid(g.garmentId)) } }).session(session);
+  const byGarment = new Map(docs.map((d) => [String(d.garmentId), d]));
+  const key = (garmentId, stockItemId) => `${String(garmentId).toLowerCase()}:${String(stockItemId).toLowerCase()}`;
+
+  const corrected = new Map();
+  const issues = [];
+  for (const [i, entry] of (used ?? []).entries()) {
+    const doc = byGarment.get(String(entry.garmentId).toLowerCase());
+    const planned = doc?.lines.some((l) => l.state === 'planned' && same(l.stockItemId, entry.stockItemId));
+    if (!planned) issues.push({ path: `materialsUsed.${i}`, message: 'This material is not on the garment' });
+    else if (corrected.has(key(entry.garmentId, entry.stockItemId))) issues.push({ path: `materialsUsed.${i}`, message: 'Each material once' });
+    else corrected.set(key(entry.garmentId, entry.stockItemId), entry.quantity);
+  }
+  if (issues.length) throw validationError(issues);
+
+  for (const garment of garments) {
+    const doc = byGarment.get(String(garment.garmentId));
+    const lines = doc?.lines.filter((l) => l.state === 'planned') ?? [];
+    if (!lines.length) continue;
+    const refs = { garmentId: garment.garmentId, orderId: garment.orderId };
+    for (const line of lines) {
+      const q = corrected.get(key(garment.garmentId, line.stockItemId)) ?? line.planned;
+      let fromReserved = 0;
+      if (q > 0) {
+        fromReserved = Math.min(q, line.reserved);
+        const { movement } = await moveStock(
+          branchId,
+          { stockItemId: line.stockItemId, type: 'consume', quantity: q, fromReserved, refs },
+          actor,
+          session,
+        );
+        line.used += q;
+        line.usedCost += -movement.valueChange;
+      }
+      await release(branchId, line.stockItemId, garment, line.reserved - fromReserved, actor, session);
+      line.reserved = 0;
+      line.state = 'used';
+    }
+    doc.updatedBy = actor?.userId ?? null;
+    doc.increment();
+    await doc.save({ session });
+  }
+  await dropNeeds(branchId, garments.map((g) => g.garmentId), session);
+}
+
+const notUsedYet = () => businessRule('MATERIALS_NOT_USED_YET', 'Change the plan instead');
+
+/**
+ * "Used more" (change > 0, from free stock; an item not on the garment is added as used) and
+ * "Put back" (change < 0, valued at the garment's own cost for the item, at most what it used)
+ * after Materials ready, at the materials list's `version` (409 when someone saved first).
+ * Before Materials ready: 422 MATERIALS_NOT_USED_YET. Answers the stored document.
+ */
+export async function changeUsedMaterials(branchId, garment, { version, changes, note = '' }, actor, session) {
+  assertLive(garment);
+  if (!garment.afterMaterialsReady) throw notUsedYet();
+  let doc = await GarmentMaterials.findOne(garmentMaterialsFilter(garment.garmentId)).session(session);
+  if ((doc?.__v ?? 0) !== version) throw conflict();
+  if (!doc) {
+    doc = new GarmentMaterials({
+      branchId,
+      orderId: garment.orderId,
+      garmentId: garment.garmentId,
+      garmentNo: garment.garmentNo,
+      lines: [],
+      createdBy: actor?.userId ?? null,
+    });
+  }
+  const usedLine = (id) => doc.lines.find((l) => l.state === 'used' && same(l.stockItemId, id));
+
+  // Putting back is limited to what was used; using more of a new item needs one in use.
+  const issues = [];
+  for (const [i, { stockItemId, change }] of changes.entries()) {
+    if (change < 0 && -change > (usedLine(stockItemId)?.used ?? 0)) {
+      issues.push({ path: `changes.${i}.change`, message: 'More than was used' });
+    }
+  }
+  if (issues.length) throw validationError(issues);
+  await itemsFor(branchId, changes, session, (c) => Boolean(usedLine(c.stockItemId)), (i) => `changes.${i}.stockItemId`);
+
+  const refs = { garmentId: garment.garmentId, orderId: garment.orderId };
+  for (const { stockItemId, change } of changes) {
+    let line = usedLine(stockItemId);
+    if (!line) {
+      doc.lines.push({ stockItemId: oid(stockItemId), planned: 0, reserved: 0, used: 0, usedCost: 0, state: 'used' });
+      line = doc.lines.at(-1);
+    }
+    const cost = change < 0 ? usedReturnCost({ usedQty: line.used, usedCost: line.usedCost }, -change) : undefined;
+    const { movement } = await moveStock(
+      branchId,
+      { stockItemId: line.stockItemId, type: 'consume', quantity: change, cost, refs, reason: note },
+      actor,
+      session,
+    );
+    line.used += change;
+    line.usedCost += -movement.valueChange;
   }
 
   doc.updatedBy = actor?.userId ?? null;

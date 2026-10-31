@@ -11,6 +11,8 @@ export { moveStock } from './ledger.js';
 export { garmentMaterialsView, getItem, listItems, listMovements, lowStockItems, pickerItems } from './queries.js';
 export {
   addShortfall,
+  changeUsedMaterials,
+  consumeAtMaterialsReady,
   copyGarmentMaterials,
   dropNeeds,
   garmentFacts,
