@@ -10,6 +10,7 @@ import { StatusBadge } from '../../components/StatusBadge.jsx';
 import { useCustomerLedger, useCustomerMoney } from './billingApi.js';
 import { MODE_LABELS } from './billStatus.js';
 import { CancelReceiptDialog } from './CancelReceiptDialog.jsx';
+import { PdfLinkButton } from './PdfButtons.jsx';
 import { RefundDialog } from './RefundDialog.jsx';
 import { TakePaymentDialog } from './TakePaymentDialog.jsx';
 
@@ -42,6 +43,9 @@ function entryName(e) {
   }
 }
 
+// What a ledger entry's PDF is called; a bill's PDF is on its own page.
+const PDF_NAMES = { receipt: 'receipt', credit_note: 'credit note', refund: 'refund' };
+
 /** The ledger's columns; `onCancelReceipt` (owner only) adds "Cancel payment" under a payment. */
 const columnsFor = (onCancelReceipt) => [
   { key: 'date', header: 'Date', hideOnPhone: true, render: (e) => <DateLabel ymd={e.date} relative={false} /> },
@@ -62,6 +66,7 @@ const columnsFor = (onCancelReceipt) => [
             name
           )}
           {cancelled && <StatusBadge status="cancelled" />}
+          {PDF_NAMES[e.type] && <PdfLinkButton docId={e.id} name={`${PDF_NAMES[e.type]} ${e.number}`} />}
           {onCancelReceipt && e.type === 'receipt' && !cancelled && (
             <Button size="compact-sm" variant="subtle" color="kumkum" onClick={() => onCancelReceipt(e)}>
               Cancel payment

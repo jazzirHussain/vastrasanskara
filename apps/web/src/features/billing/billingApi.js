@@ -79,11 +79,14 @@ export function useIssueInvoice(id) {
   });
 }
 
+/** { status, url, filename } of a billing document's PDF, asked for now (the signed url lasts 5 minutes). */
+export const fetchPdfLink = (docId) => apiFetch(`/v1/billing/documents/${docId}/pdf`);
+
 /** { status, url, filename } of a billing document's PDF; with `poll`, re-asked every 5 s while it is being made. */
 export function usePdfLink(docId, { poll = false, enabled = true } = {}) {
   return useQuery({
     queryKey: pdfKey(docId),
-    queryFn: () => apiFetch(`/v1/billing/documents/${docId}/pdf`),
+    queryFn: () => fetchPdfLink(docId),
     enabled,
     // The signed link lasts 5 minutes: each print or share asks for a fresh one.
     staleTime: 0,

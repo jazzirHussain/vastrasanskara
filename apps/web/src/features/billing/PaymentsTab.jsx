@@ -10,6 +10,7 @@ import { ResponsiveTable } from '../../components/ResponsiveTable.jsx';
 import { StatusBadge } from '../../components/StatusBadge.jsx';
 import { useReceipts } from './billingApi.js';
 import { MODE_LABELS } from './billStatus.js';
+import { PdfLinkButton } from './PdfButtons.jsx';
 
 const FILTERS = [
   { value: 'today', label: 'Today', query: (today) => ({ from: today, to: today }) },
@@ -25,9 +26,12 @@ const columns = [
     render: (r) => (
       <div>
         <Text fw={600}>{r.customer.name}</Text>
-        <Text size="sm" c="var(--vs-muted)" className="vs-figures">
-          {r.number}
-        </Text>
+        <Group gap={4} wrap="nowrap">
+          <Text size="sm" c="var(--vs-muted)" className="vs-figures">
+            {r.number}
+          </Text>
+          <PdfLinkButton docId={r.id} name={`receipt ${r.number}`} />
+        </Group>
       </div>
     ),
   },

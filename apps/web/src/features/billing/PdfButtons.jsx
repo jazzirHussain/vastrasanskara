@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Group, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconPrinter, IconShare } from '@tabler/icons-react';
+import { IconFileDownload, IconPrinter, IconShare } from '@tabler/icons-react';
 import { sharePdf } from '../../lib/share.js';
 import { openInNewTab } from '../../lib/upload.js';
-import { usePdfLink } from './billingApi.js';
+import { fetchPdfLink, usePdfLink } from './billingApi.js';
 
 /** How long to keep checking for a PDF before saying it is taking longer than usual. */
 export const PDF_PATIENCE_MS = 2 * 60_000;
@@ -15,6 +15,45 @@ const PRINT_FAILED = 'Couldn’t open the PDF. Check your connection and try aga
 const SHARE_FAILED = 'Couldn’t share. Use Print / PDF to download it instead.';
 
 class PdfNotReady extends Error {}
+
+const tell = (message) => notifications.show({ color: 'red', message });
+
+/**
+ * A small "PDF" button for a document in a list (`name` such as "receipt RCPT/2627/0004"): asks
+ * for a fresh link only when tapped and opens the PDF, or says it is not ready yet. A tap does not
+ * also open the row it sits in.
+ */
+export function PdfLinkButton({ docId, name }) {
+  const [opening, setOpening] = useState(false);
+  async function open(event) {
+    event.stopPropagation();
+    setOpening(true);
+    try {
+      await openInNewTab(async () => {
+        const data = await fetchPdfLink(docId);
+        if (data?.status !== 'ready' || !data.url) throw new PdfNotReady();
+        return data.url;
+      });
+    } catch (e) {
+      tell(e instanceof PdfNotReady ? NOT_READY : PRINT_FAILED);
+    } finally {
+      setOpening(false);
+    }
+  }
+  return (
+    <Button
+      size="compact-sm"
+      variant="subtle"
+      leftSection={<IconFileDownload size={16} />}
+      loading={opening}
+      onClick={open}
+      onKeyDown={(e) => e.stopPropagation()}
+      aria-label={`PDF of ${name}`}
+    >
+      PDF
+    </Button>
+  );
+}
 
 /**
  * "Print / PDF" and "Share" for an issued document. The PDF is made a moment after issue:
@@ -43,8 +82,6 @@ export function PdfButtons({ docId, number, kind = 'Bill' }) {
     if (data?.status !== 'ready' || !data.url) throw new PdfNotReady();
     return data;
   };
-  const tell = (message) => notifications.show({ color: 'red', message });
-
   const print = () => openInNewTab(async () => (await freshLink()).url).catch((e) => tell(e instanceof PdfNotReady ? NOT_READY : PRINT_FAILED));
 
   async function share() {
