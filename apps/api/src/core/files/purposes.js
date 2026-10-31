@@ -1,6 +1,7 @@
 import { canReadGarmentFile } from '../../modules/orders/service.js';
 import { canReadBillingPdf } from '../../modules/billing/service.js';
 import { canReadStagePhoto } from '../../modules/production/service.js';
+import { canReadExpenseFile } from '../../modules/expenses/service.js';
 
 export const ALLOWED_TYPES = Object.freeze({
   'image/jpeg': 'jpg',
@@ -47,4 +48,9 @@ registerFilePurpose('billing_pdf', {
   allowedTypes: [],
   canWrite: () => false,
   canRead: (user, key) => canReadBillingPdf(user, key),
+});
+registerFilePurpose('expense_bill', {
+  allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf'],
+  canWrite: (user) => user.permissions.has('expenses.write'),
+  canRead: (user, key) => canReadExpenseFile(user, key),
 });

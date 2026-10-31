@@ -7,7 +7,8 @@ import { holdSeries } from '../../core/numbering.js';
 import { parseOrThrow } from '../../core/validate.js';
 import { Settings } from './model.js';
 
-// Defaults fill in keys added after a branch's settings were first saved.
+// Defaults fill in keys added after a branch's settings were first saved (e.g. expenseCategories,
+// required since M5, for settings stored before it).
 const withDefaults = (values) => structuredClone({ ...DEFAULT_SETTINGS, ...values });
 
 /** The branch's settings, creating the defaults on first read. */
@@ -40,6 +41,16 @@ async function assertSeriesStartsFixed(branchId, before, after, session) {
   }
 }
 
+// Expenses keep their category key for good, so a key is never removed (it can be hidden).
+// A pure comparison of the two lists: settings never reads expenses.
+function assertCategoriesKept(before = [], after = []) {
+  const kept = new Set(after.map((c) => c.key));
+  const removed = before.find((c) => !kept.has(c.key));
+  if (removed) {
+    throw businessRule('CATEGORY_REMOVED', 'Categories cannot be removed. Hide them instead.', { key: removed.key });
+  }
+}
+
 /**
  * Replaces the given top-level settings, validates the merged result, and saves it with an
  * audit entry in one transaction.
@@ -51,6 +62,7 @@ export function updateSettings(branchId, patch, actor) {
     const doc = await Settings.findOne({ branchId }).session(session);
     const before = withDefaults(doc.values);
     const after = parseOrThrow(settingsSchema, { ...before, ...changes });
+    assertCategoriesKept(before.expenseCategories, after.expenseCategories);
     await assertSeriesStartsFixed(branchId, before.numberSeries, after.numberSeries, session);
 
     doc.values = after;

@@ -60,3 +60,22 @@ test('local links expire', async () => {
   expect((await fetchLike(app, 'GET', g.url)).status).toBe(403);
   vi.restoreAllMocks();
 });
+
+test('bill photos accept images and PDFs up to 10 MB for expenses.write', async () => {
+  const { agent: ops } = await loginAs(app, { roles: ['operations'] });
+  for (const contentType of ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf']) {
+    const r = await ops.post('/v1/files/upload-url').send({ purpose: 'expense_bill', contentType, size: 10485760 });
+    expect(r.status, contentType).toBe(200);
+    expect(r.body.key).toMatch(/\/expense_bill\/\d{4}\/[0-9a-f-]{36}\.[a-z]+$/);
+  }
+  expect((await ops.post('/v1/files/upload-url').send({ purpose: 'expense_bill', contentType: 'image/png', size: 10485761 })).body.error.code).toBe('FILE_TOO_LARGE');
+  expect((await ops.post('/v1/files/upload-url').send({ purpose: 'expense_bill', contentType: 'image/gif', size: 10 })).body.error.code).toBe('FILE_TYPE_NOT_ALLOWED');
+  const { agent: admin } = await loginAs(app, { roles: ['admin'] });
+  expect((await admin.post('/v1/files/upload-url').send({ purpose: 'expense_bill', contentType: 'image/png', size: 10 })).status).toBe(200);
+  const { agent: designer } = await loginAs(app, { roles: ['designer'] });
+  expect((await designer.post('/v1/files/upload-url').send({ purpose: 'expense_bill', contentType: 'image/png', size: 10 })).status).toBe(403);
+  // A photo not yet on an expense: the uploader (expenses.write) can preview it, a designer cannot.
+  const { body } = await ops.post('/v1/files/upload-url').send({ purpose: 'expense_bill', contentType: 'image/png', size: 3 });
+  expect((await ops.get('/v1/files/url').query({ key: body.key })).status).toBe(200);
+  expect((await designer.get('/v1/files/url').query({ key: body.key })).status).toBe(404);
+});
