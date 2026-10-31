@@ -3,7 +3,7 @@ import { expenseCost } from '@vs/shared/expenses.js';
 const idOf = (id) => (id ? String(id) : null);
 
 // A hidden category keeps its label; a key no longer in settings shows the key.
-function categoryOf(key, categories = []) {
+export function categoryOf(key, categories = []) {
   const found = categories.find((c) => c.key === key);
   return { key, label: found?.label ?? key };
 }

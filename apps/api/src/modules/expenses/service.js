@@ -19,6 +19,14 @@ import { getVendor } from '../vendors/service.js';
 import { Expense } from './model.js';
 
 export { expenseCostForGarments } from './costing.js';
+export {
+  expenseCostTotal,
+  expenseTotalsByCategory,
+  inputTaxSummary,
+  listExpenses,
+  monthSummary,
+  recentPayees,
+} from './queries.js';
 
 const fieldError = (path, message) => validationError([{ path, message }]);
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

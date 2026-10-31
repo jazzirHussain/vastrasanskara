@@ -1,11 +1,28 @@
 import { Router } from 'express';
-import { expensePatchSchema, expenseSchema, expenseVoidSchema } from '@vs/shared/schemas/expenses.js';
+import {
+  expenseListQuery,
+  expensePatchSchema,
+  expenseSchema,
+  expenseSummaryQuery,
+  expenseVoidSchema,
+  payeesQuery,
+} from '@vs/shared/schemas/expenses.js';
 import { actorFrom, requirePermission } from '../../core/auth/middleware.js';
 import { idempotent } from '../../core/idempotency.js';
 import { validate, versioned } from '../../core/validate.js';
 import { logger } from '../../logger.js';
-import { toExpenseJson } from './json.js';
-import { createExpense, expenseJsonContext, getExpense, updateExpense, voidExpense } from './service.js';
+import { readSettings } from '../settings/service.js';
+import { toExpenseJson, toExpenseRowJson } from './json.js';
+import {
+  createExpense,
+  expenseJsonContext,
+  getExpense,
+  listExpenses,
+  monthSummary,
+  recentPayees,
+  updateExpense,
+  voidExpense,
+} from './service.js';
 
 const jsonOf = async (branchId, expense) => toExpenseJson(expense, await expenseJsonContext(branchId, expense));
 
@@ -32,6 +49,20 @@ export function expensesRouter(storage) {
   router.post('/', requirePermission('expenses.write'), validate({ body: expenseSchema }), idempotent(), async (req, res) => {
     const expense = await createExpense(req.user.branchId, req.body, actorFrom(req), { storage });
     await respondCommitted(req, res, expense);
+  });
+
+  router.get('/', requirePermission('expenses.view'), validate({ query: expenseListQuery }), async (req, res) => {
+    const { branchId } = req.user;
+    const [{ items, nextCursor }, settings] = await Promise.all([listExpenses(branchId, req.validatedQuery), readSettings(branchId)]);
+    res.json({ items: items.map((e) => toExpenseRowJson(e, { categories: settings.expenseCategories })), nextCursor });
+  });
+
+  router.get('/summary', requirePermission('expenses.view'), validate({ query: expenseSummaryQuery }), async (req, res) => {
+    res.json(await monthSummary(req.user.branchId, req.validatedQuery.month));
+  });
+
+  router.get('/payees', requirePermission('expenses.write'), validate({ query: payeesQuery }), async (req, res) => {
+    res.json(await recentPayees(req.user.branchId, req.validatedQuery));
   });
 
   router.get('/:id', requirePermission('expenses.view'), async (req, res) => {
