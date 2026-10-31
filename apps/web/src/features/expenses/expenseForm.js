@@ -66,8 +66,11 @@ const typedPaise = (text) => {
  */
 export function gstFigures({ totalPaise, rateBp, interState, edited = null }) {
   if (edited) {
+    // Only the heads the screen shows are sent: a hidden one typed earlier must not be saved.
+    const taxable = typedPaise(edited.taxable);
+    if (interState) return { taxable, cgst: 0, sgst: 0, igst: typedPaise(edited.igst) };
     const cgst = typedPaise(edited.cgst);
-    return { taxable: typedPaise(edited.taxable), cgst, sgst: cgst, igst: typedPaise(edited.igst) };
+    return { taxable, cgst, sgst: cgst, igst: 0 };
   }
   if (rateBp === null || rateBp === undefined) return { taxable: totalPaise, cgst: 0, sgst: 0, igst: 0 };
   const { taxable, cgst, sgst, igst } = splitGstFromTotal({ total: totalPaise, rateBp, interState });

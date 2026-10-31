@@ -250,3 +250,55 @@ test('a double tap on Save sends one request', async () => {
   await screen.findByText('EXP/2627/0012 saved');
   expect(posts).toHaveLength(1);
 });
+
+async function startGstBill() {
+  await openNew();
+  await fillBasics({ amount: '1180' });
+  await userEvent.click(screen.getByRole('switch', { name: 'Has a GST bill?' }));
+  await userEvent.type(screen.getByLabelText('Supplier GSTIN'), '29ABCDE1234F1Z5');
+  await userEvent.type(screen.getByLabelText('Bill number'), 'A/12');
+  await userEvent.click(screen.getByRole('button', { name: 'Edit amounts' }));
+}
+
+test('Edit amounts then IGST saves only IGST, no hidden CGST or SGST', async () => {
+  const posts = expensePosts();
+  await startGstBill();
+  await userEvent.click(screen.getByRole('button', { name: 'This bill has IGST' }));
+  await userEvent.type(screen.getByLabelText('IGST (₹)'), '180');
+  await userEvent.click(saveButton('Save expense of ₹1,180.00'));
+  await waitFor(() => expect(posts).toHaveLength(1));
+  expect(posts[0].body.gst).toMatchObject({ taxable: 100000, cgst: 0, sgst: 0, igst: 18000 });
+});
+
+test('Edit amounts, IGST and back to CGST saves only CGST and SGST', async () => {
+  const posts = expensePosts();
+  await startGstBill();
+  await userEvent.click(screen.getByRole('button', { name: 'This bill has IGST' }));
+  await userEvent.type(screen.getByLabelText('IGST (₹)'), '180');
+  await userEvent.click(screen.getByRole('button', { name: 'This bill has CGST and SGST' }));
+  expect(screen.getByLabelText('CGST (₹), SGST is the same')).toHaveValue('90');
+  await userEvent.click(saveButton('Save expense of ₹1,180.00'));
+  await waitFor(() => expect(posts).toHaveLength(1));
+  expect(posts[0].body.gst).toMatchObject({ taxable: 100000, cgst: 9000, sgst: 9000, igst: 0 });
+});
+
+test('editing a stored GST bill and switching to IGST sends only IGST', async () => {
+  asFrontDesk();
+  const gst = { billNo: 'A/12', billDate: todayYmd(), rateBp: 1800, interState: false, taxable: 100000, cgst: 9000, sgst: 9000, igst: 0, itcEligible: true };
+  const payee = { vendorId: null, name: 'Sharma Electricals', gstin: '29ABCDE1234F1Z5', stateCode: '29' };
+  server.use(http.get('/v1/expenses/e1', () => HttpResponse.json({ expense: expenseFixture({ total: 118000, payee, gst }) })));
+  const sent = [];
+  server.use(
+    http.patch('/v1/expenses/e1', async ({ request }) => {
+      sent.push(await request.json());
+      return HttpResponse.json({ expense: expenseFixture({ version: 4 }) });
+    }),
+  );
+  renderApp('/expenses/e1/edit');
+  await screen.findByLabelText('How much?');
+  await userEvent.click(screen.getByRole('button', { name: 'This bill has IGST' }));
+  await userEvent.type(screen.getByLabelText('IGST (₹)'), '180');
+  await userEvent.click(saveButton('Save changes'));
+  await waitFor(() => expect(sent).toHaveLength(1));
+  expect(sent[0].gst).toMatchObject({ cgst: 0, sgst: 0, igst: 18000 });
+});
