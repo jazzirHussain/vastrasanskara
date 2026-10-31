@@ -199,3 +199,45 @@ test('operations see Expenses under More and Add expense on Home', async () => {
   const more = await screen.findByRole('dialog');
   expect(within(more).getByRole('link', { name: 'Expenses' })).toHaveAttribute('href', '/expenses');
 });
+
+test('the old month figures are never shown under the new month label', async () => {
+  asFrontDesk();
+  expensesAre();
+  let release;
+  const gate = new Promise((r) => (release = r));
+  server.use(
+    http.get('/v1/expenses/summary', async ({ request }) => {
+      const month = new URL(request.url).searchParams.get('month');
+      if (month === previousMonth) await gate;
+      return HttpResponse.json(summaryFixture({ month, total: month === previousMonth ? 100000 : 4825000 }));
+    }),
+  );
+  renderApp('/expenses');
+  expect(await screen.findByText('₹48,250.00 spent')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Previous month' }));
+  expect(await screen.findByText(monthLabel(previousMonth))).toBeInTheDocument();
+  expect(screen.queryByText('₹48,250.00 spent')).toBeNull();
+  release();
+  expect(await screen.findByText('₹1,000.00 spent')).toBeInTheDocument();
+});
+
+test('picking a category and the no-photo link keep each other', async () => {
+  asFrontDesk();
+  const seen = expensesAre({ summary: summaryFixture({ gst: { count: 2, taxable: 1, cgst: 0, sgst: 0, igst: 0, itc: { cgst: 0, sgst: 0, igst: 0 }, ineligible: { cgst: 0, sgst: 0, igst: 0 } }, missingBill: 2 }) });
+  renderApp('/expenses');
+  await userEvent.click(await screen.findByRole('button', { name: /^Rent/ }));
+  await userEvent.click(screen.getByRole('button', { name: '2 GST bills have no photo' }));
+  await waitFor(() => expect(seen.lists.at(-1).get('noBill')).toBe('true'));
+  expect(seen.lists.at(-1).get('category')).toBe('rent');
+  await userEvent.click(screen.getByRole('button', { name: /^Repairs and maintenance/ }));
+  await waitFor(() => expect(seen.lists.at(-1).get('category')).toBe('repairs'));
+  expect(seen.lists.at(-1).get('noBill')).toBe('true');
+});
+
+test('a HEIC bill photo shows a file tile, not a broken picture', async () => {
+  uploadsWork();
+  await openExpense({ attachments: [{ key: 'b1/expense_bill/2026/c.heic', name: 'c.heic', contentType: 'image/heic', size: 100 }] });
+  const tile = screen.getByRole('button', { name: 'Open c.heic' });
+  expect(tile).toHaveTextContent('Photo of the bill');
+  expect(tile.querySelector('img')).toBeNull();
+});

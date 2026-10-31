@@ -118,9 +118,13 @@ export function ExpensesPage() {
   const rows = list.data?.pages.flatMap((p) => p.items) ?? [];
   const canWrite = can('expenses.write');
 
-  const setFilter = (next) => setParams({ ...(month !== thisMonth && { month }), ...next }, { replace: true });
+  // Changes some filters and keeps the others; a null value removes one.
+  const setFilter = (patch) => {
+    const next = { ...(month !== thisMonth && { month }), ...(category && { category }), ...(noBill && { noBill: 'true' }), ...(voided && { status: 'voided' }), ...patch };
+    setParams(Object.fromEntries(Object.entries(next).filter(([, v]) => v)), { replace: true });
+  };
   const chip = voided ? '__voided' : category || 'all';
-  const onChip = (value) => setFilter(value === '__voided' ? { status: 'voided' } : value === 'all' ? {} : { category: value });
+  const onChip = (value) => setFilter(value === '__voided' ? { status: 'voided', category: null } : value === 'all' ? { category: null, status: null } : { category: value, status: null });
   const categories = summary.data?.byCategory.map((r) => r.category) ?? [];
   if (category && !categories.some((c) => c.key === category)) categories.push({ key: category, label: category });
   const filtered = Boolean(category || noBill || voided || q);
@@ -133,15 +137,15 @@ export function ExpensesPage() {
   return (
     <>
       <PageHeader title="Expenses" action={canWrite && !phone ? addButton : null} />
-      <Stack gap="md" style={{ paddingBottom: phone && canWrite ? 72 : 0 }}>
+      <Stack gap="md" style={{ paddingBottom: phone && canWrite ? 168 : 0 }}>
         <MonthSwitcher month={month} thisMonth={thisMonth} onChange={(m) => setParams(m === thisMonth ? {} : { month: m }, { replace: true })} />
-        {summary.isPending && <Loader />}
+        {(summary.isPending || summary.isPlaceholderData) && <Loader />}
         {summary.error && <Alert color="red">{summary.error.message}</Alert>}
-        {summary.data && (
+        {summary.data && !summary.isPlaceholderData && (
           <MonthSummary
             summary={summary.data}
             category={category}
-            onCategory={(key) => setFilter(key === category ? {} : { category: key })}
+            onCategory={(key) => setFilter({ category: key === category ? null : key, status: null })}
             onNoBill={() => setFilter({ noBill: 'true' })}
           />
         )}
@@ -172,7 +176,7 @@ export function ExpensesPage() {
         {noBill && (
           <Group gap="xs">
             <Text size="sm">Showing GST bills without a photo</Text>
-            <Button variant="subtle" size="compact-md" leftSection={<IconX size={14} />} onClick={() => setFilter({ ...(category && { category }) })}>
+            <Button variant="subtle" size="compact-md" leftSection={<IconX size={14} />} onClick={() => setFilter({ noBill: null })}>
               Show all
             </Button>
           </Group>

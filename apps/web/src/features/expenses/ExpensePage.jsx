@@ -16,6 +16,8 @@ import { useExpense } from './expensesApi.js';
 import { VoidExpenseDialog } from './VoidExpenseDialog.jsx';
 
 const isPdf = (a) => a.contentType === 'application/pdf' || /\.pdf$/i.test(a.name ?? '');
+// Browsers cannot draw these as pictures, so they open from a tile.
+const isTile = (a) => isPdf(a) || /heic|heif/i.test(`${a.contentType} ${a.name}`);
 const dayOf = (iso) => longDate(istDate(new Date(iso)));
 
 function Field({ label, children }) {
@@ -30,22 +32,23 @@ function Field({ label, children }) {
 }
 
 function Photo({ attachment, onError }) {
-  const pdf = isPdf(attachment);
-  const url = useFileUrl(pdf ? null : attachment.key);
+  const [broken, setBroken] = useState(false);
+  const tile = isTile(attachment) || broken;
+  const url = useFileUrl(tile ? null : attachment.key);
   return (
     <Button
       variant="default"
-      h={pdf ? 56 : 88}
-      w={pdf ? undefined : 88}
-      p={pdf ? 'sm' : 0}
+      h={tile ? 56 : 88}
+      w={tile ? undefined : 88}
+      p={tile ? 'sm' : 0}
       aria-label={`Open ${attachment.name}`}
       onClick={() => openFile(attachment.key).catch((e) => onError(e.message))}
-      leftSection={pdf ? <IconFile size={22} aria-hidden /> : undefined}
+      leftSection={tile ? <IconFile size={22} aria-hidden /> : undefined}
     >
-      {pdf ? (
-        attachment.name
+      {tile ? (
+        isPdf(attachment) ? attachment.name : 'Photo of the bill — tap to open'
       ) : url.data?.url ? (
-        <img src={url.data.url} alt="" width={88} height={88} style={{ objectFit: 'cover', borderRadius: 6 }} />
+        <img src={url.data.url} alt="" onError={() => setBroken(true)} width={88} height={88} style={{ objectFit: 'cover', borderRadius: 6 }} />
       ) : (
         <Loader size="sm" />
       )}
