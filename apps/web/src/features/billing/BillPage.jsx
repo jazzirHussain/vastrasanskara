@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Alert, Anchor, Button, Group, Loader, Modal, Stack, Text, Textarea } from '@mantine/core';
+import { IconDots } from '@tabler/icons-react';
+import { Alert, Anchor, Button, Group, Loader, Menu, Modal, Stack, Text, Textarea } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { toMilli } from '@vs/shared/gst.js';
 import { formatINR, mulDivRound } from '@vs/shared/money.js';
@@ -14,8 +15,10 @@ import { useCatalogItems } from '../catalog/catalogApi.js';
 import { BillLines, DiscountField } from './BillLines.jsx';
 import { BillTotals } from './BillTotals.jsx';
 import { BillWarnings, blockingWarnings } from './BillWarnings.jsx';
-import { useDeleteDraft, useInvoice, useOrderMoney, useSaveDraft } from './billingApi.js';
+import { useDeleteDraft, useInvoice, useOrderMoney, useSaveDraft, useSetReminders } from './billingApi.js';
 import { billBadge } from './billStatus.js';
+import { CancelBillDialog } from './CancelBillDialog.jsx';
+import { CreditNoteDialog } from './CreditNoteDialog.jsx';
 import { checkForm, formFrom, previewTotals, toBody } from './draftForm.js';
 import { IssueDialog } from './IssueDialog.jsx';
 import { PdfButtons } from './PdfButtons.jsx';
@@ -291,6 +294,42 @@ function IssuedLines({ lines }) {
   );
 }
 
+/**
+ * "More" for the owner (billing.cancel) on an issued bill: cancel it, reduce it with a credit
+ * note, or pause its overdue reminders. A locked month, or a bill already credited, cannot be
+ * cancelled: only reduced further with a credit note.
+ */
+function MoreMenu({ invoice, owed }) {
+  const [dialog, setDialog] = useState(null);
+  const reminders = useSetReminders(invoice.id);
+  const credited = invoice.creditNotes.length > 0;
+  return (
+    <>
+      <Menu position="bottom-start">
+        <Menu.Target>
+          <Button variant="default" size="lg" leftSection={<IconDots size={18} />}>
+            More
+          </Button>
+        </Menu.Target>
+        <Menu.Dropdown>
+          <Menu.Item disabled={invoice.monthLocked || credited} onClick={() => setDialog('cancel')}>
+            {invoice.monthLocked ? 'Month locked — use a credit note' : credited ? 'Has a credit note — cannot cancel' : 'Cancel bill'}
+          </Menu.Item>
+          <Menu.Item onClick={() => setDialog('credit')}>Reduce this bill (credit note)</Menu.Item>
+          {owed > 0 && (
+            <Menu.Item disabled={reminders.isPending} onClick={() => reminders.mutate({ paused: !invoice.remindersPaused })}>
+              {invoice.remindersPaused ? 'Resume reminders' : 'Pause reminders'}
+            </Menu.Item>
+          )}
+        </Menu.Dropdown>
+      </Menu>
+      {reminders.error && <Alert color="red">{billErrorMessage(reminders.error)}</Alert>}
+      {dialog === 'cancel' && <CancelBillDialog invoice={invoice} onClose={() => setDialog(null)} />}
+      {dialog === 'credit' && <CreditNoteDialog invoice={invoice} onClose={() => setDialog(null)} />}
+    </>
+  );
+}
+
 /** An issued or cancelled bill, exactly as printed: nothing on it can be changed. */
 function IssuedBill({ invoice }) {
   const { can } = useAuth();
@@ -319,10 +358,20 @@ function IssuedBill({ invoice }) {
 
       <Stack gap="lg">
         <PdfButtons docId={invoice.id} number={invoice.number} />
-        {owed > 0 && can('payments.record') && (
-          <Button size="lg" onClick={() => setPaying(true)} style={{ alignSelf: 'flex-start' }}>
-            Take payment
-          </Button>
+        {((owed > 0 && can('payments.record')) || (issued && can('billing.cancel'))) && (
+          <Group gap="sm">
+            {owed > 0 && can('payments.record') && (
+              <Button size="lg" onClick={() => setPaying(true)}>
+                Take payment
+              </Button>
+            )}
+            {issued && can('billing.cancel') && <MoreMenu invoice={invoice} owed={owed} />}
+          </Group>
+        )}
+        {issued && invoice.remindersPaused && owed > 0 && (
+          <Text size="sm" c="var(--vs-muted)">
+            Overdue reminders for this bill are paused.
+          </Text>
         )}
         <IssuedLines lines={invoice.lines} />
         <BillTotals

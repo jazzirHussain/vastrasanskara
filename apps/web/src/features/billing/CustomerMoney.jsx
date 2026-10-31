@@ -9,6 +9,8 @@ import { ResponsiveTable } from '../../components/ResponsiveTable.jsx';
 import { StatusBadge } from '../../components/StatusBadge.jsx';
 import { useCustomerLedger, useCustomerMoney } from './billingApi.js';
 import { MODE_LABELS } from './billStatus.js';
+import { CancelReceiptDialog } from './CancelReceiptDialog.jsx';
+import { RefundDialog } from './RefundDialog.jsx';
 import { TakePaymentDialog } from './TakePaymentDialog.jsx';
 
 function Tile({ label, paise, tone }) {
@@ -40,7 +42,8 @@ function entryName(e) {
   }
 }
 
-const columns = [
+/** The ledger's columns; `onCancelReceipt` (owner only) adds "Cancel payment" under a payment. */
+const columnsFor = (onCancelReceipt) => [
   { key: 'date', header: 'Date', hideOnPhone: true, render: (e) => <DateLabel ymd={e.date} relative={false} /> },
   {
     key: 'entry',
@@ -59,6 +62,11 @@ const columns = [
             name
           )}
           {cancelled && <StatusBadge status="cancelled" />}
+          {onCancelReceipt && e.type === 'receipt' && !cancelled && (
+            <Button size="compact-sm" variant="subtle" color="kumkum" onClick={() => onCancelReceipt(e)}>
+              Cancel payment
+            </Button>
+          )}
         </Group>
       );
     },
@@ -90,6 +98,9 @@ export function CustomerMoney({ customer }) {
   const summary = useCustomerMoney(customer.id, { enabled: allowed });
   const ledger = useCustomerLedger(customer.id, { enabled: allowed });
   const [paying, setPaying] = useState(false);
+  const [refunding, setRefunding] = useState(false);
+  const [cancelling, setCancelling] = useState(null);
+  const canCorrect = can('billing.cancel');
   if (!allowed) return null;
   const rows = ledger.data?.pages.flatMap((p) => p.items) ?? [];
   const s = summary.data;
@@ -98,7 +109,14 @@ export function CustomerMoney({ customer }) {
     <section aria-label="Money" style={{ marginTop: 32 }}>
       <Group justify="space-between" mb="sm" wrap="wrap">
         <Title order={3}>Money</Title>
-        {can('payments.record') && <Button onClick={() => setPaying(true)}>Take payment</Button>}
+        <Group gap="xs">
+          {canCorrect && s?.advanceUnassigned > 0 && (
+            <Button variant="default" onClick={() => setRefunding(true)}>
+              Give refund
+            </Button>
+          )}
+          {can('payments.record') && <Button onClick={() => setPaying(true)}>Take payment</Button>}
+        </Group>
       </Group>
       {summary.error && <Alert color="red">{summary.error.message}</Alert>}
       {summary.isPending && <Loader size="sm" />}
@@ -117,8 +135,10 @@ export function CustomerMoney({ customer }) {
       {ledger.isPending && <Loader size="sm" />}
       {ledger.error && <Alert color="red">{ledger.error.message}</Alert>}
       {ledger.data && rows.length === 0 && <Text c="var(--vs-muted)">No bills or payments yet.</Text>}
-      {rows.length > 0 && <ResponsiveTable label="Ledger" rows={rows} rowKey={(e) => e.id} columns={columns} />}
+      {rows.length > 0 && <ResponsiveTable label="Ledger" rows={rows} rowKey={(e) => e.id} columns={columnsFor(canCorrect ? setCancelling : null)} />}
       <LoadMore query={ledger} />
+      {refunding && <RefundDialog customer={{ id: customer.id, name: customer.name }} held={s.advanceUnassigned} onDone={() => setRefunding(false)} />}
+      {cancelling && <CancelReceiptDialog receipt={cancelling} onClose={() => setCancelling(null)} />}
       {paying && (
         <TakePaymentDialog
           customer={{ id: customer.id, name: customer.name }}

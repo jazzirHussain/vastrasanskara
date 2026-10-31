@@ -1,4 +1,4 @@
-import { errorMessages } from './errorMessages.js';
+import { errorMessages, messageFor } from './errorMessages.js';
 
 export class ApiError extends Error {
   constructor({ status, code, message, details }) {
@@ -49,7 +49,7 @@ export async function apiFetch(path, { method = 'GET', body, idempotencyKey, que
     throw new ApiError({
       status: response.status,
       code,
-      message: errorMessages[code] ?? error.message ?? 'Something went wrong. Please try again.',
+      message: messageFor(code, error.message, error.details),
       details: error.details,
     });
   }

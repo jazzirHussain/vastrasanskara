@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Alert, Button, Group, Loader, Stack, Text } from '@mantine/core';
+import { formatINR } from '@vs/shared/money.js';
 import { useAuth } from '../../auth/AuthContext.js';
 import { Money } from '../../components/Money.jsx';
 import { StatusBadge } from '../../components/StatusBadge.jsx';
 import { billErrorMessage } from '../../lib/errorMessages.js';
 import { useCreateBillFromOrder, useOrderMoney } from './billingApi.js';
 import { billBadge } from './billStatus.js';
+import { RefundDialog } from './RefundDialog.jsx';
 import { TakePaymentDialog } from './TakePaymentDialog.jsx';
 
 function Figure({ label, paise, hint }) {
@@ -36,6 +38,7 @@ export function OrderMoneyPanel({ order }) {
   const money = useOrderMoney(order.id);
   const create = useCreateBillFromOrder();
   const [paying, setPaying] = useState(false);
+  const [refunding, setRefunding] = useState(false);
 
   if (money.isPending) return <Loader size="sm" mb="md" />;
   if (money.error) return <Alert color="red" mb="md">{money.error.message}</Alert>;
@@ -87,6 +90,25 @@ export function OrderMoneyPanel({ order }) {
               </Button>
             )}
           </Group>
+        )}
+        {can('billing.cancel') && m.advanceHeld > 0 && (
+          <Group gap="sm" align="center">
+            {!live && m.refundSuggestion?.suggested > 0 && (
+              <Text fw={600}>{`Refund due ${formatINR(m.refundSuggestion.suggested)} (${m.refundSuggestion.refundPercent}% of the advance)`}</Text>
+            )}
+            <Button size="md" variant="default" onClick={() => setRefunding(true)}>
+              Give refund
+            </Button>
+          </Group>
+        )}
+        {refunding && (
+          <RefundDialog
+            customer={order.customer}
+            order={order}
+            held={m.advanceHeld}
+            defaultAmount={live ? 0 : (m.refundSuggestion?.suggested ?? 0)}
+            onDone={() => setRefunding(false)}
+          />
         )}
         {paying && (
           <TakePaymentDialog

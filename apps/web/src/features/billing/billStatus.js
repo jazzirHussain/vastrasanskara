@@ -28,3 +28,6 @@ export function billBadge(invoice) {
 
 /** How a payment was made, in plain words. */
 export const MODE_LABELS = { cash: 'Cash', upi: 'UPI', card: 'Card', bank_transfer: 'Bank transfer' };
+
+/** The payment modes as button choices, in the order they are offered. */
+export const MODES = Object.entries(MODE_LABELS).map(([value, label]) => ({ value, label }));

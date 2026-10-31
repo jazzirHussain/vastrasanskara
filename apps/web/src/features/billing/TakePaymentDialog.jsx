@@ -2,42 +2,19 @@ import { useState } from 'react';
 import { Alert, Anchor, Button, Modal, NumberInput, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { istDate } from '@vs/shared/fy.js';
-import { formatINR, rupeesToPaise } from '@vs/shared/money.js';
+import { formatINR } from '@vs/shared/money.js';
 import { PHONE_QUERY } from '../../components/ResponsiveTable.jsx';
 import { paymentErrorMessage } from '../../lib/errorMessages.js';
 import { useRecordPayment } from './billingApi.js';
+import { MODES } from './billStatus.js';
 import { PdfButtons } from './PdfButtons.jsx';
+import { paiseOf, rupeeText } from './rupees.js';
 
-const MODES = [
-  { value: 'cash', label: 'Cash' },
-  { value: 'upi', label: 'UPI' },
-  { value: 'card', label: 'Card' },
-  { value: 'bank_transfer', label: 'Bank transfer' },
-];
 const REFERENCE_LABEL = {
   upi: 'UPI or card reference (optional)',
   card: 'UPI or card reference (optional)',
   bank_transfer: 'Bank reference (optional)',
 };
-
-/** Paise as the plain rupee text of an input ("2000", "2000.5"); empty for nothing. */
-function rupeeText(paise) {
-  if (!paise || paise <= 0) return '';
-  const rupees = Math.floor(paise / 100);
-  const rest = paise % 100;
-  return rest ? `${rupees}.${String(rest).padStart(2, '0').replace(/0$/, '')}` : String(rupees);
-}
-
-/** The amount typed, in paise; null when empty or not above zero. */
-function paiseOf(value) {
-  if (value === '' || value === null || value === undefined) return null;
-  try {
-    const paise = rupeesToPaise(value);
-    return paise > 0 ? paise : null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Takes a payment from `customer` ({ id, name }): for a bill (`invoice`), for an order's bills

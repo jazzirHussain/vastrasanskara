@@ -1,6 +1,7 @@
 import {
   IconAddressBook,
   IconAdjustmentsHorizontal,
+  IconBuildingBank,
   IconHome2,
   IconLayoutKanban,
   IconNeedleThread,
@@ -23,6 +24,7 @@ export const navItems = [
   { label: 'Production', path: '/production', permission: 'orders.read.own', icon: IconLayoutKanban, phone: 'bar' },
   { label: 'New order', path: '/orders/new', permission: 'orders.write', icon: IconPlus, phone: 'primary' },
   { label: 'Price list', path: '/catalog', permission: 'catalog.manage', icon: IconTags, phone: 'more' },
+  { label: 'Accounts', path: '/accounts', permission: 'periods.lock', icon: IconBuildingBank, phone: 'more' },
   { label: 'Workshop', path: '/workshop', permission: 'workshop.manage', icon: IconTool, phone: 'more' },
   { label: 'Users', path: '/users', permission: 'users.manage', icon: IconUsersGroup, phone: 'more' },
   { label: 'Settings', path: '/settings', permission: 'settings.edit', icon: IconAdjustmentsHorizontal, phone: 'more' },

@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest';
 import { afterAll, afterEach, beforeAll } from 'vitest';
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, configure, render } from '@testing-library/react';
 import { createElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -29,6 +29,9 @@ window.ResizeObserver ??= class {
   disconnect() {}
 };
 Element.prototype.scrollIntoView ??= () => {};
+
+// The first render in a file builds the whole app and can take over a second on a busy machine.
+configure({ asyncUtilTimeout: 4000 });
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => {

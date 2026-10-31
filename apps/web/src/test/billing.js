@@ -154,3 +154,17 @@ export function orderMoneyFixture(fields = {}) {
 export function orderMoney(fields) {
   server.use(http.get('/v1/billing/orders/o1/summary', () => HttpResponse.json(orderMoneyFixture(fields))));
 }
+
+/** The owner: every permission, including cancelling bills, refunds, month locks and record checks. */
+export const ownerUser = {
+  id: 'admin1',
+  name: 'Owner',
+  email: 'owner@x.com',
+  roles: ['admin'],
+  permissions: [...permissionsFor(['admin'])],
+  branchId: 'b1',
+};
+
+export function asOwner() {
+  server.use(http.get('/v1/auth/me', () => HttpResponse.json(ownerUser)));
+}

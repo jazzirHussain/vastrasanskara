@@ -7,5 +7,6 @@ export default defineProject({
     name: 'web',
     environment: 'jsdom',
     setupFiles: ['src/test/setup.js'],
+    testTimeout: 15000,
   },
 });

@@ -151,3 +151,51 @@ export function useCustomerMoney(customerId, { enabled = true } = {}) {
 export function useCustomerLedger(customerId, { enabled = true } = {}) {
   return useBillingList(`customer-ledger-${customerId}`, `/v1/billing/customers/${customerId}/ledger`, {}, enabled);
 }
+
+/** Cancels an issued bill: `{ reason }`. Payments on it become advance. */
+export function useCancelInvoice(id) {
+  const refresh = useRefresh();
+  return useMutation({
+    mutationFn: (body) => apiFetch(`/v1/billing/invoices/${id}/cancel`, { method: 'POST', body }).then((r) => r.invoice),
+    onSuccess: () => refresh(),
+  });
+}
+
+/** Pauses (`{ paused: true }`) or resumes the overdue reminders of a bill. */
+export function useSetReminders(id) {
+  const refresh = useRefresh();
+  return useMutation({
+    mutationFn: (body) => apiFetch(`/v1/billing/invoices/${id}/reminders`, { method: 'PUT', body }).then((r) => r.invoice),
+    onSuccess: () => refresh(),
+  });
+}
+
+/**
+ * Issues a credit note: `{ body: { reason, full, lines }, key }`, with the Idempotency-Key made
+ * when the dialog opened. Resolves to `{ creditNote, warnings }`.
+ */
+export function useIssueCreditNote(invoiceId) {
+  const refresh = useRefresh();
+  return useMutation({
+    mutationFn: ({ body, key }) => apiFetch(`/v1/billing/invoices/${invoiceId}/credit-notes`, { method: 'POST', body, idempotencyKey: key }),
+    onSuccess: () => refresh(),
+  });
+}
+
+/** Cancels a payment: `{ id, reason }`. The money comes off any bills it paid. */
+export function useCancelReceipt() {
+  const refresh = useRefresh();
+  return useMutation({
+    mutationFn: ({ id, reason }) => apiFetch(`/v1/billing/payments/${id}/cancel`, { method: 'POST', body: { reason } }).then((r) => r.receipt),
+    onSuccess: () => refresh(),
+  });
+}
+
+/** Gives money back from advance held: `{ body, key }`. Resolves to the refund. */
+export function useIssueRefund() {
+  const refresh = useRefresh();
+  return useMutation({
+    mutationFn: ({ body, key }) => apiFetch('/v1/billing/refunds', { method: 'POST', body, idempotencyKey: key }).then((r) => r.refund),
+    onSuccess: () => refresh(),
+  });
+}
