@@ -38,6 +38,7 @@ export const server = setupServer(
   http.get('/v1/settings', () => HttpResponse.json(defaultSettings)),
   http.get('/v1/branch', () => HttpResponse.json(defaultBranch)),
   http.get('/v1/orders', () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get('/v1/expenses/payees', () => HttpResponse.json({ vendors: [], recent: [] })),
   http.get('/v1/billing/customers/:id/summary', () =>
     HttpResponse.json({ billed: 0, received: 0, credited: 0, refunded: 0, outstanding: 0, overdue: 0, advanceHeld: 0 }),
   ),

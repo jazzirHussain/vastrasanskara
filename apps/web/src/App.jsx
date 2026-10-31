@@ -9,6 +9,7 @@ import { BillPage } from './features/billing/BillPage.jsx';
 import { BillsPage } from './features/billing/BillsPage.jsx';
 import { AccountsPage } from './features/accounts/AccountsPage.jsx';
 import { CatalogPage } from './features/catalog/CatalogPage.jsx';
+import { ExpenseFormPage } from './features/expenses/ExpenseFormPage.jsx';
 import { CustomerPage } from './features/customers/CustomerPage.jsx';
 import { CustomersPage } from './features/customers/CustomersPage.jsx';
 import { HomePage } from './features/home/HomePage.jsx';
@@ -47,6 +48,10 @@ export default function App() {
             <Route element={<RequirePermission permission="money.view" />}>
               <Route path="/bills" element={<BillsPage />} />
               <Route path="/bills/:id" element={<BillPage />} />
+            </Route>
+            <Route element={<RequirePermission permission="expenses.write" />}>
+              <Route path="/expenses/new" element={<ExpenseFormPage />} />
+              <Route path="/expenses/:id/edit" element={<ExpenseFormPage />} />
             </Route>
             <Route element={<RequirePermission permission="workshop.manage" />}>
               <Route path="/workshop" element={<WorkshopPage />} />

@@ -57,6 +57,12 @@ export const errorMessages = {
   RECEIPT_REFUNDED: 'Part of this payment was refunded, so it cannot be cancelled.',
   VOUCHER_ADJUSTED: 'This advance is already on a bill. Cancel the bill first.',
   SERIES_IN_USE: 'This number series has started this year and cannot be changed.',
+  EXPENSE_DATE_IN_FUTURE: 'The date cannot be in the future.',
+  EXPENSE_FY_CHANGE: 'An expense cannot move to another financial year. Void it and add it again.',
+  EXPENSE_VOIDED: 'This expense was voided and cannot be changed.',
+  ALREADY_VOIDED: 'This expense is already voided.',
+  ATTACHMENT_NOT_UPLOADED: 'A bill photo did not finish uploading. Add it again.',
+  CATEGORY_REMOVED: 'Categories cannot be removed. Hide them instead.',
   NETWORK_ERROR: 'Cannot reach the server. Check your connection and try again.',
 };
 
