@@ -114,13 +114,14 @@ test('cancelled documents show but count for nothing', async () => {
 });
 
 test('the summary agrees with the ledger', async () => {
-  const { ops, admin, customerId, bill, note } = await history();
-  // An advance with no order, then a refund of part of it.
-  ok(await pay(ops, { customerId, amount: 100000, mode: 'cash' }));
+  const { ops, admin, customerId, bill, note, take } = await history();
+  // An advance on an order not yet billed, then a refund of part of it.
+  const order = await take();
+  ok(await pay(ops, { customerId, orderId: order.id, amount: 100000, mode: 'cash' }));
   const refund = await admin.agent
     .post('/v1/billing/refunds')
     .set('Idempotency-Key', `lr${++keys}`)
-    .send({ customerId, amount: 30000, mode: 'cash', reason: 'Not needed' });
+    .send({ customerId, orderId: order.id, amount: 30000, mode: 'cash', reason: 'Not needed' });
   ok(refund);
   const summary = await get(ops, `/customers/${customerId}/summary`);
   const { items } = await get(ops, `/customers/${customerId}/ledger?limit=100`);

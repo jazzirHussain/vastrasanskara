@@ -27,9 +27,11 @@ async function trail() {
   ok(await pay(ops, { customerId, invoiceId: first.id, amount: 200000, mode: 'cash' }));
   ok(await admin.agent.post(`/v1/billing/invoices/${second.id}/credit-notes`).set('Idempotency-Key', `c${++keys}`)
     .send({ reason: 'Price reduced', lines: [{ key: second.lines[0].key, taxable: 10000 }] }));
-  ok(await pay(ops, { customerId, amount: 50000, mode: 'cash' }));
+  // An advance on an order not yet billed (money with no order would pay the open bills first).
+  const third = await takeOrder({ prices: [80000] });
+  ok(await pay(ops, { customerId, orderId: third.id, amount: 50000, mode: 'cash' }));
   ok(await admin.agent.post('/v1/billing/refunds').set('Idempotency-Key', `r${++keys}`)
-    .send({ customerId, amount: 10000, mode: 'cash', reason: 'Order cancelled' }));
+    .send({ customerId, orderId: third.id, amount: 10000, mode: 'cash', reason: 'Order cancelled' }));
   await renderPendingPdfs({ storage });
   return { ...w, first, second };
 }
