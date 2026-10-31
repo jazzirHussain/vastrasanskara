@@ -118,5 +118,7 @@ garmentSchema.index({ branchId: 1, garmentNo: 1 }, { unique: true });
 garmentSchema.index({ orderId: 1, index: 1 });
 garmentSchema.index({ branchId: 1, status: 1, dueDate: 1 });
 garmentSchema.index({ branchId: 1, referenceKeys: 1 });
+// Batch members, for expense costing (only garments of a batch carry a batchId).
+garmentSchema.index({ branchId: 1, batchId: 1 }, { name: 'batch', partialFilterExpression: { batchId: { $type: 'objectId' } } });
 
 export const Garment = mongoose.models.Garment ?? mongoose.model('Garment', garmentSchema);

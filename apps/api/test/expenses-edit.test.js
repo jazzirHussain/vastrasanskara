@@ -69,6 +69,9 @@ test('editing changes only what is sent and is audited', async () => {
   const same = await edit(ops, igst.body.expense, { note: 'Shop rent', total: 236000 });
   ok(same);
   expect(await expenseAudits('update')).toHaveLength(2);
+  // ...and keeps the version, so a double-tapped Save of unchanged data is not a conflict.
+  expect(same.body.expense.version).toBe(igst.body.expense.version);
+  ok(await edit(ops, igst.body.expense, { note: 'Shop rent' }));
 });
 
 test('a stale version is a conflict', async () => {

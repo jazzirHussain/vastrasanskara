@@ -343,3 +343,105 @@ export async function getOrderNumbers(branchId, ids) {
   const orders = await Order.find({ branchId, _id: { $in: ids } }, { orderNo: 1 }).lean();
   return new Map(orders.map((o) => [String(o._id), o.orderNo]));
 }
+
+// --- Expense links and costing (callers hold expenses.view / expenses.write; no user scope) -------
+
+const notFoundLink = () => validationError([{ path: 'link.id', message: 'Not found' }]);
+const oid = (id) => new ObjectId(String(id));
+
+/**
+ * The stored form of an expense link to a garment, a batch or an order of the branch:
+ * { kind, orderId, garmentId, batchId }. 400 on `link.id` when it does not exist. Cancelled
+ * orders and garments may be linked.
+ */
+export async function resolveCostLink(branchId, { kind, id }, session) {
+  if (!mongoose.isValidObjectId(id)) throw notFoundLink();
+  const s = session ?? null;
+  if (kind === 'garment') {
+    const g = await Garment.findOne({ _id: id, branchId }, { orderId: 1 }).session(s).lean();
+    if (!g) throw notFoundLink();
+    return { kind, orderId: g.orderId, garmentId: g._id, batchId: null };
+  }
+  if (kind === 'batch') {
+    const g = await Garment.findOne({ branchId, batchId: oid(id) }, { orderId: 1, batchId: 1 }).session(s).lean();
+    if (!g) throw notFoundLink();
+    return { kind, orderId: g.orderId, garmentId: null, batchId: g.batchId };
+  }
+  const order = await Order.findOne({ _id: id, branchId }, { _id: 1 }).session(s).lean();
+  if (!order) throw notFoundLink();
+  return { kind: 'order', orderId: order._id, garmentId: null, batchId: null };
+}
+
+/** The id an expense link points at (garment, batch or order). */
+const linkedId = (link) => String(link.garmentId ?? link.batchId ?? link.orderId);
+
+/**
+ * Labels for stored expense links, as a Map of 'kind:id' to { orderNo, label }:
+ * "Order VS/ORD/2627/0012", "Blouse — red silk (…/0012-02)", "Batch of 20 Kurta on VS/ORD/2627/0012".
+ */
+export async function getCostLinkLabels(branchId, links) {
+  const result = new Map();
+  if (!links.length) return result;
+  const garmentIds = links.filter((l) => l.kind === 'garment').map((l) => l.garmentId);
+  const batchIds = links.filter((l) => l.kind === 'batch').map((l) => l.batchId);
+  const [orders, garments, batches, settings] = await Promise.all([
+    Order.find({ branchId, _id: { $in: links.map((l) => l.orderId) } }, { orderNo: 1 }).lean(),
+    garmentIds.length
+      ? Garment.find({ branchId, _id: { $in: garmentIds } }, { type: 1, description: 1, garmentNo: 1 }).lean()
+      : [],
+    batchIds.length
+      ? Garment.aggregate([
+          { $match: { branchId: oid(branchId), batchId: { $in: batchIds.map(oid) } } },
+          { $group: { _id: '$batchId', count: { $sum: 1 }, type: { $first: '$type' } } },
+        ])
+      : [],
+    readSettings(branchId),
+  ]);
+  const orderNo = new Map(orders.map((o) => [String(o._id), o.orderNo]));
+  const garmentById = new Map(garments.map((g) => [String(g._id), g]));
+  const batchById = new Map(batches.map((b) => [String(b._id), b]));
+  const typeLabel = (key) => settings.garmentTypes.find((t) => t.key === key)?.label ?? key;
+  for (const link of links) {
+    const id = linkedId(link);
+    const no = orderNo.get(String(link.orderId)) ?? null;
+    let label = no ? `Order ${no}` : null;
+    if (link.kind === 'garment') {
+      const g = garmentById.get(id);
+      label = g ? `${typeLabel(g.type)} — ${g.description} (…/${g.garmentNo.split('/').pop()})` : null;
+    } else if (link.kind === 'batch') {
+      const b = batchById.get(id);
+      label = b && no ? `Batch of ${b.count} ${typeLabel(b.type)} on ${no}` : null;
+    }
+    result.set(`${link.kind}:${id}`, { orderNo: no, label });
+  }
+  return result;
+}
+
+/** The garment filter for costing: the branch's garments matching any of the ids. */
+export function costingGarmentFilter(branchId, { garmentIds = [], orderIds = [], batchIds = [] } = {}) {
+  const or = [];
+  if (garmentIds.length) or.push({ _id: { $in: garmentIds.map(oid) } });
+  if (orderIds.length) or.push({ orderId: { $in: orderIds.map(oid) } });
+  if (batchIds.length) or.push({ batchId: { $in: batchIds.map(oid) } });
+  return { branchId: oid(branchId), $or: or };
+}
+
+/**
+ * The branch's garments with any of the ids, or in any of the orders or batches, as
+ * [{ id, orderId, batchId, index, status }] by order then index (ids as strings).
+ */
+export async function listCostingGarments(branchId, ids, session) {
+  const filter = costingGarmentFilter(branchId, ids);
+  if (!filter.$or.length) return [];
+  const garments = await Garment.find(filter, { orderId: 1, batchId: 1, index: 1, status: 1 })
+    .sort({ orderId: 1, index: 1 })
+    .session(session ?? null)
+    .lean();
+  return garments.map((g) => ({
+    id: String(g._id),
+    orderId: String(g.orderId),
+    batchId: g.batchId ? String(g.batchId) : null,
+    index: g.index,
+    status: g.status,
+  }));
+}

@@ -11,11 +11,14 @@ import { AppError, businessRule, conflict, notFound, validationError } from '../
 import { nextDocumentNumber } from '../../core/numbering.js';
 import { parseOrThrow } from '../../core/validate.js';
 import { getBranch } from '../branches/service.js';
+import { getCostLinkLabels, resolveCostLink } from '../orders/service.js';
 import { assertPeriodOpen, isPeriodLocked } from '../periods/service.js';
 import { readSettings } from '../settings/service.js';
 import { getUserNames } from '../users/service.js';
 import { getVendor } from '../vendors/service.js';
 import { Expense } from './model.js';
+
+export { expenseCostForGarments } from './costing.js';
 
 const fieldError = (path, message) => validationError([{ path, message }]);
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -112,8 +115,8 @@ async function insertExpense(branchId, input, actor, { attachments, source, sour
   if (input.gst && !payee.gstin) throw fieldError('payee.gstin', "A GST bill shows the supplier's GSTIN");
   const gst = input.gst ? { ...input.gst, interState: input.gst.igst > 0 } : null;
 
-  // Task 5 resolves links to a garment, batch or order.
-  if (input.link) throw fieldError('link', 'Not available yet');
+  // Checked before a number is taken, so a bad link leaves no gap.
+  const link = input.link ? await resolveCostLink(branchId, input.link, session) : null;
 
   const dayStart = istDayBounds(date).start;
   const fyCode = financialYear(dayStart).code;
@@ -139,7 +142,7 @@ async function insertExpense(branchId, input, actor, { attachments, source, sour
         reference: input.reference,
         gst,
         attachments,
-        link: null,
+        link,
         status: 'active',
         void: null,
         source,
@@ -218,7 +221,11 @@ function samePayee(stored, input) {
   return input.name === stored.name && gstin === (stored.gstin ?? null) && stateCode === (stored.stateCode ?? null);
 }
 
-const sameLink = (stored, input) => JSON.stringify(linkInput(stored)) === JSON.stringify(input ?? null);
+function sameLink(stored, input) {
+  const a = linkInput(stored);
+  if (!a || !input) return !a && !input;
+  return a.kind === input.kind && a.id === String(input.id);
+}
 
 /** Loads an expense for a write at `version`: 404, or 409 on a stale version. */
 async function loadForWrite(branchId, id, version, session) {
@@ -267,9 +274,7 @@ export async function updateExpense(branchId, id, { version, patch }, actor, { s
 
     let { link } = stored;
     if (!sameLink(stored.link, merged.link)) {
-      // Task 5 resolves links to a garment, batch or order.
-      if (merged.link) throw fieldError('link', 'Not available yet');
-      link = null;
+      link = merged.link ? await resolveCostLink(branchId, merged.link, session) : null;
     }
 
     let attachments = stored.attachments;
@@ -284,7 +289,7 @@ export async function updateExpense(branchId, id, { version, patch }, actor, { s
     }
 
     const before = auditView(stored);
-    expense.set({
+    const changes = {
       date: merged.date,
       month: merged.date.slice(0, 7),
       category: merged.category,
@@ -296,14 +301,18 @@ export async function updateExpense(branchId, id, { version, patch }, actor, { s
       gst: merged.gst ? { ...merged.gst, interState: merged.gst.igst > 0 } : null,
       attachments,
       link,
-      updatedBy: actor.userId ?? null,
-    });
+    };
+    // Nothing changed (e.g. Save tapped twice): keep the version, write nothing.
+    const after = auditView({ ...stored, ...changes });
+    if (!diff(before, after).length) return stored;
+
+    expense.set({ ...changes, updatedBy: actor.userId ?? null });
     expense.increment();
     await expense.save({ session });
-    const after = auditView(expense.toObject());
-    if (diff(before, after).length) {
-      await recordAudit({ branchId, entityType: 'expense', entityId: expense._id, action: 'update', before, after, actor }, session);
-    }
+    await recordAudit(
+      { branchId, entityType: 'expense', entityId: expense._id, action: 'update', before, after: auditView(expense.toObject()), actor },
+      session,
+    );
     return expense.toObject();
   });
 }
@@ -340,13 +349,13 @@ export async function getExpense(branchId, id) {
  * whether the expense's month is locked.
  */
 export async function expenseJsonContext(branchId, expense) {
-  const [settings, names, monthLocked] = await Promise.all([
+  const [settings, names, monthLocked, linkLabels] = await Promise.all([
     readSettings(branchId),
     getUserNames([expense.createdBy, expense.void?.by]),
     isPeriodLocked(branchId, expense.month),
+    getCostLinkLabels(branchId, expense.link ? [expense.link] : []),
   ]);
-  // Task 5 fills link labels from orders/service.js.
-  return { categories: settings.expenseCategories, names, linkLabels: new Map(), monthLocked };
+  return { categories: settings.expenseCategories, names, linkLabels, monthLocked };
 }
 
 /**

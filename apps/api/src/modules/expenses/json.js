@@ -13,7 +13,7 @@ const userOf = (id, names) => (id ? { id: String(id), name: names?.get(String(id
 function linkOf(link, linkLabels) {
   if (!link) return null;
   const id = link.garmentId ?? link.batchId ?? link.orderId;
-  const label = linkLabels?.get(String(id)) ?? {};
+  const label = linkLabels?.get(`${link.kind}:${id}`) ?? {};
   return {
     kind: link.kind,
     id: String(id),
@@ -41,7 +41,7 @@ function gstOf(gst) {
 
 /**
  * An expense as the API answers. `categories` are the settings' expense categories, `names` user
- * names by id, `linkLabels` { orderNo, label } by linked id, `monthLocked` whether its month is locked.
+ * names by id, `linkLabels` { orderNo, label } by 'kind:linked id', `monthLocked` whether its month is locked.
  */
 export function toExpenseJson(expense, { categories, names, linkLabels, monthLocked = false } = {}) {
   return {
