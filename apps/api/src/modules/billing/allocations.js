@@ -156,9 +156,10 @@ export async function voucherRemaining(rv, session) {
 const TAX_ONLY = ['cgst', 'sgst', 'igst'];
 
 /**
- * The receipt voucher's share for `part` paise of its receipt (applied to a bill or refunded),
- * never more than the voucher has left to adjust, as { receiptVoucherId, number, gross, taxable,
- * cgst, sgst, igst }; null when the receipt has no issued voucher or nothing is left on it.
+ * The receipt voucher's share for `part` paise of its receipt's advance (applied to a bill or
+ * refunded), never more than the voucher has left to adjust. The voucher taxes only the advance
+ * part of its receipt (`rv.base`), so the share is of that, never of money that paid bills.
+ * Answers { receiptVoucherId, number, gross, taxable, cgst, sgst, igst }; null when the receipt has no issued voucher or nothing is left on it.
  */
 export async function voucherShare(receipt, part, session) {
   requireTransaction(session, 'voucherShare');
@@ -167,7 +168,8 @@ export async function voucherShare(receipt, part, session) {
   if (!rv) return null;
   const left = await voucherRemaining(rv, session);
   if (left.gross <= 0) return null;
-  const share = proportionalTax({ part, whole: receipt.amount, of: rv });
+  const whole = rv.base ?? receipt.amount;
+  const share = proportionalTax({ part: Math.min(part, whole), whole, of: rv });
   const gross = Math.min(share.gross, left.gross);
   const heads = Object.fromEntries(TAX_ONLY.map((h) => [h, Math.max(0, Math.min(share[h], left[h]))]));
   return {

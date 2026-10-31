@@ -254,6 +254,9 @@ export const Receipt = discriminator('receipt', {
 
 export const ReceiptVoucher = discriminator('receipt_voucher', {
   receiptId: { type: ObjectId, required: true },
+  // The advance part of the receipt the voucher taxes (the receipt less what paid bills at once);
+  // its figures are shared out against this. Older vouchers have none: the receipt amount stands in.
+  base: { type: Number, default: null },
   ...taxSplit,
 });
 

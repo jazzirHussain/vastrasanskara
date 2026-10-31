@@ -300,6 +300,7 @@ export async function recordPayment(branchId, input, actor) {
               customerId: customer._id,
               orderId: order._id,
               receiptId: receipt._id,
+              base: left,
               status: 'issued',
               number: rv.number,
               fyCode,

@@ -363,3 +363,34 @@ test('a payment on account pays the oldest bills first', async () => {
   expect(JSON.stringify(audit.changes)).toContain(second.id);
   expect(JSON.stringify(audit.changes)).toContain('408000');
 });
+
+/** Order of a ₹5,040 blouse (billed) and a ₹1,050 stitching garment (not), paid ₹6,090 in one go. */
+const splitReceipt = async ({ ops, customerId, items, takeOrder }) => {
+  const order = await takeOrder({ prices: [450000, 100000] });
+  await asStitching(order, items, [1]);
+  await billFirst(ops, order, 1);
+  const r = await pay(ops, { customerId, orderId: order.id, amount: 609000, mode: 'cash' });
+  ok(r);
+  expect(r.body.receipt).toMatchObject({ unallocated: 105000, receiptVoucher: { taxable: 100000, cgst: 2500, sgst: 2500 } });
+  return { order, receipt: r.body.receipt };
+};
+
+test('a split receipt adjusts its whole voucher on the next bill', async () => {
+  const w = await world();
+  const { order, receipt } = await splitReceipt(w);
+  const second = await issue(w.ops, await draftFor(order));
+  ok(second);
+  expect(second.body.invoice.settlement).toMatchObject({ advanceApplied: 105000, balance: 0 });
+  expect(second.body.invoice.advanceAdjustments).toEqual([
+    { receiptVoucherId: receipt.receiptVoucher.id, number: receipt.receiptVoucher.number, taxable: 100000, tax: 5000 },
+  ]);
+});
+
+test("a refund of a split receipt's advance reverses its whole voucher", async () => {
+  const w = await world();
+  const { order } = await splitReceipt(w);
+  const r = await w.admin.agent.post('/v1/billing/refunds').set('Idempotency-Key', 'split-refund')
+    .send({ customerId: w.customerId, orderId: order.id, amount: 105000, mode: 'cash', reason: 'Order cancelled' });
+  ok(r);
+  expect(r.body.refund.rvReversal).toEqual({ gross: 105000, taxable: 100000, cgst: 2500, sgst: 2500, igst: 0 });
+});
