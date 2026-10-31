@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Alert, Anchor, Button, Group, Loader, Stack, Text, TextInput } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
@@ -48,6 +48,7 @@ function ExpenseForm({ original, settings, branch }) {
   const options = { branchStateCode: branch.stateCode };
   const totalPaise = paiseOf(form.amount);
   const uploading = form.photos.some((p) => p.status === 'uploading');
+  const failedPhoto = form.photos.some((p) => p.status === 'failed');
   const ready = totalPaise !== null && form.category !== '' && form.payee.name.trim() !== '';
   const issues = gstIssues(form, branch.stateCode);
   const changed = editing ? changedFields(form, original, options) : null;
@@ -56,7 +57,18 @@ function ExpenseForm({ original, settings, branch }) {
     setForm((f) => ({ ...f, ...patch }));
   };
 
+  const saving = useRef(false);
   async function save() {
+    if (saving.current) return;
+    saving.current = true;
+    try {
+      await doSave();
+    } finally {
+      saving.current = false;
+    }
+  }
+
+  async function doSave() {
     const body = formToBody(form, options);
     const parsed = expenseSchema.safeParse(body);
     if (!parsed.success || issues.length > 0) {
@@ -142,7 +154,7 @@ function ExpenseForm({ original, settings, branch }) {
         error={errors['payee.name']}
         onChange={(payee) => {
           setErrors({});
-          setForm((f) => ({ ...f, payee, gst: { ...f.gst, gstin: payee.gstin ?? '' } }));
+          setForm((f) => ({ ...f, payee, gst: { ...f.gst, gstin: payee.gstin ?? (f.payee.vendorId ? '' : f.gst.gstin) } }));
         }}
       />
 
@@ -185,8 +197,9 @@ function ExpenseForm({ original, settings, branch }) {
             ))}
           </Alert>
         )}
+        {failedPhoto && <Text c="red" size="sm">A photo did not upload. Remove it or add it again.</Text>}
         {mutation.error && <Alert color="red">{SAVE_ERRORS[mutation.error.code] ?? mutation.error.message}</Alert>}
-        <Button size="xl" fullWidth loading={mutation.isPending} disabled={!ready || uploading || (editing && Object.keys(changed).length === 0)} onClick={save}>
+        <Button size="xl" fullWidth loading={mutation.isPending} disabled={!ready || uploading || failedPhoto || (editing && Object.keys(changed).length === 0)} onClick={save}>
           {buttonLabel}
         </Button>
       </Stack>

@@ -26,11 +26,11 @@ export function BillPhotos({ photos, setPhotos }) {
   const full = photos.length >= MAX_EXPENSE_ATTACHMENTS;
 
   async function add(files) {
-    const room = MAX_EXPENSE_ATTACHMENTS - photos.length;
-    for (const original of files.slice(0, Math.max(0, room))) {
+    for (const original of files) {
       const id = crypto.randomUUID();
       const patch = (fields) => setPhotos((list) => list.map((p) => (p.id === id ? { ...p, ...fields } : p)));
-      setPhotos((list) => [...list, { id, key: null, name: original.name, status: 'uploading' }]);
+      // The limit is applied to the latest list, so quick picks cannot pass it (an extra one is dropped).
+      setPhotos((list) => (list.length < MAX_EXPENSE_ATTACHMENTS ? [...list, { id, key: null, name: original.name, status: 'uploading' }] : list));
       try {
         const file = await shrinkImage(original);
         const key = await uploadFile(file, 'expense_bill');

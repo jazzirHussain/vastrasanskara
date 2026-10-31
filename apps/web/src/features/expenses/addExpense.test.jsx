@@ -218,3 +218,34 @@ test('designers cannot open the form', async () => {
   expect(await screen.findByText('You do not have access to this.')).toBeInTheDocument();
   expect(screen.queryByLabelText('How much?')).not.toBeInTheDocument();
 });
+
+test('a photo that did not upload blocks save', async () => {
+  const posts = expensePosts();
+  server.use(http.post('/v1/files/upload-url', () => HttpResponse.json({ error: { code: 'X', message: 'no' } }, { status: 500 })));
+  await openNew();
+  await fillBasics();
+  await userEvent.upload(screen.getByLabelText('Bill photo from camera'), photo());
+  expect(await screen.findByText('A photo did not upload. Remove it or add it again.')).toBeInTheDocument();
+  expect(saveButton('Save expense of ₹500.00')).toBeDisabled();
+  await userEvent.click(screen.getByRole('button', { name: 'Remove bill.jpg' }));
+  await waitFor(() => expect(saveButton('Save expense of ₹500.00')).toBeEnabled());
+  expect(posts).toHaveLength(0);
+});
+
+test('typing the payee keeps a GSTIN typed in the GST section', async () => {
+  await openNew();
+  await fillBasics({ payee: 'Corner' });
+  await userEvent.click(screen.getByRole('switch', { name: 'Has a GST bill?' }));
+  await userEvent.type(screen.getByLabelText('Supplier GSTIN'), '29ABCDE1234F1Z5');
+  await userEvent.type(screen.getByLabelText('Paid to'), ' shop');
+  expect(screen.getByLabelText('Supplier GSTIN')).toHaveValue('29ABCDE1234F1Z5');
+});
+
+test('a double tap on Save sends one request', async () => {
+  const posts = expensePosts();
+  await openNew();
+  await fillBasics();
+  await userEvent.dblClick(saveButton('Save expense of ₹500.00'));
+  await screen.findByText('EXP/2627/0012 saved');
+  expect(posts).toHaveLength(1);
+});
