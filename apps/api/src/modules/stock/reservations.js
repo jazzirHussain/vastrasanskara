@@ -9,18 +9,26 @@ import { garmentMaterialsFilter, needsFilter, shortfallFilter } from './queries.
 
 const { ObjectId } = mongoose.Types;
 const oid = (id) => new ObjectId(String(id));
-const same = (a, b) => String(a) === String(b);
+const same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
 const NO_LONGER_NEEDED = 'No longer needed';
+const LIVE_GARMENT = ['in_progress', 'ready'];
+
+/** 422 INVALID_STATUS unless the garment is still being made or waiting for pickup. */
+function assertLive(garment) {
+  if (!garment.live) throw businessRule('INVALID_STATUS', 'This garment cannot be changed in its current status');
+}
 
 /**
- * The plain garment facts the stock functions take: { garmentId, orderId, garmentNo,
- * afterMaterialsReady } (Materials ready is done or skipped once the garment works on a later stage).
+ * The plain garment facts the stock functions take: { garmentId, orderId, garmentNo, live,
+ * afterMaterialsReady } (Materials ready is done or skipped once the garment works on a later stage;
+ * a live garment is still being made or waiting for pickup).
  */
 export function garmentFacts(garment) {
   return {
     garmentId: garment._id,
     orderId: garment.orderId,
     garmentNo: garment.garmentNo,
+    live: LIVE_GARMENT.includes(garment.status),
     afterMaterialsReady: stageIndex(workingStage(garment)) > stageIndex('materials_ready'),
   };
 }
@@ -187,9 +195,11 @@ const materialsAlreadyUsed = () =>
  * without a list is at version 0). Before Materials ready: a new line is reserved (shortfall
  * asked for); more of a line reserves the extra; less releases down to the new amount and asks
  * for less; a line left out is released, its request dropped, and kept as `released` for
- * history. After Materials ready: 422 MATERIALS_ALREADY_USED. Answers the stored document.
+ * history. After Materials ready: 422 MATERIALS_ALREADY_USED. A rejected, cancelled or picked-up
+ * garment: 422 INVALID_STATUS. Answers the stored document.
  */
 export async function setGarmentMaterials(branchId, garment, { version, lines }, actor, session) {
+  assertLive(garment);
   if (garment.afterMaterialsReady) throw materialsAlreadyUsed();
   let doc = await GarmentMaterials.findOne(garmentMaterialsFilter(garment.garmentId)).session(session);
   if ((doc?.__v ?? 0) !== version) throw conflict();
@@ -229,6 +239,7 @@ export async function setGarmentMaterials(branchId, garment, { version, lines },
       line.planned = quantity;
     } else if (quantity < line.planned) {
       if (line.reserved > quantity) {
+        // Now fully reserved, so nothing is still asked for: the whole need goes (no reduceNeed).
         await release(branchId, id, garment, line.reserved - quantity, actor, session);
         await dropNeeds(branchId, [garment.garmentId], session, { stockItemId: id });
         line.reserved = quantity;

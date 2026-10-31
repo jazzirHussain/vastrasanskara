@@ -292,12 +292,19 @@ test('stock queries use indexes', async () => {
 
 test('the stock service imports no other business module', () => {
   const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/modules/stock');
-  const files = ['service.js', 'ledger.js', 'reservations.js', 'queries.js'].map((f) => path.join(dir, f)).filter(existsSync);
-  expect(files.length).toBeGreaterThanOrEqual(3);
-  const forbidden = [/modules\/(orders|production|billing|catalog|expenses|costing)/, /'\.\.\/(orders|production|billing|catalog|expenses|costing)\//];
+  // service.js and everything it pulls in from its own folder.
+  const files = ['service.js', 'ledger.js', 'reservations.js', 'queries.js', 'model.js', 'notifications.js'].map((f) => path.join(dir, f));
+  for (const file of files) expect(existsSync(file), file).toBe(true);
+  const forbidden = /(^|\/)(orders|production|billing|catalog|expenses|costing)\//;
   for (const file of files) {
-    const imports = readFileSync(file, 'utf8').split('\n').filter((line) => /^\s*(import|export)\b.*from\s+'/.test(line));
-    for (const line of imports) for (const re of forbidden) expect([path.basename(file), line]).not.toEqual([path.basename(file), expect.stringMatching(re)]);
+    // Every module specifier: multi-line imports, re-exports and import() included.
+    const specifiers = [...readFileSync(file, 'utf8').matchAll(/(?:\bfrom|\bimport)\s*\(?\s*['"]([^'"]+)['"]/g)].map((m) => m[1]);
+    expect(specifiers.length, file).toBeGreaterThan(0);
+    for (const spec of specifiers) expect([path.basename(file), spec]).not.toEqual([path.basename(file), expect.stringMatching(forbidden)]);
+    // A file it imports from its own folder must be in the checked list too.
+    for (const spec of specifiers.filter((s) => s.startsWith('./'))) {
+      expect(files, `${path.basename(file)} imports ${spec}`).toContain(path.join(dir, spec));
+    }
   }
 });
 

@@ -358,3 +358,34 @@ test('materials queries use indexes', async () => {
   expect(JSON.stringify(plans[0].queryPlanner.winningPlan)).toContain('garment_unique');
   expect(JSON.stringify(plans[2].queryPlanner.winningPlan)).toContain('needs');
 });
+
+test('materials are only planned for live garments', async () => {
+  const { ops, takeOk } = await world();
+  const silk = await silkWith(ops, 10);
+  const order = await takeOk([{}, { description: 'Kept' }]);
+  const [gone] = order.garments;
+  ok(await ops.agent.post('/v1/production/actions').send({
+    action: 'rejected', stage: 'order_taken', reason: 'Refused', resolution: 'write_off', garments: [{ id: gone.id, version: gone.version }],
+  }));
+  // The order is still open, but the rejected garment takes no new materials.
+  const r = await plan(ops, gone.id, 0, [line(silk, 2000)]);
+  ok(r, 422);
+  expect(r.body.error.code).toBe('INVALID_STATUS');
+  const empty = await silkWith(ops, 0, { name: 'Blue silk' });
+  ok(await plan(ops, gone.id, 0, [line(empty, 2000)]), 422);
+  expect((await stored(silk.id)).reserved).toBe(0);
+  expect(await requestsFor(empty.id)).toEqual([]);
+  expect(await GarmentMaterials.countDocuments({ garmentId: gone.id })).toBe(0);
+});
+
+test('an item id in capitals is the same item', async () => {
+  const { ops, takeOk } = await world();
+  const silk = await silkWith(ops, 10);
+  const order = await takeOk([{ materials: [line(silk, 2000)] }]);
+  const id = order.garments[0].id;
+  const r = await plan(ops, id, 0, [{ stockItemId: silk.id.toUpperCase(), quantity: 3000 }]);
+  ok(r);
+  expect(r.body.lines.map((l) => [l.stockItemId, l.planned, l.reserved])).toEqual([[silk.id, 3000, 3000]]);
+  expect((await stored(silk.id)).reserved).toBe(3000);
+  await expectBalanced(silk.id);
+});
