@@ -4,7 +4,7 @@ import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
 import { businessRule, conflict, validationError } from '../../core/errors.js';
 import { moveStock } from './ledger.js';
-import { StockItem } from './model.js';
+import { StockItem, StockMovement } from './model.js';
 import { getItem } from './queries.js';
 
 export { moveStock } from './ledger.js';
@@ -142,3 +142,33 @@ export function countStock(branchId, id, { counted, expectedOnHand, unitCost, re
   });
 }
 
+
+/**
+ * Stock sold on a bill: one `sale` out per line, at the average cost, tied to the invoice. Runs in
+ * the caller's transaction; 422 STOCK_INSUFFICIENT when an item has too little free stock.
+ * `quantity` is milli of the usage unit. The same item twice is two movements, in order.
+ */
+export async function recordSale(branchId, { invoiceId, lines }, actor, session) {
+  for (const { stockItemId, quantity } of lines) {
+    await moveStock(branchId, { stockItemId, type: 'sale', quantity, refs: { invoiceId } }, actor, session);
+  }
+}
+
+/**
+ * Puts a cancelled bill's stock back: for each `sale` movement of the invoice, a `sale` in with the
+ * quantity negated and the same value back (`cost = -valueChange`). Runs in the caller's transaction.
+ */
+export async function reverseSale(branchId, invoiceId, actor, session) {
+  const sales = await StockMovement.find({ branchId, invoiceId, type: 'sale', quantity: { $gt: 0 } })
+    .sort({ at: 1, _id: 1 })
+    .session(session)
+    .lean();
+  for (const sale of sales) {
+    await moveStock(
+      branchId,
+      { stockItemId: sale.stockItemId, type: 'sale', quantity: -sale.quantity, cost: -sale.valueChange, refs: { invoiceId } },
+      actor,
+      session,
+    );
+  }
+}

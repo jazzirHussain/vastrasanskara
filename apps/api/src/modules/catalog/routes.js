@@ -17,6 +17,7 @@ export function toItemJson(item) {
     gstSlabs: item.gstSlabs.map((s) => ({ upToUnitPrice: s.upToUnitPrice, rateBp: s.rateBp })),
     garmentTypes: [...item.garmentTypes],
     chargeFor: item.chargeFor ?? null,
+    stockItemId: item.stockItemId ? String(item.stockItemId) : null,
     active: item.active,
     version: item.__v,
   };

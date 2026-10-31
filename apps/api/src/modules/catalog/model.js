@@ -27,6 +27,8 @@ const catalogItemSchema = new mongoose.Schema({
   garmentTypes: { type: [String], default: [] },
   // Which extra charge this item bills (one active item per charge).
   chargeFor: { type: String, enum: ['rush', 'alteration', 'rework', null], default: null },
+  // The stock item a material sells from; null when the item moves no stock.
+  stockItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'StockItem', default: null },
   active: { type: Boolean, default: true },
 });
 catalogItemSchema.plugin(commonFields);

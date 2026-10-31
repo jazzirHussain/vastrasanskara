@@ -4,6 +4,7 @@ import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
 import { businessRule, conflict, notFound, validationError } from '../../core/errors.js';
 import { readSettings } from '../settings/service.js';
+import { getItem as getStockItem } from '../stock/service.js';
 import { CatalogItem } from './model.js';
 
 // Tax fields reach every bill, so their changes are audited (spec §5.7).
@@ -31,6 +32,19 @@ async function assertKnownGarmentTypes(branchId, types, session) {
     .filter(({ type }) => !known.has(type))
     .map(({ i }) => ({ path: `garmentTypes.${i}`, message: 'Not one of your garment types' }));
   if (issues.length) throw validationError(issues);
+}
+
+// A linked stock item must exist in the branch (the shared rules already limit links to materials).
+async function assertStockItemExists(branchId, stockItemId, session) {
+  if (!stockItemId) return;
+  try {
+    await getStockItem(branchId, stockItemId, session);
+  } catch (err) {
+    if (err.status === 404 || err.code === 'NOT_FOUND') {
+      throw validationError([{ path: 'stockItemId', message: 'Not one of your stock items' }]);
+    }
+    throw err;
+  }
 }
 
 // One active item per garment type and per extra charge.
@@ -73,6 +87,7 @@ export async function getItem(branchId, id) {
 export function createItem(branchId, input, actor) {
   return withTransaction(async (session) => {
     await assertKnownGarmentTypes(branchId, input.garmentTypes, session);
+    await assertStockItemExists(branchId, input.stockItemId, session);
     await assertMappingFree(branchId, input, null, session);
     const [item] = await CatalogItem.create(
       [{ ...input, branchId, searchName: input.name.toLowerCase(), createdBy: actor.userId, updatedBy: actor.userId }],
@@ -96,6 +111,7 @@ export function updateItem(branchId, id, { version, patch }, actor) {
     const merged = { ...item.toObject(), ...patch };
     assertItemRules(merged);
     if (patch.garmentTypes) await assertKnownGarmentTypes(branchId, patch.garmentTypes, session);
+    if (patch.stockItemId) await assertStockItemExists(branchId, patch.stockItemId, session);
     await assertMappingFree(branchId, merged, item._id, session);
     const before = auditView(item);
     item.set(patch);

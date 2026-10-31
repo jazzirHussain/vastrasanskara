@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { payStatus } from '@vs/shared/billing.js';
 import { addDaysYmd, displayDate, istDate } from '@vs/shared/fy.js';
-import { GstError, RULE46_ADDRESS_THRESHOLD, computeInvoice, placeOfSupply } from '@vs/shared/gst.js';
+import { GstError, RULE46_ADDRESS_THRESHOLD, computeInvoice, placeOfSupply, toMilli } from '@vs/shared/gst.js';
 import { amountInWords, formatINR } from '@vs/shared/money.js';
 import { clock } from '../../clock.js';
 import { recordAudit } from '../../core/audit/service.js';
@@ -15,6 +15,7 @@ import { getOrderForBilling } from '../orders/service.js';
 import { assertPeriodOpen, isPeriodLocked } from '../periods/service.js';
 import { listChargeableEvents } from '../production/service.js';
 import { readSettings } from '../settings/service.js';
+import { recordSale, reverseSale } from '../stock/service.js';
 import './notifications.js';
 import { allocate, availableByReceipt, recomputeSettlement, releaseInvoice, voucherShare } from './allocations.js';
 import {
@@ -467,6 +468,12 @@ export async function issueInvoice(branchId, id, { version }, actor) {
       const calc = compute({ lines, items, invoiceDiscount, interState: supply.interState });
       checkAddress(customer, calc.totals.total);
 
+      // Materials linked to stock leave it now; too little stock refuses the bill before a number is taken.
+      const sold = lines
+        .filter((l) => !l.garmentId && items.get(String(l.itemId)).stockItemId)
+        .map((l) => ({ stockItemId: items.get(String(l.itemId)).stockItemId, quantity: toMilli(l.quantity) }));
+      if (sold.length) await recordSale(branchId, { invoiceId: invoice._id, lines: sold }, actor, session);
+
       const { number, fyCode } = await takeDocumentNumber({ branchId, docType: 'invoice', now }, session);
       const dueDate = addDaysYmd(date, settings.billDueDays);
       const calcByKey = new Map(calc.lines.map((c) => [c.key, c]));
@@ -596,6 +603,7 @@ export async function cancelInvoice(branchId, id, { reason }, actor) {
       );
       if (matchedCount !== 1) throw conflict();
       await recomputeSettlement(invoice._id, session);
+      await reverseSale(branchId, invoice._id, actor, session);
       // The client's copy of the bill may still be waiting for its PDF: it is not sent now.
       await withdrawPending('invoice.issued', { branchId, refId: String(invoice._id) }, { session });
 
