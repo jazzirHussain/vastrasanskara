@@ -224,6 +224,50 @@ export function computeCreditNote({ originalLines, credits, creditedSoFar = {}, 
   return { lines, totals: totalsOf(lines) };
 }
 
+/**
+ * The figures a credit note is issued with: computeCreditNote's, but the credits on a line never
+ * take more tax than the line was charged, the credit that uses up a line takes exactly what is
+ * left of its tax, and the note that uses up the whole bill takes what is left of the bill's total,
+ * so credit notes add up to the bill exactly. `earlier` is the bill's earlier credit notes as
+ * [{ lines: [{ key, taxable, cgst, sgst, igst }], total }]; `invoiceTotal` is the bill's total.
+ */
+export function creditNoteFigures({ originalLines, credits, earlier = [], invoiceTotal, interState, full }) {
+  const so = {};
+  for (const line of earlier.flatMap((n) => n.lines)) {
+    const done = (so[line.key] ??= { taxable: 0, cgst: 0, sgst: 0, igst: 0 });
+    for (const k of ['taxable', 'cgst', 'sgst', 'igst']) done[k] += line[k];
+  }
+  const calc = computeCreditNote({
+    originalLines,
+    credits,
+    creditedSoFar: Object.fromEntries(Object.entries(so).map(([k, v]) => [k, v.taxable])),
+    interState,
+    full,
+  });
+
+  const lines = calc.lines.map((c) => {
+    const o = originalLines.find((l) => l.key === c.key);
+    const done = so[c.key] ?? { taxable: 0, cgst: 0, sgst: 0, igst: 0 };
+    const usesUp = c.taxable === o.taxable - done.taxable;
+    const heads = {};
+    for (const h of ['cgst', 'sgst', 'igst']) {
+      const left = Math.max(0, o[h] - done[h]);
+      heads[h] = usesUp ? left : Math.min(c[h], left);
+    }
+    return { ...c, ...heads, total: c.taxable + heads.cgst + heads.sgst + heads.igst };
+  });
+
+  const totals = totalsOf(lines);
+  const billUsedUp = originalLines.every(
+    (o) => (so[o.key]?.taxable ?? 0) + (lines.find((l) => l.key === o.key)?.taxable ?? 0) === o.taxable,
+  );
+  if (billUsedUp) {
+    totals.total = invoiceTotal - sum(earlier, 'total');
+    totals.roundOff = totals.total - totals.subtotal;
+  }
+  return { lines, totals };
+}
+
 /** 30 November after the end of the invoice's financial year. */
 export function correctionDeadline(invoiceDateYmd) {
   const { startYear } = financialYear(istDayBounds(invoiceDateYmd).start);

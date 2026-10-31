@@ -107,9 +107,10 @@ export async function customerLedger(branchId, customerId, { cursor, limit } = {
 }
 
 /**
- * { billed, received, credited, refunded, outstanding, overdue, advanceHeld } for a customer.
- * Totals count issued documents only; outstanding and overdue come from the bills' settlement
- * (the `receivables` index); advanceHeld = Σ receipts − Σ allocations.
+ * { billed, received, credited, refunded, outstanding, overdue, advanceHeld, advanceUnassigned }
+ * for a customer. Totals count issued documents only; outstanding and overdue come from the bills'
+ * settlement (the `receivables` index); advanceHeld = Σ receipts − Σ allocations, and
+ * advanceUnassigned is the part of it on receipts with no order (what a customer refund can give).
  */
 export async function customerMoneySummary(branchId, customerId) {
   await getCustomer(branchId, customerId);
@@ -134,6 +135,13 @@ export async function customerMoneySummary(branchId, customerId) {
   ]);
   const total = (type) => byType.find((t) => t._id === type)?.total ?? 0;
   const received = total('receipt');
+  const unassigned = await Receipt.find({ ...base, status: 'issued', orderId: null }, { amount: 1 }).lean();
+  const [unassignedAllocated] = unassigned.length
+    ? await Allocation.aggregate([
+        { $match: { receiptId: { $in: unassigned.map((r) => r._id) } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ])
+    : [];
   return {
     billed: total('invoice'),
     received,
@@ -142,6 +150,7 @@ export async function customerMoneySummary(branchId, customerId) {
     outstanding: owed?.outstanding ?? 0,
     overdue: owed?.overdue ?? 0,
     advanceHeld: received - (allocated?.total ?? 0),
+    advanceUnassigned: unassigned.reduce((sum, r) => sum + r.amount, 0) - (unassignedAllocated?.total ?? 0),
   };
 }
 

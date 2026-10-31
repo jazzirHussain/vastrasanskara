@@ -1,8 +1,8 @@
 import mongoose from 'mongoose';
 import { daysBetween } from '@vs/shared/billing.js';
 import { istDate } from '@vs/shared/fy.js';
-import { GstError, computeCreditNote, correctionDeadline } from '@vs/shared/gst.js';
-import { amountInWords, mulDivRound, roundToRupee } from '@vs/shared/money.js';
+import { GstError, correctionDeadline, creditNoteFigures } from '@vs/shared/gst.js';
+import { amountInWords, mulDivRound } from '@vs/shared/money.js';
 import { clock } from '../../clock.js';
 import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
@@ -16,7 +16,6 @@ import { getInvoice } from './invoices.js';
 import { Allocation, CreditNote, Receipt, Refund } from './model.js';
 import { customerFor, orderFor } from './payments.js';
 
-const TAX = ['cgst', 'sgst', 'igst'];
 const HEADS = ['gross', 'taxable', 'cgst', 'sgst', 'igst'];
 const NEAR_DEADLINE_DAYS = 30;
 
@@ -25,7 +24,7 @@ const sumOf = (rows, key) => rows.reduce((s, r) => s + (r[key] ?? 0), 0);
 
 // --- Credit notes ------------------------------------------------------------------------------
 
-/** The bill's printed lines in the shape computeCreditNote takes. */
+/** The bill's printed lines in the shape creditNoteFigures takes. */
 const originalLinesOf = (invoice) =>
   (invoice.snapshot?.lines ?? []).map((l) => ({
     key: l.key,
@@ -39,39 +38,19 @@ const originalLinesOf = (invoice) =>
     total: l.total,
   }));
 
-/** Taxable and tax already credited per line key by the bill's earlier credit notes. */
-function creditedByLine(notes) {
-  const byKey = {};
-  for (const line of notes.flatMap((n) => n.snapshot?.lines ?? [])) {
-    const so = (byKey[line.key] ??= { taxable: 0, cgst: 0, sgst: 0, igst: 0 });
-    for (const k of ['taxable', ...TAX]) so[k] += line[k];
-  }
-  return byKey;
-}
+/** The bill's earlier credit notes in the shape creditNoteFigures takes. */
+const earlierOf = (notes) => notes.map((n) => ({ lines: n.snapshot?.lines ?? [], total: n.totals.total }));
 
-function totalsOf(lines) {
-  const taxable = sumOf(lines, 'taxable');
-  const [cgst, sgst, igst] = TAX.map((h) => sumOf(lines, h));
-  const tax = cgst + sgst + igst;
-  const { total, roundOff } = roundToRupee(taxable + tax);
-  return { gross: taxable, discount: 0, taxable, cgst, sgst, igst, tax, roundOff, total };
-}
-
-/**
- * The credit note's lines and totals. Each credit is taxed at its line's rate, but the credits on
- * a line never take more tax than the line was charged, and the credit that uses up a line takes
- * exactly what is left of its tax. The note that uses up the whole bill takes what is left of the
- * bill's total, so credit notes add up to the bill exactly.
- */
+/** The credit note's lines and totals, worked out by creditNoteFigures (shared with the screen's preview). */
 function creditFigures(invoice, earlier, input) {
   const originalLines = originalLinesOf(invoice);
-  const so = creditedByLine(earlier);
   let calc;
   try {
-    calc = computeCreditNote({
+    calc = creditNoteFigures({
       originalLines,
       credits: input.lines,
-      creditedSoFar: Object.fromEntries(Object.entries(so).map(([k, v]) => [k, v.taxable])),
+      earlier: earlierOf(earlier),
+      invoiceTotal: invoice.totals.total,
       interState: invoice.interState,
       full: input.full,
     });
@@ -82,31 +61,19 @@ function creditFigures(invoice, earlier, input) {
   }
 
   const byKey = new Map(originalLines.map((l) => [l.key, l]));
-  const lines = calc.lines.map((c) => {
-    const o = byKey.get(c.key);
-    const done = so[c.key] ?? { taxable: 0, cgst: 0, sgst: 0, igst: 0 };
-    const left = Object.fromEntries(TAX.map((h) => [h, Math.max(0, o[h] - done[h])]));
-    const usesUp = c.taxable === o.taxable - done.taxable;
-    const heads = Object.fromEntries(TAX.map((h) => [h, usesUp ? left[h] : Math.min(c[h], left[h])]));
-    return {
-      key: c.key,
-      description: o.description,
-      hsnSac: o.hsnSac,
-      taxable: c.taxable,
-      gstRateBp: o.rateBp,
-      ...heads,
-      total: c.taxable + heads.cgst + heads.sgst + heads.igst,
-    };
-  });
-
-  const totals = totalsOf(lines);
-  const creditedNow = new Map(lines.map((l) => [l.key, l.taxable]));
-  const billUsedUp = originalLines.every((o) => (so[o.key]?.taxable ?? 0) + (creditedNow.get(o.key) ?? 0) === o.taxable);
-  if (billUsedUp) {
-    totals.total = invoice.totals.total - sumOf(earlier.map((n) => n.totals), 'total');
-    totals.roundOff = totals.total - totals.taxable - totals.tax;
-  }
-  return { lines, totals };
+  const lines = calc.lines.map((c) => ({
+    key: c.key,
+    description: byKey.get(c.key).description,
+    hsnSac: c.hsnSac,
+    taxable: c.taxable,
+    gstRateBp: c.rateBp,
+    cgst: c.cgst,
+    sgst: c.sgst,
+    igst: c.igst,
+    total: c.total,
+  }));
+  const { taxable, cgst, sgst, igst, tax, roundOff, total } = calc.totals;
+  return { lines, totals: { gross: taxable, discount: 0, taxable, cgst, sgst, igst, tax, roundOff, total } };
 }
 
 function deadlineWarnings(invoiceDate, today) {

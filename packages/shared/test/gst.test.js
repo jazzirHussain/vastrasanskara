@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest';
 import {
   GST_RATES_BP, RULE46_ADDRESS_THRESHOLD, GstError, selectSlabRate, placeOfSupply, toMilli,
-  computeInvoice, computeAdvanceTax, proportionalTax, computeCreditNote, correctionDeadline,
+  computeInvoice, computeAdvanceTax, proportionalTax, computeCreditNote, creditNoteFigures, correctionDeadline,
 } from '../src/gst.js';
 
 const CLOTHING = [
@@ -250,4 +250,25 @@ test('an advance amount must be a non-negative integer', () => {
   const parts = [{ weight: 1, rateBp: 500 }];
   expect(() => computeAdvanceTax({ amount: -1, parts, interState: false })).toThrow(RangeError);
   expect(() => computeAdvanceTax({ amount: 10.5, parts, interState: false })).toThrow(RangeError);
+});
+
+test('the credit that uses up a line takes exactly the tax left on it', () => {
+  const originalLines = [{ key: 'a', hsnSac: null, taxable: 1001, rateBp: 500, cgst: 25, sgst: 25, igst: 0, total: 1051 }];
+  const earlier = [{ lines: [{ key: 'a', taxable: 501, cgst: 13, sgst: 13, igst: 0 }], total: 527 }];
+  const cn = creditNoteFigures({
+    originalLines, credits: [{ key: 'a', taxable: 500 }], earlier, invoiceTotal: 1100, interState: false, full: false,
+  });
+  expect(cn.lines[0]).toMatchObject({ taxable: 500, cgst: 12, sgst: 12, total: 524 });
+  // It also uses up the bill, so the notes add up to the bill's total.
+  expect(cn.totals.total).toBe(1100 - 527);
+  expect(cn.totals.roundOff).toBe(cn.totals.total - cn.totals.subtotal);
+});
+
+test('a part credit never takes more tax than is left on the line', () => {
+  const originalLines = [{ key: 'a', hsnSac: null, taxable: 10000, rateBp: 500, cgst: 250, sgst: 250, igst: 0, total: 10500 }];
+  const earlier = [{ lines: [{ key: 'a', taxable: 5000, cgst: 249, sgst: 249, igst: 0 }], total: 5498 }];
+  const cn = creditNoteFigures({
+    originalLines, credits: [{ key: 'a', taxable: 4000 }], earlier, invoiceTotal: 10500, interState: false, full: false,
+  });
+  expect(cn.lines[0]).toMatchObject({ cgst: 1, sgst: 1 });
 });

@@ -150,7 +150,15 @@ test('a part credit note taxes at the original rate', async () => {
 
   const view = await billOf(ops, bill);
   expect(view.settlement).toMatchObject({ credited: 56000, balance: bill.totals.total - 56000 });
-  expect(view.creditNotes).toEqual([{ id: creditNote.id, number: creditNote.number, date: today(), total: 56000 }]);
+  expect(view.creditNotes).toEqual([
+    {
+      id: creditNote.id,
+      number: creditNote.number,
+      date: today(),
+      total: 56000,
+      lines: creditNote.lines.map(({ key, taxable, cgst, sgst, igst }) => ({ key, taxable, cgst, sgst, igst })),
+    },
+  ]);
   const read = await ops.agent.get(`/v1/billing/credit-notes/${creditNote.id}`);
   ok(read, 200);
   expect(read.body.creditNote).toEqual(creditNote);

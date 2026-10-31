@@ -141,6 +141,20 @@ test('the summary agrees with the ledger', async () => {
   expect(summary.overdue).toBe(summary.outstanding);
 });
 
+test('the summary says how much advance has no order, which is what a customer refund can give', async () => {
+  const w = await world();
+  const order = await w.takeOrder({ prices: [450000] });
+  ok(await pay(w.ops, { customerId: w.customerId, orderId: order.id, amount: 200000, mode: 'cash' }));
+  ok(await pay(w.ops, { customerId: w.customerId, amount: 50000, mode: 'upi' }));
+  expect(await get(w.ops, `/customers/${w.customerId}/summary`)).toMatchObject({ advanceHeld: 250000, advanceUnassigned: 50000 });
+  const tooMuch = await w.admin.agent
+    .post('/v1/billing/refunds')
+    .set('Idempotency-Key', `lr${++keys}`)
+    .send({ customerId: w.customerId, amount: 50001, mode: 'cash', reason: 'Not needed' });
+  expect(tooMuch.status).toBe(422);
+  expect(tooMuch.body.error.details).toEqual({ available: 50000 });
+});
+
 test('money owed lists the oldest due first with days overdue and buckets', async () => {
   const w = await world();
   const second = (await w.ops.agent.post('/v1/customers').send({ name: 'Bina Shah', phone: '9123456780' })).body.id;

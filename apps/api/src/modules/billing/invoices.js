@@ -739,7 +739,14 @@ async function issuedView(branchId, invoice, session) {
     overdue:
       invoice.status === 'issued' && (settlement?.balance ?? 0) > 0 && Boolean(invoice.dueDate) && istDate(clock.now()) > invoice.dueDate,
     monthLocked,
-    creditNotes: creditNotes.map((n) => ({ id: String(n._id), number: n.number, date: n.date, total: n.totals.total })),
+    creditNotes: creditNotes.map((n) => ({
+      id: String(n._id),
+      number: n.number,
+      date: n.date,
+      total: n.totals.total,
+      // What each note took off each line, so a new credit note can be previewed exactly.
+      lines: (n.snapshot?.lines ?? []).map(({ key, taxable, cgst, sgst, igst }) => ({ key, taxable, cgst, sgst, igst })),
+    })),
     warnings: [],
   };
 }
