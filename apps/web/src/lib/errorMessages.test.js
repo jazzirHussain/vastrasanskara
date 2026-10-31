@@ -28,3 +28,11 @@ describe('billing error messages', () => {
     expect(messageFor('REFUND_EXCEEDS_BALANCE', 'x', { available: 150000 })).toBe('The most you can refund is ₹1,500.00.');
   });
 });
+
+describe('expense error messages', () => {
+  test('every expense error code has a plain message', () => {
+    for (const code of ['EXPENSE_DATE_IN_FUTURE', 'EXPENSE_FY_CHANGE', 'EXPENSE_VOIDED', 'ALREADY_VOIDED', 'ATTACHMENT_NOT_UPLOADED', 'CATEGORY_REMOVED']) {
+      expect(errorMessages[code], code).toMatch(/^[A-Z].*[.]$/);
+    }
+  });
+});

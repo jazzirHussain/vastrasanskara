@@ -51,7 +51,7 @@ export function LinkPicker({ link, onChange }) {
             </Text>
             <Text fw={600}>{link.label || 'An order'}</Text>
           </Stack>
-          <Button variant="subtle" size="md" onClick={() => onChange(null)}>
+          <Button variant="subtle" size="md" style={{ flexShrink: 0 }} onClick={() => onChange(null)}>
             Remove
           </Button>
         </Group>

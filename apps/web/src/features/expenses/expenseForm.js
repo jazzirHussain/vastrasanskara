@@ -46,7 +46,7 @@ export function expenseToForm(expense) {
       edited: gst ? { taxable: figureText(gst.taxable), cgst: figureText(gst.cgst), igst: figureText(gst.igst) } : null,
       itcEligible: gst ? gst.itcEligible : true,
     },
-    link: expense.link ? { kind: expense.link.kind, id: expense.link.id, label: [expense.link.orderNo, expense.link.label].filter(Boolean).join(' · ') } : null,
+    link: expense.link ? { kind: expense.link.kind, id: expense.link.id, label: linkText(expense.link) } : null,
   };
 }
 
@@ -143,4 +143,10 @@ export function changedFields(form, original, options) {
   const now = formToBody(form, options);
   const then = formToBody(expenseToForm(original), options);
   return Object.fromEntries(Object.entries(now).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(then[key])));
+}
+
+/** 'VS/ORD/0001 · Bridal lehenga'; the label may already name the order, so it is not repeated. */
+function linkText({ orderNo, label }) {
+  if (orderNo && label && label.includes(orderNo)) return label;
+  return [orderNo, label].filter(Boolean).join(' · ');
 }

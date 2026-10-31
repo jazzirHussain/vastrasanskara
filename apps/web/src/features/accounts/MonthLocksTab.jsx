@@ -35,7 +35,7 @@ function LockDialog({ month, onClose }) {
       closeOnEscape={!lock.isPending}
     >
       <Stack gap="md">
-        <Text size="sm">{`Lock ${label}? Do this after you file GSTR-1. No bills, payments or refunds can be added, changed or cancelled in a locked month.`}</Text>
+        <Text size="sm">{`Lock ${label}? Do this after you file GSTR-1. No bills, payments, refunds or expenses can be added, changed, voided or cancelled in a locked month.`}</Text>
         <Textarea label="Note (optional)" autosize minRows={2} maxLength={300} value={note} onChange={(e) => setNote(e.currentTarget.value)} />
         {lock.error && <Alert color="red">{lock.error.message}</Alert>}
         <Group justify="flex-end" grow={phone}>

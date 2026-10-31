@@ -41,7 +41,7 @@ export function PayeePicker({ payee, onChange, error }) {
                 </Text>
               )}
             </Stack>
-            <Button variant="subtle" size="md" onClick={() => onChange({ ...FREE_TEXT, name: '' })}>
+            <Button variant="subtle" size="md" style={{ flexShrink: 0 }} onClick={() => onChange({ ...FREE_TEXT, name: '' })}>
               Change
             </Button>
           </Group>

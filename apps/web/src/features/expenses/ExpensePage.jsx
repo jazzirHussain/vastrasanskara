@@ -85,7 +85,10 @@ function GstBlock({ gst }) {
 }
 
 function LinkLine({ link, canOpenOrder }) {
-  const text = `Order ${link.orderNo ?? ''}${link.label && link.label !== link.orderNo ? ` · ${link.label}` : ''}`.trim();
+  const label = link.label ?? '';
+  const orderNo = link.orderNo ?? '';
+  // The label already names the order ("Order VS/ORD/…") for an order link.
+  const text = (orderNo && label.includes(orderNo) ? label : `Order ${orderNo}${label && label !== orderNo ? ` · ${label}` : ''}`).trim();
   return canOpenOrder ? (
     <Anchor component={Link} to={`/orders/${link.orderId}`}>
       {text}

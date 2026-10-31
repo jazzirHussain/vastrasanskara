@@ -4,6 +4,7 @@ import { PageHeader } from '../../components/PageHeader.jsx';
 import { fieldErrors } from '../../lib/fieldErrors.js';
 import { AppointmentsTab } from './AppointmentsTab.jsx';
 import { BusinessTab } from './BusinessTab.jsx';
+import { ExpensesTab } from './ExpensesTab.jsx';
 import { GarmentTypesTab } from './GarmentTypesTab.jsx';
 import { MoneyTab } from './MoneyTab.jsx';
 import { NotificationsTab } from './NotificationsTab.jsx';
@@ -13,6 +14,7 @@ import { useBranch, useSaveSettings, useSettings } from './settingsApi.js';
 
 const SETTINGS_TABS = [
   ['money', 'Money', MoneyTab],
+  ['expenses', 'Expenses', ExpensesTab],
   ['garment-types', 'Garment types', GarmentTypesTab],
   ['production', 'Production', ProductionTab],
   ['appointments', 'Appointments', AppointmentsTab],
