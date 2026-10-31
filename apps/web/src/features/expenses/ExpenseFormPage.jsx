@@ -57,40 +57,48 @@ function ExpenseForm({ original, settings, branch }) {
     setForm((f) => ({ ...f, ...patch }));
   };
 
+  // Once a save has gone through, the form stays locked until the page is left: a second tap in the
+  // moment before the page changes must not send the expense again.
   const saving = useRef(false);
   async function save() {
     if (saving.current) return;
     saving.current = true;
+    let stay = true;
     try {
-      await doSave();
+      stay = await doSave();
     } finally {
-      saving.current = false;
+      if (stay) saving.current = false;
     }
   }
 
+  // Resolves to false once the expense is saved and the page is leaving, true when the form stays open.
   async function doSave() {
     const body = formToBody(form, options);
     const parsed = expenseSchema.safeParse(body);
     if (!parsed.success || issues.length > 0) {
       setErrors(parsed.success ? {} : errorsOf(parsed.error));
-      return;
+      return true;
     }
     setErrors({});
     if (editing) {
-      if (Object.keys(changed).length === 0) return navigate(`/expenses/${original.id}`);
+      if (Object.keys(changed).length === 0) {
+        navigate(`/expenses/${original.id}`);
+        return false;
+      }
       try {
         await update.mutateAsync({ ...changed, version: original.version });
       } catch {
-        return;
+        return true;
       }
       notifications.show({ color: 'neem', message: 'Changes saved' });
-      return navigate(`/expenses/${original.id}`);
+      navigate(`/expenses/${original.id}`);
+      return false;
     }
     let saved;
     try {
       saved = await create.mutateAsync({ body, key });
     } catch {
-      return;
+      return true;
     }
     rememberCategory(form.category);
     const id = `expense-${saved.id}`;
@@ -115,6 +123,7 @@ function ExpenseForm({ original, settings, branch }) {
       ),
     });
     navigate(`/expenses?month=${form.date.slice(0, 7)}`);
+    return false;
   }
 
   const buttonLabel = editing

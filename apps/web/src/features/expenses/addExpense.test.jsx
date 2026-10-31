@@ -1,5 +1,5 @@
 import { test, expect, vi, afterEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server, asDesigner } from '../../test/server.js';
@@ -95,6 +95,7 @@ test('a new payee name is sent as free text; a vendor sends its id', async () =>
   expect(posts[0].body.payee).toEqual({ vendorId: '64b7f0c2a1b2c3d4e5f60718', name: 'Sharma Electricals' });
 
   // A name that is not a vendor goes as written.
+  cleanup();
   renderApp('/expenses/new');
   await userEvent.type(await screen.findByLabelText('How much?'), '75');
   await chooseRepairs();
@@ -190,7 +191,7 @@ test('editing a locked-month expense is not offered', async () => {
   asFrontDesk();
   server.use(http.get('/v1/expenses/e1', () => HttpResponse.json({ expense: expenseFixture({ monthLocked: true }) })));
   renderApp('/expenses/e1/edit');
-  await screen.findByText(/Welcome/);
+  await screen.findByText('This month is locked for filing');
   expect(screen.queryByLabelText('How much?')).not.toBeInTheDocument();
 });
 

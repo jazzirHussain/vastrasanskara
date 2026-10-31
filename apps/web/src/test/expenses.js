@@ -68,3 +68,61 @@ export function uploadsWork({ gate = null } = {}) {
   );
   return { requests, puts };
 }
+
+/** A row of GET /v1/expenses. */
+export function expenseRow(fields = {}) {
+  return {
+    id: 'e1',
+    number: 'EXP/2627/0012',
+    date: todayYmd(),
+    category: { key: 'repairs', label: 'Repairs and maintenance' },
+    payee: { name: 'Sharma Electricals' },
+    total: 50000,
+    mode: 'cash',
+    hasGst: false,
+    photos: 0,
+    linked: false,
+    status: 'active',
+    ...fields,
+  };
+}
+
+/** GET /v1/expenses/summary for the current month. */
+export function summaryFixture(fields = {}) {
+  return {
+    month: todayYmd().slice(0, 7),
+    total: 4825000,
+    count: 5,
+    previousMonthTotal: 4100000,
+    byCategory: [
+      { category: { key: 'rent', label: 'Rent' }, total: 3000000, count: 1 },
+      { category: { key: 'repairs', label: 'Repairs and maintenance' }, total: 1825000, count: 4 },
+    ],
+    byMode: [{ mode: 'cash', total: 4825000 }],
+    gst: { count: 0, taxable: 0, cgst: 0, sgst: 0, igst: 0, itc: { cgst: 0, sgst: 0, igst: 0 }, ineligible: { cgst: 0, sgst: 0, igst: 0 } },
+    missingBill: 0,
+    locked: false,
+    ...fields,
+  };
+}
+
+/**
+ * Answers the month summary and the list; `list(query)` returns the rows for a list request
+ * (a URLSearchParams). Every summary and list query is recorded.
+ */
+export function expensesAre({ summary = summaryFixture(), list = () => [] } = {}) {
+  const seen = { summaries: [], lists: [] };
+  server.use(
+    http.get('/v1/expenses/summary', ({ request }) => {
+      const q = new URL(request.url).searchParams;
+      seen.summaries.push(q);
+      return HttpResponse.json(typeof summary === 'function' ? summary(q) : summary);
+    }),
+    http.get('/v1/expenses', ({ request }) => {
+      const q = new URL(request.url).searchParams;
+      seen.lists.push(q);
+      return HttpResponse.json({ items: list(q), nextCursor: null });
+    }),
+  );
+  return seen;
+}
