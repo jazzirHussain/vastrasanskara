@@ -85,3 +85,12 @@ export function addDaysYmd(ymd, n) {
   if (!Number.isInteger(n)) throw new RangeError(`Invalid day count: ${n}`);
   return formatYmd(parseYmd(ymd) + n * DAY_MS);
 }
+
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** A business date for people: '2026-10-30' → '30 Oct 2026'. Pure string work, no time zones. */
+export function displayDate(ymd) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd ?? ''));
+  if (!m) return String(ymd ?? '');
+  return `${Number(m[3])} ${MONTH_NAMES[Number(m[2]) - 1]} ${m[1]}`;
+}

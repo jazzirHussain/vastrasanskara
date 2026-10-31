@@ -1,8 +1,10 @@
 import { Link, useParams } from 'react-router-dom';
 import { Alert, Anchor, Button, Group, Loader, Stack, Text } from '@mantine/core';
+import { useAuth } from '../../auth/AuthContext.js';
 import { DateLabel, todayYmd } from '../../components/DateLabel.jsx';
 import { Money } from '../../components/Money.jsx';
 import { PageHeader } from '../../components/PageHeader.jsx';
+import { OrderMoneyPanel } from '../billing/OrderMoneyPanel.jsx';
 import { useSettings } from '../settings/settingsApi.js';
 import { GarmentPanel } from './GarmentPanel.jsx';
 import { OrderActions } from './OrderActions.jsx';
@@ -26,6 +28,7 @@ export function OrderPage() {
   const order = useOrder(id);
   const settings = useSettings();
   const change = useOrderChange(id);
+  const { can } = useAuth();
 
   if (order.isPending) return <Loader />;
   if (order.error) return <Alert color="red">{order.error.message}</Alert>;
@@ -81,6 +84,8 @@ export function OrderPage() {
           </Fact>
         )}
       </div>
+
+      {can('money.view') && <OrderMoneyPanel order={o} />}
 
       {openHold && (
         <Alert color="haldi" mb="md" title="On hold">

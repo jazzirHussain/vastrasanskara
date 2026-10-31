@@ -219,3 +219,30 @@ export async function listProductionGarments(branchId, user, { stage, late, with
   const vendors = await getVendorNames(branchId, rows.map((r) => r.garment.vendorWork?.vendorId));
   return { items: rows.map((r) => ({ ...r, vendorName: vendors.get(String(r.garment.vendorWork?.vendorId)) ?? null })), truncated };
 }
+
+const CHARGEABLE_ACTIONS = ['qc_fail', 'rework', 'alteration'];
+
+/**
+ * Stage events of the garments that the front desk may bill (rework, QC failure or alteration
+ * marked chargeable), oldest first. `chargeAmount` is null until someone prices it.
+ */
+export async function listChargeableEvents(branchId, garmentIds, session) {
+  const events = await StageEvent.find({
+    branchId,
+    garmentId: { $in: garmentIds },
+    chargeable: true,
+    action: { $in: CHARGEABLE_ACTIONS },
+  })
+    .sort({ at: 1, _id: 1 })
+    .session(session ?? null)
+    .lean();
+  return events.map((e) => ({
+    id: e._id,
+    garmentId: e.garmentId,
+    orderId: e.orderId,
+    action: e.action,
+    stage: e.stage,
+    chargeAmount: e.chargeAmount ?? null,
+    at: e.at,
+  }));
+}

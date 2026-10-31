@@ -1,6 +1,6 @@
 import { clock } from '../../clock.js';
 import { logger } from '../../logger.js';
-import { CHANNEL_ADDRESS, getQuietHours, getRule, withoutSecrets } from './catalog.js';
+import { CHANNEL_ADDRESS, getEventDefinition, getQuietHours, getRule, withoutSecrets } from './catalog.js';
 import { Branch } from '../../modules/branches/model.js';
 import { Outbox } from './models.js';
 import { nextAllowedTime } from './quietHours.js';
@@ -23,17 +23,19 @@ async function uniqueRecipients(roles, args) {
 /**
  * Queues an event's messages in the outbox, one per recipient × channel. Pass the caller's
  * transaction session so messages exist only if the business change commits. Entries are
- * deduplicated by event:refId:sequence:channel:kind:id; returns how many were new.
+ * deduplicated by event:refId:sequence:channel:kind:id; returns how many were new. `notBefore`
+ * holds every message until then (e.g. for a PDF still being rendered).
  */
 export async function emit(
   event,
   { branchId, refId, sequence = 1, data = {}, vars = {}, attachments = [] },
-  { session } = {},
+  { session, notBefore = null } = {},
 ) {
   const rule = await getRule(branchId, event, session);
   if (!rule.enabled) return 0;
 
   const now = clock.now();
+  const earliest = notBefore && notBefore > now ? notBefore : now;
   const quietHours = await getQuietHours(branchId, session);
   const recipients = await uniqueRecipients(rule.recipients, { branchId, data, session });
 
@@ -42,9 +44,10 @@ export async function emit(
     for (const channel of rule.channels) {
       const address = recipient.addresses?.[CHANNEL_ADDRESS[channel]] ?? null;
       const skipReason = skipReasonFor(recipient, channel, address);
-      // Staff messages are never held; client messages wait out the channel's quiet hours.
+      // Never before `notBefore`; staff messages are not held further, client messages also
+      // wait out the channel's quiet hours.
       const scheduledFor =
-        recipient.kind === 'client' ? nextAllowedTime(now, quietHours[channel] ?? null) : now;
+        recipient.kind === 'client' ? nextAllowedTime(earliest, quietHours[channel] ?? null) : earliest;
       const dedupeKey = [event, refId, sequence, channel, recipient.kind, recipient.id].join(':');
 
       const result = await Outbox.updateOne(
@@ -90,4 +93,31 @@ export async function emit(
 export async function emitToAllBranches(event, { refId, vars = {} }) {
   const branches = await Branch.find({}, { _id: 1 }).lean();
   for (const { _id: branchId } of branches) await emit(event, { branchId, refId, vars });
+}
+
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Withdraws the event's messages for `refId` that are still waiting (e.g. a bill cancelled
+ * before its email went out): they become skipped ('withdrawn') and are never sent. Messages
+ * already being sent or sent are left alone. Pass the caller's session so it happens only if the
+ * change commits. Returns how many were withdrawn.
+ */
+export async function withdrawPending(event, { branchId, refId }, { session } = {}) {
+  const secrets = getEventDefinition(event).secretVars;
+  const result = await Outbox.updateMany(
+    {
+      branchId: String(branchId),
+      event,
+      status: 'pending',
+      dedupeKey: { $regex: `^${escapeRegex(`${event}:${refId}:`)}` },
+    },
+    {
+      $set: { status: 'skipped', skipReason: 'withdrawn' },
+      // A skipped message is final, so it keeps no secrets.
+      ...(secrets.length ? { $unset: Object.fromEntries(secrets.map((key) => [`vars.${key}`, ''])) } : {}),
+    },
+    { session },
+  );
+  return result.modifiedCount;
 }

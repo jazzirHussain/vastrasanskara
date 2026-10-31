@@ -5,6 +5,10 @@ import { LoginPage } from './auth/LoginPage.jsx';
 import { RequireAuth } from './auth/RequireAuth.jsx';
 import { RequirePermission } from './auth/RequirePermission.jsx';
 import { ResetPasswordPage } from './auth/ResetPasswordPage.jsx';
+import { BillPage } from './features/billing/BillPage.jsx';
+import { BillsPage } from './features/billing/BillsPage.jsx';
+import { AccountsPage } from './features/accounts/AccountsPage.jsx';
+import { CatalogPage } from './features/catalog/CatalogPage.jsx';
 import { CustomerPage } from './features/customers/CustomerPage.jsx';
 import { CustomersPage } from './features/customers/CustomersPage.jsx';
 import { HomePage } from './features/home/HomePage.jsx';
@@ -40,8 +44,18 @@ export default function App() {
             <Route element={<RequirePermission permission="orders.write" />}>
               <Route path="/orders/new" element={<NewOrderPage />} />
             </Route>
+            <Route element={<RequirePermission permission="money.view" />}>
+              <Route path="/bills" element={<BillsPage />} />
+              <Route path="/bills/:id" element={<BillPage />} />
+            </Route>
             <Route element={<RequirePermission permission="workshop.manage" />}>
               <Route path="/workshop" element={<WorkshopPage />} />
+            </Route>
+            <Route element={<RequirePermission permission="periods.lock" />}>
+              <Route path="/accounts" element={<AccountsPage />} />
+            </Route>
+            <Route element={<RequirePermission permission="catalog.manage" />}>
+              <Route path="/catalog" element={<CatalogPage />} />
             </Route>
             <Route element={<RequirePermission permission="users.manage" />}>
               <Route path="/users" element={<UsersPage />} />

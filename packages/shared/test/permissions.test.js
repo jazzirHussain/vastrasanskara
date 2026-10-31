@@ -16,3 +16,14 @@ test('workshop.manage for admin and operations only', () => {
   expect(can(['operations'], 'workshop.manage')).toBe(true);
   expect(can(['designer'], 'workshop.manage')).toBe(false);
 });
+test('catalog.manage is admin only', () => {
+  expect(can(['admin'], 'catalog.manage')).toBe(true);
+  expect(can(['operations'], 'catalog.manage')).toBe(false);
+  expect(can(['designer'], 'catalog.manage')).toBe(false);
+});
+test('designers have no billing permission', () => {
+  const mine = permissionsFor(['designer']);
+  for (const p of ['money.view', 'billing.draft', 'billing.issue', 'billing.cancel', 'payments.record', 'discounts.give', 'periods.lock', 'audit.verify', 'catalog.manage']) {
+    expect(mine.has(p)).toBe(false);
+  }
+});

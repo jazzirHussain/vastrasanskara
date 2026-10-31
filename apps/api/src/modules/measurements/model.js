@@ -38,6 +38,9 @@ for (const op of [
 ]) {
   measurementSchema.pre(op, { document: false, query: true }, refuse);
 }
+measurementSchema.pre('save', function onlyInserts() {
+  if (!this.isNew) refuse();
+});
 measurementSchema.pre(['updateOne', 'deleteOne'], { document: true, query: false }, refuse);
 
 export const Measurement = mongoose.models.Measurement ?? mongoose.model('Measurement', measurementSchema);

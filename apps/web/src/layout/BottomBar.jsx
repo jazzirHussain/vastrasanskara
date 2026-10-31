@@ -3,15 +3,19 @@ import { Drawer, Stack, Text, UnstyledButton } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconDots, IconLogout } from '@tabler/icons-react';
 
+const MAX_BAR = 4;
+
 /**
  * Phone navigation: the main pages in a bar along the bottom, New order raised in the centre,
  * and everything else (with Log out) under More.
  */
 export function BottomBar({ items, active, user, onLogout }) {
   const [moreOpen, more] = useDisclosure(false);
-  const bar = items.filter((i) => i.phone === 'bar');
+  // Five slots fit 390 px beside More: the first four permitted bar items; the others go under More.
+  const barItems = items.filter((i) => i.phone === 'bar');
+  const bar = barItems.slice(0, MAX_BAR);
   const primary = items.find((i) => i.phone === 'primary');
-  const rest = items.filter((i) => i.phone === 'more');
+  const rest = [...barItems.slice(MAX_BAR), ...items.filter((i) => i.phone === 'more')];
   // The raised button sits in the middle of the bar.
   const slots = primary ? [...bar.slice(0, 2), primary, ...bar.slice(2)] : bar;
 

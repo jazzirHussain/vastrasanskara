@@ -24,8 +24,8 @@ export async function listBranchIds() {
   return (await Branch.find({}, { _id: 1 }).lean()).map((b) => b._id);
 }
 
-export async function getBranch(branchId) {
-  const branch = await Branch.findById(branchId).lean();
+export async function getBranch(branchId, session) {
+  const branch = await Branch.findById(branchId).session(session ?? null).lean();
   if (!branch) throw notFound();
   return branch;
 }

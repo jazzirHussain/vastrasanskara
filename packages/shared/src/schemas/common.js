@@ -27,4 +27,7 @@ export const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Invalid time'
 
 export const paise = z.int().nonnegative();
 
+/** Billing money: paise, capped at one crore rupees so line maths stays within safe integers. */
+export const billingAmount = paise.max(1_000_000_000);
+
 export const password = z.string().min(10).max(200);

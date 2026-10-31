@@ -53,26 +53,35 @@ export async function recordAudit(
   return doc.toObject();
 }
 
-/** Re-hashes the branch's chain in order and reports the first break, if any. */
+/**
+ * Re-hashes the branch's chain in order and reports the first break, if any. The newest seq
+ * issued is read first and only entries up to it are checked, so entries committed while the
+ * check runs are left for the next one.
+ */
 export async function verifyAuditChain(branchId) {
   const branch = normalize(branchId);
+  const counter = await mongoose.connection.collection('counters').findOne({ _id: counterName(branch) });
+  const last = counter?.value ?? 0;
   let checked = 0;
   let prevHash = GENESIS_HASH;
-  const fail = (seq, reason) => ({ ok: false, checked, firstBreak: { seq, reason } });
+  const fail = (seq, reason, entry) => ({
+    ok: false,
+    checked,
+    firstBreak: { seq, reason, ...(entry ? { entityType: entry.entityType, entityId: entry.entityId } : {}) },
+  });
 
-  const cursor = AuditLog.find({ branchId: branch }).sort({ seq: 1 }).lean().cursor();
+  const cursor = AuditLog.find({ branchId: branch, seq: { $lte: last } }).sort({ seq: 1 }).lean().cursor();
   for await (const entry of cursor) {
     const expectedSeq = checked + 1;
     if (entry.seq !== expectedSeq) return fail(expectedSeq, 'missing_seq');
-    if (entry.prevHash !== prevHash) return fail(entry.seq, 'prev_mismatch');
-    if (entryHash(prevHash, entry) !== entry.hash) return fail(entry.seq, 'hash_mismatch');
+    if (entry.prevHash !== prevHash) return fail(entry.seq, 'prev_mismatch', entry);
+    if (entryHash(prevHash, entry) !== entry.hash) return fail(entry.seq, 'hash_mismatch', entry);
     prevHash = entry.hash;
     checked += 1;
   }
 
-  // The chain cannot reveal deleted entries at its end; the counter knows the last seq issued.
-  const counter = await mongoose.connection.collection('counters').findOne({ _id: counterName(branch) });
-  if ((counter?.value ?? 0) > checked) return fail(checked + 1, 'missing_seq');
+  // Entries deleted from the end of the chain are visible only because the counter knows them.
+  if (last > checked) return fail(checked + 1, 'missing_seq');
 
   return { ok: true, checked };
 }

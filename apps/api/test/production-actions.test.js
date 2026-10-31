@@ -152,6 +152,15 @@ test('designers cannot price a rework and never see charges', async () => {
   expect((await history(admin, atQc)).at(-1).chargeAmount).toBe(50000);
 });
 
+test('a loaded stage event cannot be changed and saved', async () => {
+  const { d1, take } = await world();
+  await act(d1, (await take()).garments[0], { action: 'complete' });
+  const loaded = await StageEvent.findOne();
+  loaded.remarks = 'edited';
+  await expect(loaded.save()).rejects.toThrow('append-only');
+  expect((await StageEvent.findOne()).remarks).toBe('');
+});
+
 test('stage events cannot be changed', async () => {
   const { d1, take } = await world();
   await act(d1, (await take()).garments[0], { action: 'complete' });

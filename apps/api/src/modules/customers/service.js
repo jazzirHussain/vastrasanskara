@@ -89,9 +89,9 @@ export async function updateCustomer(branchId, id, { version, patch }, actor) {
   }
 }
 
-export async function getCustomer(branchId, id) {
+export async function getCustomer(branchId, id, session) {
   if (!mongoose.isValidObjectId(id)) throw notFound();
-  const customer = await Customer.findOne({ _id: id, branchId }).lean();
+  const customer = await Customer.findOne({ _id: id, branchId }).session(session ?? null).lean();
   if (!customer) throw notFound();
   return customer;
 }

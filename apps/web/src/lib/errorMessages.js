@@ -1,3 +1,6 @@
+import { formatINR } from '@vs/shared/money.js';
+import { monthLabel } from './dates.js';
+
 // Friendly text for the API's error codes; anything not listed shows the server's message.
 export const errorMessages = {
   INVALID_CREDENTIALS: 'Email or password is incorrect.',
@@ -26,5 +29,90 @@ export const errorMessages = {
   WITH_VENDOR: 'This garment is with a vendor. Record it as back first.',
   REWORK_TARGET_INVALID: 'Choose an earlier stage that was not skipped.',
   PHONE_TAKEN: 'A customer with this phone already exists.',
+  NOT_FOUND: 'This could not be found. It may have been removed. Reload and try again.',
+  CATALOG_MAPPING_TAKEN: 'Another item already bills this. Change that item first.',
+  PERIOD_NOT_ENDED: 'A month can be locked only after it has ended.',
+  ALREADY_LOCKED: 'This month is already locked.',
+  NOT_LOCKED: 'This month is not locked.',
+  DOCUMENT_IMMUTABLE: 'This bill has been issued and cannot be changed.',
+  NOTHING_TO_BILL: 'Everything on this order is already billed.',
+  NO_LINES: 'Add at least one item to the bill.',
+  ITEM_REQUIRED: 'Choose what each line is billed as.',
+  PRICE_NEEDED: 'Enter a price for every line.',
+  ADDRESS_REQUIRED: 'Add the customer’s address. It is needed on bills of ₹50,000 or more.',
+  BRANCH_GSTIN_MISSING: 'Add the boutique’s GSTIN in Settings before issuing bills.',
+  GARMENT_NOT_BILLABLE: 'A garment on this bill was rejected or cancelled. Remove it and try again.',
+  ALREADY_BILLED: 'Part of this bill is already on another bill.',
+  DISCOUNT_EXCEEDS_LINE: 'A discount is more than the price of its line.',
+  DISCOUNT_EXCEEDS_TOTAL: 'The discount is more than the bill.',
+  DOC_NUMBER_TOO_LONG: 'The bill number would be too long. Shorten the prefix in Settings.',
+  INVALID_AMOUNT: 'An amount on this bill is not valid. Check the prices, quantities and discounts.',
+  BAD_SLABS: 'An item on this bill has GST rates that do not work. Ask the owner to check the price list.',
+  ADVANCE_EXCEEDS_TOTAL: 'This is more than the order total.',
+  HAS_CREDIT_NOTES: 'This bill has a credit note, so it cannot be cancelled.',
+  CREDIT_EXCEEDS_INVOICE: 'That is more than is left on the bill.',
+  CREDIT_EXCEEDS_LINE: 'That is more than is left on this line of the bill.',
+  REFUND_EXCEEDS_BALANCE: 'That is more than the advance held for this customer.',
+  ALREADY_CANCELLED: 'This has already been cancelled.',
+  RECEIPT_REFUNDED: 'Part of this payment was refunded, so it cannot be cancelled.',
+  VOUCHER_ADJUSTED: 'This advance is already on a bill. Cancel the bill first.',
+  SERIES_IN_USE: 'This number series has started this year and cannot be changed.',
   NETWORK_ERROR: 'Cannot reach the server. Check your connection and try again.',
 };
+
+/**
+ * The plain message for an error code: some name the month or the amount from the error's
+ * `details`; anything not listed shows the server's message.
+ */
+export function messageFor(code, serverMessage, details) {
+  if (code === 'PERIOD_LOCKED' && /^\d{4}-\d{2}$/.test(details?.month ?? '')) {
+    return `${monthLabel(details.month)} is locked for filing, so nothing dated in it can be added, changed or cancelled.`;
+  }
+  if (code === 'REFUND_EXCEEDS_BALANCE' && Number.isSafeInteger(details?.available)) {
+    return `The most you can refund is ${formatINR(details.available)}.`;
+  }
+  return errorMessages[code] ?? serverMessage ?? 'Something went wrong. Please try again.';
+}
+
+// Where a code means something different on a bill than on an order.
+export const billErrorMessages = {
+  IDEMPOTENCY_KEY_REUSED: 'This bill may already have been issued. Reload the page to check.',
+  IDEMPOTENCY_IN_PROGRESS: 'This bill is still being issued. Wait a moment, then reload the page.',
+  VALIDATION_FAILED: 'Some details on this bill are not valid. Check each line and try again.',
+  INVALID_STATUS: 'This bill cannot be changed in its current state. Reload the page.',
+};
+
+/** The plain message for an error on a bill screen. */
+export const billErrorMessage = (error) => billErrorMessages[error?.code] ?? error?.message;
+
+const paymentErrorMessages = {
+  IDEMPOTENCY_KEY_REUSED: 'This payment may already be saved. Check the receipts before trying again.',
+  IDEMPOTENCY_IN_PROGRESS: 'This payment may already be saved. Check the receipts before trying again.',
+};
+
+// Where a code means something different on a correction: a credit note, a refund or a payment cancelled.
+const correctionErrorMessages = {
+  creditNote: {
+    IDEMPOTENCY_KEY_REUSED: 'This credit note may already be saved. Reload the bill to check.',
+    IDEMPOTENCY_IN_PROGRESS: 'This credit note may already be saved. Reload the bill to check.',
+    INVALID_STATUS: 'This bill cannot be reduced in its current state. Reload the page.',
+  },
+  refund: {
+    IDEMPOTENCY_KEY_REUSED: 'This refund may already be saved. Check the customer’s money before trying again.',
+    IDEMPOTENCY_IN_PROGRESS: 'This refund may already be saved. Check the customer’s money before trying again.',
+  },
+  receipt: {
+    INVALID_STATUS: 'This payment cannot be cancelled in its current state. Reload the page.',
+  },
+};
+
+/** The plain message for an error on a correction: `kind` is 'creditNote', 'refund' or 'receipt'. */
+export const correctionErrorMessage = (kind, error) => correctionErrorMessages[kind][error?.code] ?? error?.message;
+
+/** The plain message for an error while taking a payment (adds the limit when an advance is too big). */
+export function paymentErrorMessage(error) {
+  if (error?.code === 'ADVANCE_EXCEEDS_TOTAL' && Number.isSafeInteger(error.details?.maxAmount)) {
+    return `${error.message} The most you can take now is ${formatINR(error.details.maxAmount)}.`;
+  }
+  return paymentErrorMessages[error?.code] ?? error?.message;
+}

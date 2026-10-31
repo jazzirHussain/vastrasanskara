@@ -51,6 +51,9 @@ for (const op of [
 ]) {
   stageEventSchema.pre(op, { document: false, query: true }, refuse);
 }
+stageEventSchema.pre('save', function onlyInserts() {
+  if (!this.isNew) refuse();
+});
 stageEventSchema.pre(['updateOne', 'deleteOne'], { document: true, query: false }, refuse);
 
 export const StageEvent = mongoose.models.StageEvent ?? mongoose.model('StageEvent', stageEventSchema);

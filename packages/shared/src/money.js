@@ -17,6 +17,24 @@ export function rupeesToPaise(value) {
   return sign && paise !== 0 ? -paise : paise;
 }
 
+/**
+ * a × b ÷ c rounded half away from zero, exact (BigInt, no floats).
+ * a and b are integers (either sign); c must be a positive integer.
+ */
+export function mulDivRound(a, b, c) {
+  for (const n of [a, b, c]) {
+    if (!Number.isSafeInteger(n)) throw new RangeError(`Invalid integer: ${n}`);
+  }
+  if (c <= 0) throw new RangeError(`Divisor must be positive: ${c}`);
+  const product = BigInt(a) * BigInt(b);
+  const abs = product < 0n ? -product : product;
+  const divisor = BigInt(c);
+  const q = (2n * abs + divisor) / (2n * divisor);
+  const result = Number(product < 0n ? -q : q);
+  if (!Number.isSafeInteger(result)) throw new RangeError('Result out of range');
+  return result === 0 ? 0 : result;
+}
+
 /** Formats paise as ₹ with Indian digit grouping: 12345678 → "₹1,23,456.78". */
 export function formatINR(paise) {
   assertPaise(paise);

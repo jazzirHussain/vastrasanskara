@@ -324,3 +324,22 @@ export async function listOrders(
   }));
   return { items, nextCursor };
 }
+
+/**
+ * The order and its garments (by index) for billing: lean, no user scope (callers hold
+ * `money.view`), 404 when the order is not the branch's.
+ */
+export async function getOrderForBilling(branchId, orderId, session) {
+  if (!mongoose.isValidObjectId(orderId)) throw notFound();
+  const order = await Order.findOne({ _id: orderId, branchId }).session(session ?? null).lean();
+  if (!order) throw notFound();
+  const garments = await Garment.find({ orderId: order._id }).sort({ index: 1 }).session(session ?? null).lean();
+  return { order, garments };
+}
+
+/** Order numbers of the branch's orders by id, as a Map of id string to orderNo (for bill and payment lists). */
+export async function getOrderNumbers(branchId, ids) {
+  if (!ids.length) return new Map();
+  const orders = await Order.find({ branchId, _id: { $in: ids } }, { orderNo: 1 }).lean();
+  return new Map(orders.map((o) => [String(o._id), o.orderNo]));
+}

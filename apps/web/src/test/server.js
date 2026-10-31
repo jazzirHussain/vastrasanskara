@@ -10,7 +10,7 @@ export const adminUser = {
   name: 'Owner',
   email: 'owner@x.com',
   roles: ['admin'],
-  permissions: ['users.manage', 'settings.edit', 'system.monitor', 'money.view'],
+  permissions: ['users.manage', 'settings.edit', 'system.monitor', 'money.view', 'catalog.manage'],
   branchId: 'b1',
 };
 
@@ -29,7 +29,8 @@ export const defaultBranch = {
   prefixes: { invoice: 'INV', creditNote: 'CN', receiptVoucher: 'RV', receipt: 'RCPT', refund: 'RF', expense: 'EXP', order: 'VS/ORD' },
 };
 
-// Defaults: nobody is signed in, no notifications, default settings and branch.
+// Defaults: nobody is signed in, no notifications, default settings and branch, no money on orders,
+// no records check run yet.
 // Tests override with server.use().
 export const server = setupServer(
   http.get('/v1/auth/me', notAuthenticated),
@@ -37,6 +38,26 @@ export const server = setupServer(
   http.get('/v1/settings', () => HttpResponse.json(defaultSettings)),
   http.get('/v1/branch', () => HttpResponse.json(defaultBranch)),
   http.get('/v1/orders', () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get('/v1/billing/customers/:id/summary', () =>
+    HttpResponse.json({ billed: 0, received: 0, credited: 0, refunded: 0, outstanding: 0, overdue: 0, advanceHeld: 0 }),
+  ),
+  http.get('/v1/admin/audit/verify', () => HttpResponse.json({ run: null })),
+  http.get('/v1/billing/customers/:id/ledger', () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get('/v1/billing/orders/:id/summary', () =>
+    HttpResponse.json({
+      orderValue: 0,
+      estimatedTotal: 0,
+      advanceDue: 0,
+      advanceHeld: 0,
+      billed: 0,
+      balanceDue: 0,
+      hasUnbilled: true,
+      draftInvoiceId: null,
+      invoices: [],
+      receipts: [],
+      refundSuggestion: null,
+    }),
+  ),
 );
 
 export function asAdmin() {
