@@ -11,6 +11,8 @@ import { Branch } from '../src/modules/branches/model.js';
 import { AuditLog } from '../src/core/audit/model.js';
 import { Invoice, Receipt } from '../src/modules/billing/model.js';
 import { runDailyBillingChecks } from '../src/modules/billing/daily.js';
+import { deliverDue } from '../src/core/notify/deliver.js';
+import { registerAdapter, resetAdapters } from '../src/core/notify/adapters/registry.js';
 
 useTestDb();
 const app = buildTestApp();
@@ -52,6 +54,26 @@ test('issuing emails the client the bill PDF once it can be ready', async () => 
   expect(row.scheduledFor.getTime()).toBeGreaterThanOrEqual(before + 2 * 60_000 - 1000);
   expect(row.vars).toMatchObject({ invoiceNo: bill.number, customerName: 'Asha Rao' });
   expect(JSON.stringify(row.vars)).not.toContain(bill.id);
+});
+
+test('a bill cancelled before its email goes out is not emailed', async () => {
+  const w = await setup();
+  const { bill } = await issued(w);
+  ok(await w.admin.agent.post(`/v1/billing/invoices/${bill.id}/cancel`).send({ reason: 'Billed by mistake' }), 200);
+
+  const send = vi.fn(async () => ({ providerMessageId: 'm1', status: 'sent' }));
+  resetAdapters();
+  registerAdapter({ channel: 'email', provider: 'fake', capabilities: { attachments: true, templatesOnly: false }, send });
+  const storage = { getObject: vi.fn(async () => Buffer.from('%PDF')) };
+  const [queued] = await rows('invoice.issued');
+  try {
+    await deliverDue({ now: new Date(queued.scheduledFor.getTime() + 60_000), storage });
+  } finally {
+    resetAdapters();
+  }
+  expect(send).not.toHaveBeenCalled();
+  const [row] = await rows('invoice.issued');
+  expect(row).toMatchObject({ status: 'skipped', skipReason: 'withdrawn' });
 });
 
 test('the first advance confirms the order with the receipt attached; a second payment does not', async () => {

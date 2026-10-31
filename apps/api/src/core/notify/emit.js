@@ -1,6 +1,6 @@
 import { clock } from '../../clock.js';
 import { logger } from '../../logger.js';
-import { CHANNEL_ADDRESS, getQuietHours, getRule, withoutSecrets } from './catalog.js';
+import { CHANNEL_ADDRESS, getEventDefinition, getQuietHours, getRule, withoutSecrets } from './catalog.js';
 import { Branch } from '../../modules/branches/model.js';
 import { Outbox } from './models.js';
 import { nextAllowedTime } from './quietHours.js';
@@ -93,4 +93,31 @@ export async function emit(
 export async function emitToAllBranches(event, { refId, vars = {} }) {
   const branches = await Branch.find({}, { _id: 1 }).lean();
   for (const { _id: branchId } of branches) await emit(event, { branchId, refId, vars });
+}
+
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Withdraws the event's messages for `refId` that are still waiting (e.g. a bill cancelled
+ * before its email went out): they become skipped ('withdrawn') and are never sent. Messages
+ * already being sent or sent are left alone. Pass the caller's session so it happens only if the
+ * change commits. Returns how many were withdrawn.
+ */
+export async function withdrawPending(event, { branchId, refId }, { session } = {}) {
+  const secrets = getEventDefinition(event).secretVars;
+  const result = await Outbox.updateMany(
+    {
+      branchId: String(branchId),
+      event,
+      status: 'pending',
+      dedupeKey: { $regex: `^${escapeRegex(`${event}:${refId}:`)}` },
+    },
+    {
+      $set: { status: 'skipped', skipReason: 'withdrawn' },
+      // A skipped message is final, so it keeps no secrets.
+      ...(secrets.length ? { $unset: Object.fromEntries(secrets.map((key) => [`vars.${key}`, ''])) } : {}),
+    },
+    { session },
+  );
+  return result.modifiedCount;
 }

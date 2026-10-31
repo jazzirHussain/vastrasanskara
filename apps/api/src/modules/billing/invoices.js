@@ -6,7 +6,7 @@ import { amountInWords, formatINR } from '@vs/shared/money.js';
 import { clock } from '../../clock.js';
 import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
-import { emit } from '../../core/notify/emit.js';
+import { emit, withdrawPending } from '../../core/notify/emit.js';
 import { businessRule, conflict, forbidden, notFound, validationError } from '../../core/errors.js';
 import { getBranch } from '../branches/service.js';
 import { getItemsByIds, itemForCharge, itemForGarmentType } from '../catalog/service.js';
@@ -596,6 +596,8 @@ export async function cancelInvoice(branchId, id, { reason }, actor) {
       );
       if (matchedCount !== 1) throw conflict();
       await recomputeSettlement(invoice._id, session);
+      // The client's copy of the bill may still be waiting for its PDF: it is not sent now.
+      await withdrawPending('invoice.issued', { branchId, refId: String(invoice._id) }, { session });
 
       await recordAudit(
         {
