@@ -47,3 +47,38 @@ export function toMovementJson(m, { names, money = false } = {}) {
     ...(money && { valueChange: m.valueChange, valueAfter: m.valueAfter }),
   };
 }
+
+/**
+ * A "to buy" request as the API answers. `names` are vendor names by id, `item` the request's
+ * stock item; the receipt's value only with `money`.
+ */
+export function toRequestJson(r, { names, item, money = false } = {}) {
+  const { receipt, cancellation } = r;
+  return {
+    id: String(r._id),
+    stockItem: {
+      id: String(r.stockItemId),
+      name: item?.name ?? '',
+      usageUnit: item?.usageUnit ?? '',
+      purchaseUnit: item?.purchaseUnit ?? '',
+      factor: item?.factor ?? 1000,
+    },
+    quantity: r.quantity,
+    reason: r.reason,
+    needs: (r.needs ?? []).map((n) => ({
+      garmentId: String(n.garmentId),
+      garmentNo: n.garmentNo,
+      orderId: String(n.orderId),
+      quantity: n.quantity,
+    })),
+    note: r.note ?? '',
+    status: r.status,
+    vendor: r.vendorId ? { id: String(r.vendorId), name: names?.get(String(r.vendorId)) ?? '' } : null,
+    orderedAt: r.orderedAt ?? null,
+    receipt: receipt
+      ? { quantity: receipt.quantity, date: receipt.date, expenseId: String(receipt.expenseId), ...(money && { value: receipt.value }) }
+      : null,
+    cancellation: cancellation ? { reason: cancellation.reason, at: cancellation.at, by: idOf(cancellation.by) } : null,
+    version: r.__v,
+  };
+}

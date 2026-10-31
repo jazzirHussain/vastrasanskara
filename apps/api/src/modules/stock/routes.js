@@ -4,6 +4,11 @@ import {
   materialLinesSchema,
   movementsQuery,
   pickerQuery,
+  purchaseOrderSchema,
+  purchaseRequestSchema,
+  receiptUndoSchema,
+  receiveSchema,
+  requestsQuery,
   stockCountSchema,
   stockItemPatchSchema,
   stockItemSchema,
@@ -15,9 +20,20 @@ import { withTransaction } from '../../core/db.js';
 import { businessRule } from '../../core/errors.js';
 import { idempotent } from '../../core/idempotency.js';
 import { validate, versioned } from '../../core/validate.js';
+import { logger } from '../../logger.js';
 import { getGarment, getOrderStatus } from '../orders/service.js';
 import { getUserNames } from '../users/service.js';
-import { toItemJson, toMovementJson } from './json.js';
+import { getVendorNames } from '../vendors/service.js';
+import { toItemJson, toMovementJson, toRequestJson } from './json.js';
+import {
+  cancelRequest,
+  createRequest,
+  itemsOfRequests,
+  listRequests,
+  markOrdered,
+  receive,
+  undoReceipt,
+} from './purchasing.js';
 import {
   changeUsedMaterials,
   countStock,
@@ -40,10 +56,21 @@ const usedBody = versioned(materialChangeSchema);
 const moneyOf = (req) => req.user.permissions.has('money.view');
 
 /** Stock: admin and operations (stock.view / stock.write); money fields need money.view too. */
-// `_storage` is for receiving deliveries (bill photos, M6 Task 5).
-export function stockRouter(_storage) {
+// `storage` checks the bill photos of a delivery.
+export function stockRouter(storage) {
   const router = Router();
   const itemJson = (req, item) => toItemJson(item, { money: moneyOf(req) });
+
+  /** The requests as JSON, with their items and vendor names. */
+  async function requestsJson(req, requests) {
+    const { branchId } = req.user;
+    const [items, names] = await Promise.all([
+      itemsOfRequests(branchId, requests),
+      getVendorNames(branchId, requests.map((r) => r.vendorId)),
+    ]);
+    return requests.map((r) => toRequestJson(r, { names, item: items.get(String(r.stockItemId)), money: moneyOf(req) }));
+  }
+  const requestJson = async (req, request) => (await requestsJson(req, [request]))[0];
 
   router.get('/items', requirePermission('stock.view'), validate({ query: stockListQuery }), async (req, res) => {
     const { items, nextCursor } = await listItems(req.user.branchId, req.validatedQuery);
@@ -138,6 +165,54 @@ export function stockRouter(_storage) {
         changeUsedMaterials(req.user.branchId, garment, { version, ...patch }, actorFrom(req), session));
     },
   );
+
+  // --- "To buy" requests and deliveries ---------------------------------------------------------
+
+  router.get('/requests', requirePermission('stock.view'), validate({ query: requestsQuery }), async (req, res) => {
+    const { items, nextCursor } = await listRequests(req.user.branchId, req.validatedQuery);
+    res.json({ items: await requestsJson(req, items), nextCursor });
+  });
+
+  router.post('/requests', requirePermission('stock.write'), validate({ body: purchaseRequestSchema }), async (req, res) => {
+    const request = await createRequest(req.user.branchId, req.body, actorFrom(req));
+    res.status(201).json({ request: await requestJson(req, request) });
+  });
+
+  const requestAction = (path, schema, action) =>
+    router.post(`/requests/:id/${path}`, requirePermission('stock.write'), validate({ body: versioned(schema) }), async (req, res) => {
+      const { request } = await action(req.user.branchId, req.params.id, req.body, actorFrom(req));
+      res.json({ request: await requestJson(req, request) });
+    });
+  requestAction('order', purchaseOrderSchema, async (...args) => ({ request: await markOrdered(...args) }));
+  requestAction('cancel', receiptUndoSchema, async (...args) => ({ request: await cancelRequest(...args) }));
+  requestAction('undo', receiptUndoSchema, undoReceipt);
+
+  /**
+   * Answers 201 for a delivery that has committed. If reading it back fails the reply is still a
+   * success with the ids: an error would free the Idempotency-Key and a retry would receive twice.
+   */
+  async function respondReceived(req, res, { request, item, expense }) {
+    let body;
+    try {
+      body = { request: await requestJson(req, request), item: itemJson(req, item) };
+    } catch (err) {
+      logger.warn({ err, requestId: req.id, purchaseRequestId: String(request._id) }, 'delivery received; reading it back failed');
+      body = { request: { id: String(request._id), status: request.status, version: request.__v }, item: { id: String(item._id) } };
+    }
+    res.status(201).json({ ...body, expense: { id: String(expense._id), number: expense.number } });
+  }
+
+  const receiving = (target) => [
+    requirePermission('stock.write'),
+    validate({ body: receiveSchema }),
+    idempotent(),
+    async (req, res) => {
+      const received = await receive(req.user.branchId, target(req), req.body, actorFrom(req), { storage });
+      await respondReceived(req, res, received);
+    },
+  ];
+  router.post('/requests/:id/receive', ...receiving((req) => ({ requestId: req.params.id })));
+  router.post('/items/:id/receive', ...receiving((req) => ({ stockItemId: req.params.id })));
 
   return router;
 }

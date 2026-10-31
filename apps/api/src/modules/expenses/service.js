@@ -29,6 +29,8 @@ export {
 } from './queries.js';
 
 const fieldError = (path, message) => validationError([{ path, message }]);
+const fromStock = () =>
+  businessRule('EXPENSE_FROM_STOCK', 'This expense came from receiving stock. Undo the delivery in Stock to change it.');
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // The business fields of an expense, as audited.
@@ -229,6 +231,13 @@ function samePayee(stored, input) {
   return input.name === stored.name && gstin === (stored.gstin ?? null) && stateCode === (stored.stateCode ?? null);
 }
 
+const GST_KEYS = ['billNo', 'billDate', 'rateBp', 'taxable', 'cgst', 'sgst', 'igst', 'itcEligible'];
+
+function sameGst(a, b) {
+  if (!a || !b) return !a && !b;
+  return GST_KEYS.every((k) => (a[k] ?? null) === (b[k] ?? null));
+}
+
 function sameLink(stored, input) {
   const a = linkInput(stored);
   if (!a || !input) return !a && !input;
@@ -264,6 +273,16 @@ export async function updateExpense(branchId, id, { version, patch }, actor, { s
     if (expense.status === 'voided') throw businessRule('EXPENSE_VOIDED', 'This expense was voided and cannot be changed');
     await assertPeriodOpen(branchId, expense.date, session);
 
+    const stored = expense.toObject();
+    const view = inputView(stored);
+    // A delivery's amount, tax, date, payee, category and link match its stock: undo it in Stock instead.
+    if (stored.source === 'purchase') {
+      const next = { ...view, ...patch };
+      const fixed = next.total !== view.total || !sameGst(view.gst, next.gst) || next.date !== view.date
+        || !samePayee(stored.payee, next.payee) || next.category !== view.category || !sameLink(stored.link, next.link);
+      if (fixed) throw fromStock();
+    }
+
     if (patch.date !== undefined && patch.date !== expense.date) {
       if (patch.date > istDate(now)) throw businessRule('EXPENSE_DATE_IN_FUTURE', 'The date cannot be in the future');
       if (financialYear(istDayBounds(patch.date).start).code !== expense.fyCode) {
@@ -272,8 +291,7 @@ export async function updateExpense(branchId, id, { version, patch }, actor, { s
       await assertPeriodOpen(branchId, patch.date, session);
     }
 
-    const stored = expense.toObject();
-    const merged = parseOrThrow(mergedRules, { ...inputView(stored), ...patch });
+    const merged = parseOrThrow(mergedRules, { ...view, ...patch });
 
     if (merged.category !== stored.category) assertCategoryUsable(await readSettings(branchId, session), merged.category);
 
@@ -325,29 +343,35 @@ export async function updateExpense(branchId, id, { version, patch }, actor, { s
   });
 }
 
-/** Voids an expense at `version` with a reason. Permanent; its month must be open. */
-export async function voidExpense(branchId, id, { version, patch: { reason } }, actor) {
-  return withTransaction(async (session) => {
+/**
+ * Voids an expense at `version` with a reason. Permanent; its month must be open. An expense from
+ * a stock delivery is voided only by undoing the delivery (`fromStock`, in the stock module's
+ * transaction `session`); otherwise 422 EXPENSE_FROM_STOCK.
+ */
+export async function voidExpense(branchId, id, { version, patch: { reason } }, actor, { session, fromStock: stock = false } = {}) {
+  const run = async (s) => {
     const now = clock.now();
-    const expense = await loadForWrite(branchId, id, version, session);
+    const expense = await loadForWrite(branchId, id, version, s);
     if (expense.status === 'voided') throw businessRule('ALREADY_VOIDED', 'This expense is already voided');
-    await assertPeriodOpen(branchId, expense.date, session);
+    if (expense.source === 'purchase' && !stock) throw fromStock();
+    await assertPeriodOpen(branchId, expense.date, s);
     const before = auditView(expense.toObject());
     expense.set({ status: 'voided', void: { reason, at: now, by: actor.userId }, updatedBy: actor.userId ?? null });
     expense.increment();
-    await expense.save({ session });
+    await expense.save({ session: s });
     await recordAudit(
       { branchId, entityType: 'expense', entityId: expense._id, action: 'void', before, after: auditView(expense.toObject()), actor },
-      session,
+      s,
     );
     return expense.toObject();
-  });
+  };
+  return session ? run(session) : withTransaction(run);
 }
 
 /** One of the branch's expenses, or 404. */
-export async function getExpense(branchId, id) {
+export async function getExpense(branchId, id, session) {
   if (!mongoose.isValidObjectId(id)) throw notFound();
-  const expense = await Expense.findOne({ _id: id, branchId }).lean();
+  const expense = await Expense.findOne({ _id: id, branchId }).session(session ?? null).lean();
   if (!expense) throw notFound();
   return expense;
 }
