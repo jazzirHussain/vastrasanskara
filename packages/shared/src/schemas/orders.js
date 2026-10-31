@@ -1,16 +1,10 @@
 import { z } from 'zod';
-import { objectId, paise } from './common.js';
+import { objectId, paise, ymd } from './common.js';
 import { STAGE_KEYS } from '../stages.js';
 import { garmentTypeKey } from './settings.js';
+import { materialLinesSchema } from './stock.js';
 
-/** A calendar date 'YYYY-MM-DD' that exists (no 30 February). */
-export const ymd = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
-  .refine((value) => {
-    const date = new Date(`${value}T00:00:00Z`);
-    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-  }, 'Not a real date');
+export { ymd };
 
 /** One garment line of a new order; `quantity` > 1 makes a batch of identical garments. */
 export const garmentInputSchema = z.strictObject({
@@ -23,6 +17,7 @@ export const garmentInputSchema = z.strictObject({
   dueDate: ymd.nullable().default(null),
   referenceKeys: z.array(z.string().min(1).max(300)).max(10).default([]),
   measurementId: objectId.nullable().default(null),
+  materials: materialLinesSchema.default([]),
 });
 
 /** POST /v1/orders. */

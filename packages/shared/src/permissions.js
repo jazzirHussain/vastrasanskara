@@ -22,12 +22,14 @@ export const PERMISSIONS = Object.freeze({
   REPORTS_EXPORT: 'reports.export',
   EXPENSES_VIEW: 'expenses.view',
   EXPENSES_WRITE: 'expenses.write',
+  STOCK_VIEW: 'stock.view',
   STOCK_WRITE: 'stock.write',
   STOCK_CONSUME_OWN: 'stock.consume.own',
   SETTINGS_EDIT: 'settings.edit',
   USERS_MANAGE: 'users.manage',
   SYSTEM_MONITOR: 'system.monitor',
   CATALOG_MANAGE: 'catalog.manage',
+  COSTING_VIEW: 'costing.view',
 });
 
 const ALL = Object.values(PERMISSIONS);
@@ -44,6 +46,7 @@ const NOT_OPERATIONS = new Set([
   P.SYSTEM_MONITOR,
   P.STOCK_CONSUME_OWN,
   P.CATALOG_MANAGE,
+  P.COSTING_VIEW,
 ]);
 
 export const ROLE_PERMISSIONS = Object.freeze({

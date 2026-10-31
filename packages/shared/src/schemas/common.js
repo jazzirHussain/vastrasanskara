@@ -34,3 +34,12 @@ export const password = z.string().min(10).max(200);
 
 /** An expense category key (stable, never removed once used). */
 export const categoryKey = z.string().regex(/^[a-z0-9_]{1,40}$/, 'Use lowercase letters, digits and _');
+
+/** A calendar date 'YYYY-MM-DD' that exists (no 30 February). */
+export const ymd = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }, 'Not a real date');

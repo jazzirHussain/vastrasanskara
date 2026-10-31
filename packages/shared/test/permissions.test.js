@@ -37,3 +37,20 @@ test('designers have no expense permission', () => {
   expect(mine.has('expenses.view')).toBe(false);
   expect(mine.has('expenses.write')).toBe(false);
 });
+test('stock.view is for admin and operations', () => {
+  expect(can(['admin'], 'stock.view')).toBe(true);
+  expect(can(['operations'], 'stock.view')).toBe(true);
+  expect(can(['designer'], 'stock.view')).toBe(false);
+});
+test('costing.view is admin only', () => {
+  expect(can(['admin'], 'costing.view')).toBe(true);
+  expect(can(['operations'], 'costing.view')).toBe(false);
+  expect(can(['designer'], 'costing.view')).toBe(false);
+});
+test('designers only have stock.consume.own', () => {
+  const mine = permissionsFor(['designer']);
+  expect(mine.has('stock.consume.own')).toBe(true);
+  expect(mine.has('stock.write')).toBe(false);
+  expect(mine.has('stock.view')).toBe(false);
+  expect(mine.has('costing.view')).toBe(false);
+});
