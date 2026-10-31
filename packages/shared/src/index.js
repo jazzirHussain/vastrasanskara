@@ -2,6 +2,7 @@ export * from './money.js';
 export * from './fy.js';
 export * from './states.js';
 export * from './gst.js';
+export * from './expenses.js';
 export * from './billing.js';
 export * from './stages.js';
 export * from './permissions.js';

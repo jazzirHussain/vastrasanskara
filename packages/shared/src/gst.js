@@ -62,7 +62,7 @@ export function placeOfSupply({ branchStateCode, customer }) {
   return { stateCode: code, stateName: stateName(code), interState: code !== branchStateCode, registered };
 }
 
-function taxHeads(taxable, rateBp, interState) {
+export function taxHeads(taxable, rateBp, interState) {
   if (interState) return { cgst: 0, sgst: 0, igst: mulDivRound(taxable, rateBp, 10000) };
   const half = mulDivRound(taxable, rateBp, 20000);
   return { cgst: half, sgst: half, igst: 0 };
