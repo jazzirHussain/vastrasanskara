@@ -63,7 +63,7 @@ test('local links expire', async () => {
 
 test('bill photos accept images and PDFs up to 10 MB for expenses.write', async () => {
   const { agent: ops } = await loginAs(app, { roles: ['operations'] });
-  for (const contentType of ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf']) {
+  for (const contentType of ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf']) {
     const r = await ops.post('/v1/files/upload-url').send({ purpose: 'expense_bill', contentType, size: 10485760 });
     expect(r.status, contentType).toBe(200);
     expect(r.body.key).toMatch(/\/expense_bill\/\d{4}\/[0-9a-f-]{36}\.[a-z]+$/);

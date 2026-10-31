@@ -81,6 +81,13 @@ export function messageFor(code, serverMessage, details) {
 }
 
 // Where a code means something different on a bill than on an order.
+/** Why a bill photo did not upload, in plain words (by API error code). */
+export const billPhotoErrorMessages = {
+  FILE_TOO_LARGE: 'This file is too big. The most is 10 MB.',
+  FILE_TYPE_NOT_ALLOWED: "This kind of file can't be added. Use a photo or a PDF.",
+};
+export const billPhotoErrorMessage = (error) => billPhotoErrorMessages[error?.code] ?? 'This did not upload. Remove it and add it again.';
+
 export const billErrorMessages = {
   IDEMPOTENCY_KEY_REUSED: 'This bill may already have been issued. Reload the page to check.',
   IDEMPOTENCY_IN_PROGRESS: 'This bill is still being issued. Wait a moment, then reload the page.',

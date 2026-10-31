@@ -3,6 +3,7 @@ import { ActionIcon, Button, Group, Loader, Paper, Stack, Text } from '@mantine/
 import { IconCamera, IconFile, IconPhoto, IconX } from '@tabler/icons-react';
 import { MAX_EXPENSE_ATTACHMENTS } from '@vs/shared/expenses.js';
 import { shrinkImage } from '../../lib/shrinkImage.js';
+import { billPhotoErrorMessage } from '../../lib/errorMessages.js';
 import { uploadFile } from '../../lib/upload.js';
 import { useFileUrl } from '../settings/settingsApi.js';
 
@@ -35,8 +36,8 @@ export function BillPhotos({ photos, setPhotos }) {
         const file = await shrinkImage(original);
         const key = await uploadFile(file, 'expense_bill');
         patch({ key, name: file.name, status: 'done' });
-      } catch {
-        patch({ status: 'failed' });
+      } catch (error) {
+        patch({ status: 'failed', error: billPhotoErrorMessage(error) });
       }
     }
   }
@@ -80,7 +81,7 @@ export function BillPhotos({ photos, setPhotos }) {
                     )}
                     {photo.status === 'failed' && (
                       <Text size="xs" c="red">
-                        This did not upload. Remove it and add it again.
+                        {photo.error ?? 'This did not upload. Remove it and add it again.'}
                       </Text>
                     )}
                   </Stack>

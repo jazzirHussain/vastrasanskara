@@ -63,7 +63,7 @@ async function checkAttachments(branchId, storage, attachments, known = new Set(
   if (!attachments.some((a) => !known.has(a.key))) return attachments;
   if (!storage) throw new Error('Saving an expense needs storage to check bill photos');
   const pattern = new RegExp(
-    `^${escapeRegex(String(branchId))}/expense_bill/\\d{4}/[0-9a-f-]{36}\\.(jpg|png|webp|heic|pdf)$`,
+    `^${escapeRegex(String(branchId))}/expense_bill/\\d{4}/[0-9a-f-]{36}\\.(jpg|png|webp|heic|heif|pdf)$`,
   );
   attachments.forEach((a, i) => {
     if (!known.has(a.key) && !pattern.test(a.key)) throw fieldError(`attachments.${i}.key`, 'Not a bill photo upload');

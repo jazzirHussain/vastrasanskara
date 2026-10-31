@@ -302,3 +302,18 @@ test('editing a stored GST bill and switching to IGST sends only IGST', async ()
   await waitFor(() => expect(sent).toHaveLength(1));
   expect(sent[0].gst).toMatchObject({ cgst: 0, sgst: 0, igst: 18000 });
 });
+test('a bill photo that is too big says so in plain words', async () => {
+  expensePosts();
+  server.use(http.post('/v1/files/upload-url', () => HttpResponse.json({ error: { code: 'FILE_TOO_LARGE', message: 'x' } }, { status: 400 })));
+  await openNew();
+  await userEvent.upload(screen.getByLabelText('Bill file'), photo('huge.pdf', 'application/pdf', 5000));
+  expect(await screen.findByText('This file is too big. The most is 10 MB.')).toBeInTheDocument();
+});
+
+test('a bill photo of the wrong kind says so in plain words', async () => {
+  expensePosts();
+  server.use(http.post('/v1/files/upload-url', () => HttpResponse.json({ error: { code: 'FILE_TYPE_NOT_ALLOWED', message: 'x' } }, { status: 400 })));
+  await openNew();
+  await userEvent.upload(screen.getByLabelText('Bill file'), photo('bill.gif', 'image/gif', 100));
+  expect(await screen.findByText("This kind of file can't be added. Use a photo or a PDF.")).toBeInTheDocument();
+});
