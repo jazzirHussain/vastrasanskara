@@ -21,6 +21,7 @@ import { logger } from '../../logger.js';
 import {
   toCreditNoteJson,
   toInvoiceJson,
+  toIntegrityRunJson,
   toInvoiceRowJson,
   toReceiptJson,
   toReceiptRowJson,
@@ -44,6 +45,7 @@ import {
   issueCreditNote,
   issueInvoice,
   issueRefund,
+  latestIntegrityCheck,
   listInvoices,
   listReceipts,
   listReceivables,
@@ -52,6 +54,7 @@ import {
   recordPayment,
   refundView,
   setReminderPause,
+  startIntegrityCheck,
   pdfLink,
   updateDraft,
 } from './service.js';
@@ -235,6 +238,26 @@ export function billingRouter(storage) {
 
   router.get('/receipt-vouchers/:id', async (req, res) => {
     res.json({ receiptVoucher: toReceiptVoucherJson(await getReceiptVoucher(req.user.branchId, req.params.id)) });
+  });
+
+  return router;
+}
+
+/**
+ * "Check records" (admin), mounted at /v1/admin/audit: POST /verify starts a check in the
+ * background (or answers the one already running) with 202; GET /verify answers the latest run.
+ */
+export function integrityRouter() {
+  const router = Router();
+  router.use(requirePermission('audit.verify'));
+
+  router.post('/verify', async (req, res) => {
+    const run = await startIntegrityCheck(req.user.branchId, actorFrom(req));
+    res.status(202).json({ run: toIntegrityRunJson(run) });
+  });
+
+  router.get('/verify', async (req, res) => {
+    res.json({ run: toIntegrityRunJson(await latestIntegrityCheck(req.user.branchId)) });
   });
 
   return router;

@@ -330,3 +330,32 @@ const billingGuardSchema = new mongoose.Schema(
 );
 
 export const BillingGuard = mongoose.models.BillingGuard ?? mongoose.model('BillingGuard', billingGuardSchema);
+
+// --- Record checks -----------------------------------------------------------------------------
+
+export const INTEGRITY_RUN_STATUSES = ['running', 'done', 'failed'];
+
+// One "check records" run of a branch. The API starts it (running); the worker claims it, checks
+// and stores the result (done) or gives up (failed). One run at a time per branch.
+const integrityRunSchema = new mongoose.Schema(
+  {
+    branchId: { type: ObjectId, ref: 'Branch', required: true },
+    status: { type: String, enum: INTEGRITY_RUN_STATUSES, default: 'running' },
+    // Who asked, for the audit entry written when the run finishes.
+    actor: {
+      userId: { type: ObjectId, default: null },
+      ip: { type: String, default: null },
+      userAgent: { type: String, default: null },
+    },
+    startedAt: { type: Date, required: true },
+    claimedAt: { type: Date, default: null },
+    finishedAt: { type: Date, default: null },
+    result: { type: Mixed, default: null },
+    error: { type: String, default: null },
+  },
+  { collection: 'integrityRuns', minimize: false },
+);
+integrityRunSchema.index({ branchId: 1, startedAt: -1 });
+integrityRunSchema.index({ branchId: 1 }, { name: 'one_running', unique: true, partialFilterExpression: { status: 'running' } });
+
+export const IntegrityRun = mongoose.models.IntegrityRun ?? mongoose.model('IntegrityRun', integrityRunSchema);

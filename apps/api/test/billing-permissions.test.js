@@ -8,8 +8,7 @@ import { clock } from '../src/clock.js';
 import { Branch } from '../src/modules/branches/model.js';
 import { PeriodLock } from '../src/modules/periods/model.js';
 import { Outbox } from '../src/core/notify/models.js';
-import { billingRouter } from '../src/modules/billing/routes.js';
-import { integrityRouter } from '../src/modules/billing/integrity.js';
+import { billingRouter, integrityRouter } from '../src/modules/billing/routes.js';
 import { catalogRouter } from '../src/modules/catalog/routes.js';
 import { periodsRouter } from '../src/modules/periods/routes.js';
 
@@ -55,6 +54,7 @@ const ROUTES = [
   ['POST', '/v1/period-locks/:month/lock', 'periods.lock'],
   ['POST', '/v1/period-locks/:month/unlock', 'periods.lock'],
   ['POST', '/v1/admin/audit/verify', 'audit.verify'],
+  ['GET', '/v1/admin/audit/verify', 'audit.verify'],
 ];
 
 // The routes the routers really declare, so a new route cannot slip past the table.
@@ -79,7 +79,7 @@ test('the permission table covers every billing, catalog, period and check-recor
     ...declared('/v1/billing', billingRouter({})),
     ...declared('/v1/catalog', catalogRouter()),
     ...declared('/v1/period-locks', periodsRouter()),
-    ...declared('/v1/admin/audit', integrityRouter({})),
+    ...declared('/v1/admin/audit', integrityRouter()),
   ].sort();
   expect(ROUTES.map(([m, p]) => `${m} ${p}`).sort()).toEqual(real);
 });

@@ -3,7 +3,7 @@ import { useTestDb } from './helpers/db.js';
 import { buildTestApp } from './helpers/app.js';
 import { billingHelpers } from './helpers/billing.js';
 import { BillingDocument } from '../src/modules/billing/model.js';
-import { renderPendingPdfs } from '../src/modules/billing/service.js';
+import { renderPendingPdfs, runPendingIntegrityChecks } from '../src/modules/billing/service.js';
 
 useTestDb();
 const app = buildTestApp();
@@ -68,9 +68,12 @@ test('order to stages to bill to payment to credit note', async () => {
 
   // And the records check out.
   await renderPendingPdfs({ storage });
-  const check = await admin.agent.post('/v1/admin/audit/verify').send({});
+  ok(await admin.agent.post('/v1/admin/audit/verify').send({}), 202);
+  await runPendingIntegrityChecks({ storage });
+  const check = await admin.agent.get('/v1/admin/audit/verify');
   ok(check, 200);
-  expect(check.body).toMatchObject({
+  expect(check.body.run).toMatchObject({ status: 'done' });
+  expect(check.body.run.result).toMatchObject({
     ok: true,
     audit: { ok: true, firstBreak: null },
     pdfs: { pending: 0, problems: [] },

@@ -101,50 +101,105 @@ async function openChecks() {
   await userEvent.click(await screen.findByRole('tab', { name: 'Check records' }));
 }
 
-test('check records says all is well in plain words', async () => {
+const RUN = { id: 'run1', startedAt: '2026-10-30T06:29:00.000Z' };
+
+/**
+ * The check-records API: no check until one is started; then GET answers `running` for the
+ * first `runningReads` reads and then the finished check with `result`. Returns the POST count.
+ */
+function checks(result, { runningReads = 0 } = {}) {
+  const calls = { posts: 0, gets: 0 };
   server.use(
-    http.post('/v1/admin/audit/verify', () =>
-      HttpResponse.json({
-        checkedAt: '2026-10-30T06:30:00.000Z',
-        ok: true,
-        audit: { ok: true, checked: 418, firstBreak: null },
-        pdfs: { checked: 12, pending: 0, problems: [] },
-        balances: { checked: 9, problems: [] },
-      }),
-    ),
+    http.post('/v1/admin/audit/verify', () => {
+      calls.posts += 1;
+      return HttpResponse.json({ run: { ...RUN, status: 'running', finishedAt: null, result: null } }, { status: 202 });
+    }),
+    http.get('/v1/admin/audit/verify', () => {
+      if (!calls.posts) return HttpResponse.json({ run: null });
+      calls.gets += 1;
+      if (calls.gets <= runningReads) return HttpResponse.json({ run: { ...RUN, status: 'running', finishedAt: null, result: null } });
+      return HttpResponse.json({ run: { ...RUN, status: 'done', finishedAt: '2026-10-30T06:30:00.000Z', result } });
+    }),
   );
+  return calls;
+}
+
+const CLEAN = {
+  checkedAt: '2026-10-30T06:30:00.000Z',
+  ok: true,
+  audit: { ok: true, checked: 418, firstBreak: null },
+  pdfs: { checked: 12, pending: 0, problems: [] },
+  balances: { checked: 9, problems: [] },
+};
+
+test('check records says all is well in plain words', async () => {
+  const calls = checks(CLEAN);
   await openChecks();
   await userEvent.click(await screen.findByRole('button', { name: 'Check records now' }));
   expect(await screen.findByText('All records check out (418 entries, 12 PDFs)')).toBeInTheDocument();
+  expect(calls.posts).toBe(1);
+});
+
+test('check records waits for a long check and then shows the result', async () => {
+  const calls = checks(CLEAN, { runningReads: 1 });
+  await openChecks();
+  await userEvent.click(await screen.findByRole('button', { name: 'Check records now' }));
+  expect(await screen.findByText('Checking your records… this can take a minute')).toBeInTheDocument();
+  expect(await screen.findByText('All records check out (418 entries, 12 PDFs)', {}, { timeout: 5000 })).toBeInTheDocument();
+  expect(screen.queryByText('Checking your records… this can take a minute')).toBeNull();
+  expect(calls).toEqual({ posts: 1, gets: 2 });
+});
+
+test('a check that could not finish says so', async () => {
+  server.use(
+    http.get('/v1/admin/audit/verify', () =>
+      HttpResponse.json({ run: { ...RUN, status: 'failed', finishedAt: '2026-10-30T06:30:00.000Z', result: null } }),
+    ),
+  );
+  await openChecks();
+  expect(await screen.findByText('The check could not finish. Please try again.')).toBeInTheDocument();
 });
 
 test('check records shows a problem in plain words', async () => {
-  server.use(
-    http.post('/v1/admin/audit/verify', () =>
-      HttpResponse.json({
-        checkedAt: '2026-10-30T06:30:00.000Z',
-        ok: false,
-        audit: { ok: false, checked: 417, firstBreak: { seq: 418, reason: 'hash_mismatch', entityType: 'invoice', entityId: 'abc123' } },
-        pdfs: {
-          checked: 12,
-          pending: 0,
-          problems: [
-            { id: 'd1', type: 'invoice', number: 'INV/2627/0012', reason: 'hash_mismatch' },
-            { id: 'd2', type: 'receipt', number: 'RCPT/2627/0003', reason: 'missing' },
-          ],
-        },
-        balances: { checked: 9, problems: [{ id: 'd3', number: 'INV/2627/0005', fields: ['paid'], stored: { paid: 1 }, expected: { paid: 2 } }] },
-      }),
-    ),
-  );
+  checks({
+    checkedAt: '2026-10-30T06:30:00.000Z',
+    ok: false,
+    audit: {
+      ok: false,
+      checked: 417,
+      firstBreak: { seq: 418, reason: 'hash_mismatch', entityType: 'invoice', entityId: 'abc123', number: 'INV/2627/0012' },
+    },
+    pdfs: {
+      checked: 12,
+      pending: 0,
+      problems: [
+        { id: 'd1', type: 'invoice', number: 'INV/2627/0012', reason: 'hash_mismatch' },
+        { id: 'd2', type: 'receipt', number: 'RCPT/2627/0003', reason: 'missing' },
+      ],
+    },
+    balances: { checked: 9, problems: [{ id: 'd3', number: 'INV/2627/0005', fields: ['paid'], stored: { paid: 1 }, expected: { paid: 2 } }] },
+  });
   await openChecks();
   await userEvent.click(await screen.findByRole('button', { name: 'Check records now' }));
   expect(await screen.findByText('Bill INV/2627/0012: the PDF has changed since it was issued')).toBeInTheDocument();
   expect(screen.getByText('Receipt RCPT/2627/0003: the PDF is missing')).toBeInTheDocument();
   expect(screen.getByText('Bill INV/2627/0005: the amount paid does not match its payments')).toBeInTheDocument();
-  expect(screen.getByText('The history has been changed at entry 418 (invoice abc123)')).toBeInTheDocument();
+  expect(screen.getByText('The history has been changed at entry 418 (Bill INV/2627/0012)')).toBeInTheDocument();
+  expect(screen.queryByText(/abc123/)).toBeNull();
   expect(screen.queryByText(/hash_mismatch/)).toBeNull();
   expect(screen.queryByText(/All records check out/)).toBeNull();
+});
+
+test('a changed history entry with no document number names no id', async () => {
+  checks({
+    ...CLEAN,
+    ok: false,
+    audit: { ok: false, checked: 417, firstBreak: { seq: 418, reason: 'hash_mismatch', entityType: 'customer', entityId: 'abc123' } },
+  });
+  await openChecks();
+  await userEvent.click(await screen.findByRole('button', { name: 'Check records now' }));
+  expect(await screen.findByText('The history has been changed at entry 418')).toBeInTheDocument();
+  expect(screen.queryByText(/abc123/)).toBeNull();
 });
 
 test('only the owner sees Accounts', async () => {

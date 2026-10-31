@@ -170,3 +170,15 @@ export function toReceiptRowJson({ doc, customer, order }) {
     order,
   };
 }
+
+/** A records check run as the API answers (never its internal error). */
+export function toIntegrityRunJson(run) {
+  if (!run) return null;
+  return {
+    id: String(run._id),
+    status: run.status,
+    startedAt: run.startedAt.toISOString(),
+    finishedAt: run.finishedAt ? run.finishedAt.toISOString() : null,
+    result: run.status === 'done' ? run.result : null,
+  };
+}

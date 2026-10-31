@@ -1,6 +1,6 @@
 import { Alert, Button, List, Stack, Text } from '@mantine/core';
 import { IconCircleCheck } from '@tabler/icons-react';
-import { useVerifyRecords } from './accountsApi.js';
+import { useLatestCheck, useStartCheck } from './accountsApi.js';
 
 const KINDS = { invoice: 'Bill', credit_note: 'Credit note', receipt: 'Receipt', receipt_voucher: 'Receipt voucher', refund: 'Refund' };
 
@@ -16,7 +16,8 @@ export function problemsOf(result) {
   const out = [];
   const { firstBreak } = result.audit;
   if (!result.audit.ok && firstBreak) {
-    const where = firstBreak.entityType ? ` (${firstBreak.entityType} ${firstBreak.entityId})` : '';
+    // The document's number when the entry is a bill, receipt or the like; never a raw id.
+    const where = firstBreak.number ? ` (${KINDS[firstBreak.entityType] ?? 'Document'} ${firstBreak.number})` : '';
     out.push(
       firstBreak.reason === 'missing_seq'
         ? `An entry is missing from the history at entry ${firstBreak.seq}`
@@ -39,21 +40,30 @@ export function problemsOf(result) {
 const checkedAt = (iso) =>
   new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 
-/** "Check records now": the history, stored PDFs and bill balances are checked, and the result said in plain words. */
+/**
+ * "Check records now": starts a check of the history, stored PDFs and bill balances (it runs in
+ * the background), waits for it and says the result in plain words.
+ */
 export function CheckRecordsTab() {
-  const verify = useVerifyRecords();
-  const result = verify.data;
+  const latest = useLatestCheck();
+  const start = useStartCheck();
+  const run = latest.data?.run ?? null;
+  const running = run?.status === 'running';
+  const result = run?.status === 'done' ? run.result : null;
   const problems = result ? problemsOf(result) : [];
+  const error = start.error ?? latest.error;
 
   return (
     <Stack gap="md" maw={720}>
       <Text size="sm" c="var(--vs-muted)">
         This checks that nobody has changed the history of changes, that every printed bill is still exactly as issued, and that each bill’s balance matches its payments. Nothing is changed.
       </Text>
-      <Button size="md" loading={verify.isPending} onClick={() => verify.mutate()} style={{ alignSelf: 'flex-start' }}>
+      <Button size="md" loading={start.isPending || running} onClick={() => start.mutate()} style={{ alignSelf: 'flex-start' }}>
         Check records now
       </Button>
-      {verify.error && <Alert color="red">{verify.error.message}</Alert>}
+      {running && <Text size="sm">Checking your records… this can take a minute</Text>}
+      {error && <Alert color="red">{error.message}</Alert>}
+      {run?.status === 'failed' && <Alert color="red">The check could not finish. Please try again.</Alert>}
       {result && problems.length === 0 && (
         <Alert color="neem" icon={<IconCircleCheck size={20} />}>
           <Text fw={600}>{`All records check out (${result.audit.checked} entries, ${result.pdfs.checked} PDFs)`}</Text>

@@ -1,4 +1,4 @@
-import { test, expect } from 'vitest';
+import { test, expect, vi, afterEach } from 'vitest';
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import mongoose from 'mongoose';
@@ -6,17 +6,32 @@ import { useTestDb } from './helpers/db.js';
 import { buildTestApp } from './helpers/app.js';
 import { billingHelpers } from './helpers/billing.js';
 import { AuditLog } from '../src/core/audit/model.js';
-import { BillingDocument, Invoice } from '../src/modules/billing/model.js';
-import { renderPendingPdfs } from '../src/modules/billing/service.js';
+import { Allocation, BillingDocument, IntegrityRun, Invoice } from '../src/modules/billing/model.js';
+import { renderPendingPdfs, runPendingIntegrityChecks } from '../src/modules/billing/service.js';
+import { getJobDefinition } from '../src/core/jobs/registry.js';
+import '../src/jobs.js';
 
 useTestDb();
 const app = buildTestApp();
 const storage = app.locals.storage;
 const { world, draftFor, issue, pay } = billingHelpers(app);
 
+afterEach(() => vi.restoreAllMocks());
+
 let keys = 0;
 const ok = (r, status = 201) => expect(r.status, JSON.stringify(r.body)).toBe(status);
-const verify = (who) => who.agent.post('/v1/admin/audit/verify').send({});
+const start = (who) => who.agent.post('/v1/admin/audit/verify').send({});
+const latest = (who) => who.agent.get('/v1/admin/audit/verify');
+/** Starts a check, lets the worker run it and answers its result as { status: 200, body }. */
+const verify = async (who) => {
+  const started = await start(who);
+  if (started.status !== 202) return started;
+  await runPendingIntegrityChecks({ storage });
+  const r = await latest(who);
+  ok(r, 200);
+  expect(r.body.run).toMatchObject({ id: started.body.run.id, status: 'done' });
+  return { status: 200, body: r.body.run.result };
+};
 
 /** Bills, a receipt, a credit note and a refund, PDFs rendered. */
 async function trail() {
@@ -118,5 +133,65 @@ test('pending PDFs are counted, not failed', async () => {
 
 test('only admins can check records', async () => {
   const { ops, d1 } = await world();
-  for (const who of [ops, d1]) expect((await verify(who)).status).toBe(403);
+  for (const who of [ops, d1]) {
+    expect((await start(who)).status).toBe(403);
+    expect((await latest(who)).status).toBe(403);
+  }
+});
+
+test('a check runs in the background; starting again while it runs answers the same check', async () => {
+  const { admin } = await trail();
+  ok(await latest(admin), 200);
+  expect((await latest(admin)).body).toEqual({ run: null });
+
+  const first = await start(admin);
+  ok(first, 202);
+  expect(first.body.run).toEqual({ id: expect.any(String), status: 'running', startedAt: expect.any(String), finishedAt: null, result: null });
+  const again = await start(admin);
+  ok(again, 202);
+  expect(again.body.run.id).toBe(first.body.run.id);
+  expect((await latest(admin)).body.run).toEqual(first.body.run);
+  expect(await AuditLog.countDocuments({ entityType: 'audit', action: 'verify' })).toBe(0);
+
+  // The worker's billing-integrity job runs it.
+  await getJobDefinition('billing-integrity').handler({ storage });
+  const done = (await latest(admin)).body.run;
+  expect(done).toMatchObject({ id: first.body.run.id, status: 'done', finishedAt: expect.any(String), result: { ok: true } });
+  // The audit entry is written once the check has finished.
+  const entry = await AuditLog.findOne({ entityType: 'audit', action: 'verify' }).lean();
+  expect(entry.userId).toBeTruthy();
+  expect(await IntegrityRun.countDocuments()).toBe(1);
+
+  // A finished check does not block a new one.
+  const next = await start(admin);
+  ok(next, 202);
+  expect(next.body.run.id).not.toBe(first.body.run.id);
+});
+
+test('a check that cannot finish is marked failed', async () => {
+  const { admin } = await trail();
+  ok(await start(admin), 202);
+  const broken = { getObject: async () => { throw new Error('storage down'); } };
+  await runPendingIntegrityChecks({ storage: broken });
+  const run = (await latest(admin)).body.run;
+  expect(run).toMatchObject({ status: 'failed', finishedAt: expect.any(String), result: null });
+  expect(JSON.stringify(run)).not.toContain('storage down');
+});
+
+test('a bill that changes during the check is read again before it is reported', async () => {
+  const { admin } = await trail();
+  // The first read of the first bill's payments misses them, as if a payment were committing.
+  const real = Allocation.find.bind(Allocation);
+  vi.spyOn(Allocation, 'find').mockImplementationOnce(() => ({ lean: async () => [] })).mockImplementation(real);
+  const r = await verify(admin);
+  expect(r.body).toMatchObject({ ok: true, balances: { checked: 2, problems: [] } });
+});
+
+test('a changed history entry of a bill names the bill by its number', async () => {
+  const { admin, first } = await trail();
+  const entry = await AuditLog.findOne({ entityType: 'invoice' }).sort({ seq: 1 }).lean();
+  expect(entry.entityId).toBe(first.id);
+  await mongoose.connection.collection('auditLog').updateOne({ _id: entry._id }, { $set: { action: 'tampered' } });
+  const r = await verify(admin);
+  expect(r.body.audit.firstBreak).toEqual({ seq: entry.seq, reason: 'hash_mismatch', entityType: 'invoice', entityId: first.id, number: first.number });
 });
