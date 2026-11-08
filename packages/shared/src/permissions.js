@@ -30,6 +30,9 @@ export const PERMISSIONS = Object.freeze({
   SYSTEM_MONITOR: 'system.monitor',
   CATALOG_MANAGE: 'catalog.manage',
   COSTING_VIEW: 'costing.view',
+  ENQUIRIES_WRITE: 'enquiries.write',
+  APPOINTMENTS_WRITE: 'appointments.write',
+  APPOINTMENTS_OWN: 'appointments.own',
 });
 
 const ALL = Object.values(PERMISSIONS);
@@ -58,6 +61,7 @@ export const ROLE_PERMISSIONS = Object.freeze({
     P.MEASUREMENTS_WRITE,
     P.CUSTOMERS_READ,
     P.STOCK_CONSUME_OWN,
+    P.APPOINTMENTS_OWN,
   ]),
 });
 

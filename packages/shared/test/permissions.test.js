@@ -47,6 +47,17 @@ test('costing.view is admin only', () => {
   expect(can(['operations'], 'costing.view')).toBe(false);
   expect(can(['designer'], 'costing.view')).toBe(false);
 });
+test('enquiries and booking are for admin and operations', () => {
+  for (const p of ['enquiries.write', 'appointments.write']) {
+    expect(can(['admin'], p)).toBe(true);
+    expect(can(['operations'], p)).toBe(true);
+    expect(can(['designer'], p)).toBe(false);
+  }
+});
+test('designers can see their own appointments only', () => {
+  for (const role of ['admin', 'operations', 'designer']) expect(can([role], 'appointments.own')).toBe(true);
+  expect(can(['designer'], 'appointments.write')).toBe(false);
+});
 test('designers only have stock.consume.own', () => {
   const mine = permissionsFor(['designer']);
   expect(mine.has('stock.consume.own')).toBe(true);

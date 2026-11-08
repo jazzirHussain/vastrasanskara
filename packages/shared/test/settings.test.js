@@ -14,6 +14,17 @@ test('settings reject bad values and unknown keys', () => {
   expect(settingsPatchSchema.safeParse({ numberSeries: { invoice: 101 } }).success).toBe(false);
   expect(settingsPatchSchema.safeParse({ quietHours: { ...DEFAULT_SETTINGS.quietHours, email: null } }).success).toBe(true);
 });
+test('default settings open at 10:00', () => {
+  expect(DEFAULT_SETTINGS.openingTime).toBe('10:00');
+  expect(settingsPatchSchema.safeParse({ openingTime: '09:30' }).success).toBe(true);
+});
+test('opening time must be before closing time', () => {
+  const bad = settingsPatchSchema.safeParse({ openingTime: '20:00', closingTime: '19:00' });
+  expect(bad.success).toBe(false);
+  expect(bad.error.issues[0]).toMatchObject({ path: ['openingTime'], message: 'Opening time must be before closing time' });
+  expect(settingsSchema.safeParse({ ...DEFAULT_SETTINGS, openingTime: '21:00' }).success).toBe(false);
+  expect(settingsPatchSchema.safeParse({ closingTime: '09:00' }).success).toBe(true);
+});
 test('branch patch normalises phone and email', () => {
   expect(branchPatchSchema.parse({ phone: '98765 43210', email: ' Hello@VS.in ' })).toEqual({ phone: '+919876543210', email: 'hello@vs.in' });
   expect(branchPatchSchema.safeParse({ address: { line1: '', line2: '', city: '', pincode: '5600' } }).success).toBe(false);
