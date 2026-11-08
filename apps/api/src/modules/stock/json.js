@@ -23,8 +23,8 @@ export function toItemJson(item, { money = false } = {}) {
   };
 }
 
-/** A stock movement as the API answers; `names` are user names by id; value only with `money`. */
-export function toMovementJson(m, { names, money = false } = {}) {
+/** A stock movement as the API answers; `names` are user names and `garmentNos` garment numbers by id; value only with `money`. */
+export function toMovementJson(m, { names, garmentNos, money = false } = {}) {
   return {
     id: String(m._id),
     type: m.type,
@@ -35,6 +35,7 @@ export function toMovementJson(m, { names, money = false } = {}) {
     reservedAfter: m.reservedAfter,
     ref: {
       garmentId: idOf(m.garmentId),
+      garmentNo: (m.garmentId && garmentNos?.get(String(m.garmentId))) || null,
       orderId: idOf(m.orderId),
       purchaseRequestId: idOf(m.purchaseRequestId),
       expenseId: idOf(m.expenseId),

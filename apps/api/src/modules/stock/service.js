@@ -10,6 +10,7 @@ import { getItem } from './queries.js';
 export { moveStock } from './ledger.js';
 export {
   garmentMaterialsView,
+  garmentNumbers,
   getItem,
   listItems,
   listMovements,

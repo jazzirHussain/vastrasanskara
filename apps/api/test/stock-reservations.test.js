@@ -389,3 +389,15 @@ test('an item id in capitals is the same item', async () => {
   expect((await stored(silk.id)).reserved).toBe(3000);
   await expectBalanced(silk.id);
 });
+
+test('the history names the garment of each movement', async () => {
+  const { ops, takeOk } = await world();
+  const silk = await item(ops, { opening: { quantity: 5000, unitCost: 25000 } });
+  const order = await takeOk([{ materials: [line(silk, 2000)] }]);
+  const r = await ops.agent.get(`/v1/stock/items/${silk.id}/movements`);
+  expect(r.status).toBe(200);
+  expect(r.body.items.map((m) => [m.type, m.ref.garmentNo])).toEqual([
+    ['reserve', order.garments[0].garmentNo],
+    ['opening', null],
+  ]);
+});

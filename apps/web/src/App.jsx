@@ -12,6 +12,8 @@ import { CatalogPage } from './features/catalog/CatalogPage.jsx';
 import { ExpensePage } from './features/expenses/ExpensePage.jsx';
 import { ExpensesPage } from './features/expenses/ExpensesPage.jsx';
 import { ExpenseFormPage } from './features/expenses/ExpenseFormPage.jsx';
+import { StockPage } from './features/stock/StockPage.jsx';
+import { StockItemPage } from './features/stock/StockItemPage.jsx';
 import { CustomerPage } from './features/customers/CustomerPage.jsx';
 import { CustomersPage } from './features/customers/CustomersPage.jsx';
 import { HomePage } from './features/home/HomePage.jsx';
@@ -58,6 +60,10 @@ export default function App() {
             <Route element={<RequirePermission permission="expenses.write" />}>
               <Route path="/expenses/new" element={<ExpenseFormPage />} />
               <Route path="/expenses/:id/edit" element={<ExpenseFormPage />} />
+            </Route>
+            <Route element={<RequirePermission permission="stock.view" />}>
+              <Route path="/stock" element={<StockPage />} />
+              <Route path="/stock/items/:id" element={<StockItemPage />} />
             </Route>
             <Route element={<RequirePermission permission="workshop.manage" />}>
               <Route path="/workshop" element={<WorkshopPage />} />

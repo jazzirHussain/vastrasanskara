@@ -38,6 +38,14 @@ export async function getItem(branchId, id, session) {
 /** The find filter of listMovements (exported for the index test). */
 export const movementFilter = (branchId, itemId) => ({ branchId: oid(branchId), stockItemId: oid(itemId) });
 
+/** Garment numbers by garment id (from the stock module's own materials documents), for the history. */
+export async function garmentNumbers(garmentIds) {
+  const ids = [...new Set(garmentIds.filter(Boolean).map(String))];
+  if (!ids.length) return new Map();
+  const docs = await GarmentMaterials.find({ garmentId: { $in: ids.map(oid) } }, { garmentId: 1, garmentNo: 1 }).lean();
+  return new Map(docs.map((d) => [String(d.garmentId), d.garmentNo]));
+}
+
 /** One page of an item's movements, newest first. */
 export function listMovements(branchId, itemId, { cursor, limit } = {}) {
   return paginate(StockMovement, movementFilter(branchId, itemId), { sort: ['at', -1], limit, cursor });

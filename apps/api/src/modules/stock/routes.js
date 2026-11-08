@@ -40,6 +40,7 @@ import {
   createItem,
   garmentFacts,
   garmentMaterialsView,
+  garmentNumbers,
   getItem,
   listItems,
   listMovements,
@@ -96,8 +97,8 @@ export function stockRouter(storage) {
     const { branchId } = req.user;
     const item = await getItem(branchId, req.params.id);
     const { items, nextCursor } = await listMovements(branchId, item._id, req.validatedQuery);
-    const names = await getUserNames(items.map((m) => m.by));
-    res.json({ items: items.map((m) => toMovementJson(m, { names, money: moneyOf(req) })), nextCursor });
+    const [names, garmentNos] = await Promise.all([getUserNames(items.map((m) => m.by)), garmentNumbers(items.map((m) => m.garmentId))]);
+    res.json({ items: items.map((m) => toMovementJson(m, { names, garmentNos, money: moneyOf(req) })), nextCursor });
   });
 
   router.post('/items/:id/count', requirePermission('stock.write'), validate({ body: stockCountSchema }), async (req, res) => {
