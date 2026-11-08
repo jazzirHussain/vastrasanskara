@@ -96,6 +96,11 @@ export async function getCustomer(branchId, id, session) {
   return customer;
 }
 
+/** The branch's customer with this (E.164) phone, or null. */
+export function findCustomerByPhone(branchId, phone, session) {
+  return Customer.findOne({ branchId, phone }).session(session ?? null).lean();
+}
+
 /** Names of the given customers of the branch, by id (for order lists). */
 export async function getCustomerNames(branchId, ids) {
   const customers = await Customer.find({ branchId, _id: { $in: ids } }, { name: 1 }).lean();
