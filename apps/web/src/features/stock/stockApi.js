@@ -60,3 +60,48 @@ export const useUpdateItem = (id) =>
 /** Records a shelf count: `{ counted, expectedOnHand, reason, unitCost? }`. */
 export const useCountStock = (id) =>
   useStockMutation((body) => apiFetch(`/v1/stock/items/${id}/count`, { method: 'POST', body }).then((r) => r.item));
+
+/** "To buy" requests by status ('open' = requested or ordered; 'received'; 'cancelled'), a page at a time. */
+export function useRequests(status) {
+  return useInfiniteQuery(infinite(['requests', status], '/v1/stock/requests', { status }));
+}
+
+/** Puts an item on the "To buy" list: `{ stockItemId, quantity, reason, note }`. */
+export const useCreateRequest = () =>
+  useStockMutation((body) => apiFetch('/v1/stock/requests', { method: 'POST', body }).then((r) => r.request));
+
+/** Marks a request ordered: `{ version, vendorId, note }`. */
+export const useMarkOrdered = (id) =>
+  useStockMutation((body) => apiFetch(`/v1/stock/requests/${id}/order`, { method: 'POST', body }).then((r) => r.request));
+
+/** Takes a request off the list: `{ version, reason }`. */
+export const useCancelRequest = (id) =>
+  useStockMutation((body) => apiFetch(`/v1/stock/requests/${id}/cancel`, { method: 'POST', body }).then((r) => r.request));
+
+/**
+ * Receives a delivery against a request (`requestId`) or straight onto an item (`itemId`):
+ * `{ body, key }`, `key` the Idempotency-Key made when the dialog opened. Answers { request, item, expense }.
+ */
+export function useReceive({ requestId, itemId }) {
+  const queryClient = useQueryClient();
+  const path = requestId ? `/v1/stock/requests/${requestId}/receive` : `/v1/stock/items/${itemId}/receive`;
+  return useMutation({
+    mutationFn: ({ body, key }) => apiFetch(path, { method: 'POST', body, idempotencyKey: key }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: STOCK_KEY });
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+    },
+  });
+}
+
+/** Undoes a delivery: `{ version, reason }`; the stock comes back out and its expense is voided. */
+export function useUndoReceipt(id) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body) => apiFetch(`/v1/stock/requests/${id}/undo`, { method: 'POST', body }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: STOCK_KEY });
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+    },
+  });
+}

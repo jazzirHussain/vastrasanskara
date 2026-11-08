@@ -41,6 +41,8 @@ export const errorMessages = {
   STOCK_INSUFFICIENT: 'There is not enough of this in stock.',
   UNIT_FIXED: 'The unit cannot change once stock has moved.',
   NOTHING_TO_CHANGE: 'The count matches what is recorded.',
+  RECEIPT_USED: 'Some of this delivery has been used or counted. Count the stock instead.',
+  EXPENSE_FROM_STOCK: 'This expense came from receiving stock. Undo the delivery in Stock to change it.',
   PRICE_NEEDED: 'Enter a price for every line.',
   ADDRESS_REQUIRED: 'Add the customer’s address. It is needed on bills of ₹50,000 or more.',
   BRANCH_GSTIN_MISSING: 'Add the boutique’s GSTIN in Settings before issuing bills.',

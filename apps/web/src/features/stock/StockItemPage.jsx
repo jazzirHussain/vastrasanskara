@@ -9,6 +9,7 @@ import { StatusBadge } from '../../components/StatusBadge.jsx';
 import { CountDialog } from './CountDialog.jsx';
 import { ItemModal } from './ItemModal.jsx';
 import { MovementList } from './MovementList.jsx';
+import { ReceiveDialog } from './ReceiveDialog.jsx';
 import { showQty, showUnitCost } from './qty.js';
 import { useStockItem } from './stockApi.js';
 
@@ -50,6 +51,9 @@ export function StockItemPage() {
               <Button size="md" onClick={() => setDialog('count')}>
                 Count stock
               </Button>
+              <Button size="md" variant="default" onClick={() => setDialog('receive')}>
+                Receive delivery
+              </Button>
               <Button size="md" variant="default" onClick={() => setDialog('edit')}>
                 Edit
               </Button>
@@ -81,6 +85,7 @@ export function StockItemPage() {
       </Stack>
       {dialog === 'count' && <CountDialog item={it} onClose={() => setDialog(null)} />}
       {dialog === 'edit' && <ItemModal item={it} onClose={() => setDialog(null)} />}
+      {dialog === 'receive' && <ReceiveDialog item={it} onClose={() => setDialog(null)} />}
     </>
   );
 }

@@ -1,10 +1,10 @@
 import { TextInput } from '@mantine/core';
 
 /** "How much?": the total paid, in rupees. Big, numeric keypad, focused on a new expense. */
-export function AmountField({ value, onChange, autoFocus = false, error }) {
+export function AmountField({ value, onChange, autoFocus = false, error, label = 'How much?' }) {
   return (
     <TextInput
-      label="How much?"
+      label={label}
       size="xl"
       inputMode="decimal"
       autoComplete="off"

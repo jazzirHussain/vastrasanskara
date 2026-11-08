@@ -91,3 +91,49 @@ export function stockAre({ items = [stockItemFixture()], low = [], item = stockI
   );
   return seen;
 }
+
+/** A "to buy" request as the API answers. */
+export function requestFixture(fields = {}) {
+  return {
+    id: 'r1',
+    stockItem: { id: 's2', name: 'Gold buttons', usageUnit: 'piece', purchaseUnit: 'packet', factor: 144000 },
+    quantity: 288000,
+    reason: 'manual',
+    needs: [],
+    note: '',
+    status: 'requested',
+    vendor: null,
+    orderedAt: null,
+    receipt: null,
+    cancellation: null,
+    version: 0,
+    ...fields,
+  };
+}
+
+/** Answers GET /v1/stock/requests by status (`byStatus.open`, `byStatus.received`, ...); queries are recorded. */
+export function requestsAre(byStatus = {}) {
+  const seen = [];
+  server.use(
+    http.get('/v1/stock/requests', ({ request }) => {
+      const q = new URL(request.url).searchParams;
+      seen.push(q);
+      const items = byStatus[q.get('status') ?? 'open'] ?? [];
+      return HttpResponse.json({ items: typeof items === 'function' ? items() : items, nextCursor: null });
+    }),
+  );
+  return seen;
+}
+
+/** Records every POST to `path` (body and Idempotency-Key); `reply(n, body)` answers the nth. */
+export function postsTo(path, reply) {
+  const posts = [];
+  server.use(
+    http.post(path, async ({ request }) => {
+      const body = await request.json();
+      posts.push({ body, key: request.headers.get('Idempotency-Key') });
+      return reply(posts.length, body);
+    }),
+  );
+  return posts;
+}
