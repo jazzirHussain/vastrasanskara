@@ -21,7 +21,7 @@ import { businessRule } from '../../core/errors.js';
 import { idempotent } from '../../core/idempotency.js';
 import { validate, versioned } from '../../core/validate.js';
 import { logger } from '../../logger.js';
-import { getGarment, getOrderStatus } from '../orders/service.js';
+import { getGarment, getOrderStatus, touchGarment } from '../orders/service.js';
 import { getUserNames } from '../users/service.js';
 import { getVendorNames } from '../vendors/service.js';
 import { toItemJson, toMovementJson, toRequestJson } from './json.js';
@@ -55,6 +55,24 @@ const materialsBody = versioned(z.strictObject({ lines: materialLinesSchema }));
 const usedBody = versioned(materialChangeSchema);
 
 const moneyOf = (req) => req.user.permissions.has('money.view');
+
+/**
+ * Runs `change(garmentFacts, session)` on a garment of the user's scope whose order is open, in
+ * the caller's transaction. The garment and its order's status are read inside it, and the garment
+ * is written, so a concurrent stage action or cancellation cannot commit past it. Answers the
+ * garment id.
+ */
+export async function changeOpenGarment(branchId, user, garmentId, change, session) {
+  const garment = await getGarment(branchId, user, garmentId, session);
+  if (!OPEN_ORDER.includes(await getOrderStatus(branchId, garment.orderId, session))) {
+    throw businessRule('INVALID_STATUS', 'This order cannot be changed in its current status');
+  }
+  // A write to the garment: a Materials ready or a cancellation at the same moment conflicts and
+  // retries after this commits, so it sees (and uses or releases) these materials.
+  await touchGarment(branchId, garment._id, session);
+  await change(garmentFacts(garment), session);
+  return garment._id;
+}
 
 /** Stock: admin and operations (stock.view / stock.write); money fields need money.view too. */
 // `storage` checks the bill photos of a delivery.
@@ -126,21 +144,10 @@ export function stockRouter(storage) {
     },
   );
 
-  /**
-   * Changes a garment's materials in one transaction: the garment and its order's status are read
-   * inside it, so a Materials ready or a cancellation at the same moment is seen on retry. Answers
-   * the card.
-   */
+  /** Changes a garment's materials in one transaction (see changeOpenGarment). Answers the card. */
   async function onOpenGarment(req, res, change) {
     const { branchId } = req.user;
-    const garmentId = await withTransaction(async (session) => {
-      const garment = await getGarment(branchId, req.user, req.params.id, session);
-      if (!OPEN_ORDER.includes(await getOrderStatus(branchId, garment.orderId, session))) {
-        throw businessRule('INVALID_STATUS', 'This order cannot be changed in its current status');
-      }
-      await change(garmentFacts(garment), session);
-      return garment._id;
-    });
+    const garmentId = await withTransaction((session) => changeOpenGarment(branchId, req.user, req.params.id, change, session));
     res.json(await garmentMaterialsView(branchId, garmentId));
   }
 

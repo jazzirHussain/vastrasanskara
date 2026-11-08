@@ -1,4 +1,8 @@
 import { test, expect } from 'vitest';
+import mongoose from 'mongoose';
+import { permissionsFor } from '@vs/shared';
+import { changeOpenGarment } from '../src/modules/stock/routes.js';
+import { setGarmentMaterials } from '../src/modules/stock/service.js';
 import { addDaysYmd, istDate } from '@vs/shared';
 import { useTestDb } from './helpers/db.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
@@ -400,4 +404,29 @@ test('the history names the garment of each movement', async () => {
     ['reserve', order.garments[0].garmentNo],
     ['opening', null],
   ]);
+});
+
+test('a first materials plan saved while Materials ready completes never leaves stock reserved', async () => {
+  const { ops, designer, branchId, takeOk } = await world();
+  const silk = await item(ops, { opening: { quantity: 5000, unitCost: 25000 } });
+  const order = await takeOk([{}]);
+  const g = order.garments[0];
+  const user = { id: String(ops.user._id), branchId: ops.user.branchId, permissions: new Set(permissionsFor(['operations'])) };
+  // The plan's transaction is open (not committed) when the designer completes Materials ready.
+  const session = await mongoose.connection.startSession();
+  session.startTransaction();
+  await changeOpenGarment(branchId, user, g.id, (facts, s) =>
+    setGarmentMaterials(branchId, facts, { version: 0, lines: [{ stockItemId: silk.id, quantity: 2000 }] }, { userId: ops.user._id }, s), session);
+  const stage = designer.agent.post('/v1/production/actions')
+    .send({ stage: 'materials_ready', action: 'complete', garments: [{ id: g.id, version: g.version }] })
+    .then((r) => r);
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  await session.commitTransaction();
+  await session.endSession();
+  const r = await stage;
+  expect(r.status, JSON.stringify(r.body)).toBe(200);
+  // Either the plan was used at Materials ready, or it never took hold: nothing stays reserved.
+  expect((await StockItem.findById(silk.id).lean()).reserved).toBe(0);
+  const lines = (await GarmentMaterials.findOne({ garmentId: g.id }).lean())?.lines ?? [];
+  expect(lines.filter((l) => l.state === 'planned')).toEqual([]);
 });

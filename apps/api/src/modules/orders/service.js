@@ -240,6 +240,14 @@ export async function isOrderInScope(user, orderId, session) {
   return Boolean(await Order.exists({ _id: orderId, branchId: user.branchId, ...orderScope(user) }).session(session ?? null));
 }
 
+/**
+ * Writes to the garment in `session` (its materialsSeq, not its version) so a stage action or a
+ * cancellation committing at the same moment conflicts and retries, seeing the materials change.
+ */
+export async function touchGarment(branchId, garmentId, session) {
+  await Garment.updateOne({ _id: garmentId, branchId }, { $inc: { materialsSeq: 1 } }).session(session);
+}
+
 /** The status of one of the branch's orders (read in `session` when given), or 404. */
 export async function getOrderStatus(branchId, orderId, session) {
   const order = await Order.findOne({ _id: orderId, branchId }, { status: 1 }).session(session ?? null).lean();
