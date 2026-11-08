@@ -11,7 +11,7 @@ export function LowStockList({ items, onOrderMore }) {
       </Text>
       {items.map((it) => (
         <Group key={it.id} data-low-item={it.id} justify="space-between" wrap="nowrap" gap="sm" style={{ minHeight: 56, borderTop: '1px solid var(--vs-rule)', padding: '6px 0' }}>
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <Text fw={600}>
               {it.name}
               {it.colour && (
@@ -26,7 +26,7 @@ export function LowStockList({ items, onOrderMore }) {
             </Text>
           </div>
           {onOrderMore && (
-            <Button variant="light" size="md" onClick={() => onOrderMore(it)}>
+            <Button variant="light" size="md" style={{ flexShrink: 0 }} onClick={() => onOrderMore(it)}>
               Order more
             </Button>
           )}

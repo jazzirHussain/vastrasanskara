@@ -72,10 +72,12 @@ function GarmentRow({ garment: g }) {
     <div data-garment={g.id} style={{ borderTop: '1px solid var(--vs-rule)', padding: '10px 0' }}>
       <UnstyledButton onClick={() => setOpen((o) => !o)} aria-expanded={open} style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 44 }}>
         {open ? <IconChevronDown size={16} aria-hidden="true" /> : <IconChevronRight size={16} aria-hidden="true" />}
-        <Text fw={600} className="vs-figures">
+        <Text fw={600} className="vs-figures" style={{ whiteSpace: 'nowrap' }}>
           {g.garmentNo}
         </Text>
-        <Text c="var(--vs-muted)">{g.description}</Text>
+        <Text c="var(--vs-muted)" lineClamp={1}>
+          {g.description}
+        </Text>
       </UnstyledButton>
       <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="xs" mt={4}>
         <Figure label="Billed" paise={g.revenue} />
