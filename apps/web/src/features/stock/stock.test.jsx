@@ -9,6 +9,12 @@ import { asStockClerk, movementFixture, stockAre, stockItemFixture } from '../..
 
 afterEach(() => vi.restoreAllMocks());
 
+// Types by pasting: a long form typed key by key is slow on a busy machine.
+async function fill(input, text) {
+  await userEvent.click(input);
+  await userEvent.paste(text);
+}
+
 const ref = (fields) => ({ garmentId: null, garmentNo: null, orderId: null, purchaseRequestId: null, expenseId: null, invoiceId: null, ...fields });
 
 test('running-low items are listed first in red', async () => {
@@ -53,14 +59,14 @@ test('adding an item with opening stock sends milli-units and paise', async () =
   renderApp('/stock');
   await userEvent.click(await screen.findByRole('button', { name: 'Add item' }));
   const dialog = await screen.findByRole('dialog');
-  await userEvent.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'Gold buttons');
-  await userEvent.type(within(dialog).getByRole('textbox', { name: 'We use it in' }), 'piece');
-  await userEvent.type(within(dialog).getByRole('textbox', { name: 'We buy it in' }), 'packet');
-  await userEvent.type(within(dialog).getByRole('textbox', { name: 'How many piece in one packet?' }), '144');
-  await userEvent.type(within(dialog).getByRole('textbox', { name: 'Reorder when free stock falls below' }), '50');
+  await fill(within(dialog).getByRole('textbox', { name: 'Name' }), 'Gold buttons');
+  await fill(within(dialog).getByRole('textbox', { name: 'We use it in' }), 'piece');
+  await fill(within(dialog).getByRole('textbox', { name: 'We buy it in' }), 'packet');
+  await fill(within(dialog).getByRole('textbox', { name: 'How many piece in one packet?' }), '144');
+  await fill(within(dialog).getByRole('textbox', { name: 'Reorder when free stock falls below' }), '50');
   await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Already have some?' }));
-  await userEvent.type(within(dialog).getByRole('textbox', { name: 'How many piece now?' }), '288');
-  await userEvent.type(within(dialog).getByRole('textbox', { name: 'Cost per piece (₹)' }), '0.70');
+  await fill(within(dialog).getByRole('textbox', { name: 'How many piece now?' }), '288');
+  await fill(within(dialog).getByRole('textbox', { name: 'Cost per piece (₹)' }), '0.70');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Add item' }));
   await waitFor(() => expect(posts).toHaveLength(1));
   expect(posts[0].body).toEqual({
