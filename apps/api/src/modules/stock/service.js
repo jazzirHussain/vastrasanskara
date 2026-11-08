@@ -8,7 +8,18 @@ import { StockItem, StockMovement } from './model.js';
 import { getItem } from './queries.js';
 
 export { moveStock } from './ledger.js';
-export { garmentMaterialsView, getItem, listItems, listMovements, lowStockItems, pickerItems } from './queries.js';
+export {
+  garmentMaterialsView,
+  getItem,
+  listItems,
+  listMovements,
+  lowStockItems,
+  materialCostForGarments,
+  materialCostTotal,
+  pickerItems,
+  stockItemProfit,
+  stockValuation,
+} from './queries.js';
 export {
   addShortfall,
   changeUsedMaterials,
