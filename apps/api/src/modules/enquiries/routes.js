@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   checkPhoneQuery,
+  convertSchema,
   enquiryListQuery,
   enquiryPatchSchema,
   enquirySchema,
@@ -14,10 +15,14 @@ import { actorFrom, requirePermission } from '../../core/auth/middleware.js';
 import { idempotent } from '../../core/idempotency.js';
 import { validate, versioned } from '../../core/validate.js';
 import { logger } from '../../logger.js';
+import { toCustomerJson } from '../customers/json.js';
+import { getCustomer } from '../customers/service.js';
+import { getOrderNumbers } from '../orders/service.js';
 import { getUserNames } from '../users/service.js';
 import { enquiryUserIds, toEnquiryJson, toEnquiryRowJson } from './json.js';
 import {
   checkPhone,
+  convertEnquiry,
   createEnquiry,
   followUpsDue,
   getEnquiry,
@@ -31,7 +36,17 @@ import {
 const WRITE = 'enquiries.write';
 const today = () => istDate(clock.now());
 
-const jsonOf = async (enquiry) => toEnquiryJson(enquiry, { names: await getUserNames(enquiryUserIds(enquiry)) });
+// The converted customer and order are read here (routes may read orders; the service never does).
+async function jsonOf(enquiry) {
+  const { branchId, convertedCustomerId, convertedOrderId } = enquiry;
+  const [names, customer, orderNos] = await Promise.all([
+    getUserNames(enquiryUserIds(enquiry)),
+    convertedCustomerId ? getCustomer(branchId, convertedCustomerId).catch(() => null) : null,
+    convertedOrderId ? getOrderNumbers(branchId, [convertedOrderId]) : new Map(),
+  ]);
+  const orderNo = convertedOrderId ? orderNos.get(String(convertedOrderId)) : undefined;
+  return toEnquiryJson(enquiry, { names, customer, order: orderNo ? { orderNo } : null });
+}
 
 /**
  * Answers 201 for an enquiry that has committed. If reading it back fails the reply is still a
@@ -84,6 +99,11 @@ export function enquiriesRouter() {
   write('/:id/call', 'post', logCallSchema, logCall);
   write('/:id/lost', 'post', lostSchema, markLost);
   write('/:id/reopen', 'post', reopenSchema, reopenEnquiry);
+
+  router.post('/:id/convert', requirePermission(WRITE), validate({ body: versioned(convertSchema) }), async (req, res) => {
+    const { enquiry, customer, matched } = await convertEnquiry(req.user.branchId, req.params.id, req.body, actorFrom(req));
+    res.json({ enquiry: await jsonOf(enquiry), customer: toCustomerJson(customer), matched });
+  });
 
   return router;
 }

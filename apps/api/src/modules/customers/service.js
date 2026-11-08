@@ -35,24 +35,31 @@ function assertCustomerRules(customer) {
   if (issues.length) throw validationError(issues);
 }
 
-/** Creates a customer; the branch's state is used when no state code is given. */
-export async function createCustomer(branchId, input, actor) {
+// The body of createCustomer, inside the caller's transaction.
+async function insertCustomer(branchId, fields, actor, session) {
+  await assertPhoneFree(branchId, fields.phone, null, session);
+  const [customer] = await Customer.create(
+    [{ ...fields, branchId, searchName: fields.name.toLowerCase(), createdBy: actor.userId, updatedBy: actor.userId }],
+    { session },
+  );
+  await recordAudit(
+    { branchId, entityType: 'customer', entityId: customer._id, action: 'create', before: null, after: auditFields(customer), actor },
+    session,
+  );
+  return customer.toObject();
+}
+
+/**
+ * Creates a customer; the branch's state is used when no state code is given. With `session` it
+ * joins the caller's transaction (a duplicate phone then aborts it), else it opens its own.
+ */
+export async function createCustomer(branchId, input, actor, { session } = {}) {
   const stateCode = input.stateCode ?? (await getBranch(branchId)).stateCode;
   const fields = { ...input, stateCode };
   assertCustomerRules(fields);
+  if (session) return insertCustomer(branchId, fields, actor, session);
   try {
-    return await withTransaction(async (session) => {
-      await assertPhoneFree(branchId, fields.phone, null, session);
-      const [customer] = await Customer.create(
-        [{ ...fields, branchId, searchName: fields.name.toLowerCase(), createdBy: actor.userId, updatedBy: actor.userId }],
-        { session },
-      );
-      await recordAudit(
-        { branchId, entityType: 'customer', entityId: customer._id, action: 'create', before: null, after: auditFields(customer), actor },
-        session,
-      );
-      return customer.toObject();
-    });
+    return await withTransaction((txn) => insertCustomer(branchId, fields, actor, txn));
   } catch (err) {
     return rethrowDuplicate(err, branchId, fields.phone);
   }

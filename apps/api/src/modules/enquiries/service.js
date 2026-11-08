@@ -3,8 +3,9 @@
 import mongoose from 'mongoose';
 import { MAX_ENQUIRY_LOG, istDate, nextEnquiryStatus } from '@vs/shared';
 import { clock } from '../../clock.js';
-import { AppError, businessRule, conflict, notFound } from '../../core/errors.js';
-import { findCustomerByPhone } from '../customers/service.js';
+import { withTransaction } from '../../core/db.js';
+import { AppError, businessRule, conflict, notFound, validationError } from '../../core/errors.js';
+import { createCustomer, findCustomerByPhone, getCustomer } from '../customers/service.js';
 import { Enquiry } from './model.js';
 
 export { enquiryListFilter, followUpsDue, listEnquiries } from './queries.js';
@@ -147,3 +148,90 @@ export function reopenEnquiry(branchId, id, { version }, actor) {
   });
 }
 
+
+const notFoundAt = (path) => validationError([{ path, message: 'Not found' }]);
+
+async function customerOfBranch(branchId, id, session) {
+  try {
+    return await getCustomer(branchId, id, session);
+  } catch (err) {
+    if (err?.code === 'NOT_FOUND') throw notFoundAt('customerId');
+    throw err;
+  }
+}
+
+/**
+ * "Convert to order", step one: the customer the order will be for — the one staff picked, the
+ * customer already linked, the customer with the enquiry's phone (`matched`), or a new customer
+ * made from the enquiry's name, phone and source (no consent: that is asked when the order is
+ * taken). The enquiry stays open until an order is saved for it (markEnquiryConverted).
+ */
+export function convertEnquiry(branchId, id, { version, patch: { customerId } }, actor) {
+  return withTransaction(async (session) => {
+    let customer = null;
+    let matched = false;
+    const enquiry = await changeEnquiry(
+      branchId,
+      id,
+      version,
+      actor,
+      async (e) => {
+        next(e.status, 'convert');
+        if (customerId) customer = await customerOfBranch(branchId, customerId, session);
+        else if (e.convertedCustomerId) customer = await getCustomer(branchId, e.convertedCustomerId, session);
+        else {
+          customer = await findCustomerByPhone(branchId, e.phone, session);
+          matched = Boolean(customer);
+          customer ??= await createCustomer(branchId, { name: e.name, phone: e.phone, source: e.source }, actor, { session });
+        }
+        e.convertedCustomerId = customer._id;
+        addLog(e, { kind: 'status', text: 'Customer ready' }, actor);
+      },
+      session,
+    );
+    return { enquiry, customer, matched };
+  });
+}
+
+/**
+ * Step two, called by createOrder inside its transaction: the enquiry is converted to `orderId`
+ * for `customerId`. Missing → 400 `enquiryId`; closed → 422 ENQUIRY_CLOSED; linked to another
+ * customer → 422 ENQUIRY_CUSTOMER_MISMATCH. The order and the enquiry commit together.
+ */
+export async function markEnquiryConverted(branchId, enquiryId, { orderId, orderNo, customerId }, actor, session) {
+  if (!session) throw new Error('markEnquiryConverted must run in a transaction');
+  if (!mongoose.isValidObjectId(enquiryId) || !(await Enquiry.exists({ _id: enquiryId, branchId }).session(session))) {
+    throw notFoundAt('enquiryId');
+  }
+  return changeEnquiry(
+    branchId,
+    enquiryId,
+    undefined,
+    actor,
+    (e) => {
+      e.status = next(e.status, 'convert');
+      if (e.convertedCustomerId && String(e.convertedCustomerId) !== String(customerId)) {
+        throw businessRule('ENQUIRY_CUSTOMER_MISMATCH', 'This enquiry was converted for a different customer');
+      }
+      e.isOpen = false;
+      e.convertedCustomerId = customerId;
+      e.convertedOrderId = orderId;
+      e.convertedAt = clock.now();
+      e.followUpDate = null;
+      addLog(e, { kind: 'status', text: orderNo ? `Order ${orderNo}` : 'Order taken' }, actor);
+    },
+    session,
+  );
+}
+
+/** Name, phone, converted customer and open flag of the branch's enquiries, by id (for appointments). */
+export async function getEnquiryParties(branchId, ids, session) {
+  const unique = [...new Set(ids.filter(Boolean).map(String))].filter((id) => mongoose.isValidObjectId(id));
+  if (!unique.length) return new Map();
+  const rows = await Enquiry.find({ branchId, _id: { $in: unique } }, { name: 1, phone: 1, convertedCustomerId: 1, isOpen: 1 })
+    .session(session ?? null)
+    .lean();
+  return new Map(
+    rows.map((e) => [String(e._id), { name: e.name, phone: e.phone, convertedCustomerId: e.convertedCustomerId ?? null, isOpen: e.isOpen }]),
+  );
+}

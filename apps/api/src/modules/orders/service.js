@@ -12,6 +12,7 @@ import { paginate } from '../../core/pagination.js';
 import { logger } from '../../logger.js';
 import { getBranch } from '../branches/service.js';
 import { customerIdsByNamePrefix, getCustomer, getCustomerNames } from '../customers/service.js';
+import { markEnquiryConverted } from '../enquiries/service.js';
 import { getMeasurement } from '../measurements/service.js';
 import { readSettings } from '../settings/service.js';
 import { garmentFacts, planNewGarments } from '../stock/service.js';
@@ -173,7 +174,7 @@ export async function createOrder(branchId, input, actor) {
       { branchId, docType: 'order', now, start: settings.numberSeries[`order:${fyCode}`] ?? 1 },
       session,
     );
-    const { garments, ...fields } = input;
+    const { garments, enquiryId, ...fields } = input;
     const [order] = await Order.create(
       [
         {
@@ -193,6 +194,15 @@ export async function createOrder(branchId, input, actor) {
       ordered: true,
     });
     await planGarmentMaterials(branchId, garments, garmentDocs, actor, session);
+    if (enquiryId) {
+      await markEnquiryConverted(
+        branchId,
+        enquiryId,
+        { orderId: order._id, orderNo: order.orderNo, customerId: order.customerId },
+        actor,
+        session,
+      );
+    }
     await recordAudit(
       {
         branchId,

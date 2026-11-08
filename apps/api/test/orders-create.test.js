@@ -99,6 +99,14 @@ test('rush pickup marks the garment tight', async () => {
   expect(r.body.tight).toBe(true);
   for (const s of r.body.garments[0].stagePlan.filter((s) => s.plannedDate)) expect(s.plannedDate >= today()).toBe(true);
 });
+test('an order without an enquiry is unchanged', async () => {
+  const { take, order } = await setup();
+  const r = await take(order({ enquiryId: null }));
+  expect(r.status, JSON.stringify(r.body)).toBe(201);
+  expect(r.body).not.toHaveProperty('enquiryId');
+  expect(await Order.findById(r.body.id).lean()).not.toHaveProperty('enquiryId');
+  expect((await take()).status).toBe(201);
+});
 test('double tap creates one order', async () => {
   const { take } = await setup();
   const [a, b] = [await take(undefined, 'same-key'), await take(undefined, 'same-key')];
