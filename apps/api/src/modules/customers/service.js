@@ -114,6 +114,14 @@ export async function getCustomerNames(branchId, ids) {
   return new Map(customers.map((c) => [String(c._id), c.name]));
 }
 
+/** Name and phone of the given customers of the branch, by id (for appointments). */
+export async function getCustomerSummaries(branchId, ids, session) {
+  const unique = [...new Set(ids.filter(Boolean).map(String))].filter((id) => mongoose.isValidObjectId(id));
+  if (!unique.length) return new Map();
+  const customers = await Customer.find({ branchId, _id: { $in: unique } }, { name: 1, phone: 1 }).session(session ?? null).lean();
+  return new Map(customers.map((c) => [String(c._id), { name: c.name, phone: c.phone }]));
+}
+
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**

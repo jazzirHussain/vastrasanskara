@@ -375,6 +375,31 @@ export async function getOrderForBilling(branchId, orderId, session) {
   return { order, garments };
 }
 
+/**
+ * The branch's garments with their order's customer and designer, for naming them on a fitting
+ * (no user scope: the caller holds appointments.write). Unknown ids are left out.
+ */
+export async function getGarmentsForAppointment(branchId, garmentIds, session) {
+  const ids = [...new Set(garmentIds.map(String))].filter((id) => mongoose.isValidObjectId(id));
+  if (!ids.length) return [];
+  const garments = await Garment.find({ branchId, _id: { $in: ids } }, { garmentNo: 1, description: 1, status: 1, orderId: 1 })
+    .session(session ?? null)
+    .lean();
+  const orders = await Order.find({ _id: { $in: [...new Set(garments.map((g) => String(g.orderId)))] } }, { customerId: 1, designerId: 1 })
+    .session(session ?? null)
+    .lean();
+  const byId = new Map(orders.map((o) => [String(o._id), o]));
+  return garments.map((g) => ({
+    id: String(g._id),
+    garmentNo: g.garmentNo,
+    description: g.description,
+    status: g.status,
+    orderId: String(g.orderId),
+    customerId: String(byId.get(String(g.orderId))?.customerId ?? ''),
+    designerId: String(byId.get(String(g.orderId))?.designerId ?? ''),
+  }));
+}
+
 /** Order numbers of the branch's orders by id, as a Map of id string to orderNo (for bill and payment lists). */
 export async function getOrderNumbers(branchId, ids) {
   if (!ids.length) return new Map();

@@ -224,6 +224,25 @@ export async function markEnquiryConverted(branchId, enquiryId, { orderId, order
   );
 }
 
+/**
+ * Called by appointments inside the booking transaction: an open enquiry moves to
+ * appointment_booked and the booking is logged. A closed one is 422 ENQUIRY_CLOSED.
+ */
+export function noteAppointmentBooked(branchId, enquiryId, { when }, actor, session) {
+  if (!session) throw new Error('noteAppointmentBooked must run in a transaction');
+  return changeEnquiry(
+    branchId,
+    enquiryId,
+    undefined,
+    actor,
+    (e) => {
+      e.status = next(e.status, 'appointment');
+      addLog(e, { kind: 'appointment', text: `Appointment booked for ${when}` }, actor);
+    },
+    session,
+  );
+}
+
 /** Name, phone, converted customer and open flag of the branch's enquiries, by id (for appointments). */
 export async function getEnquiryParties(branchId, ids, session) {
   const unique = [...new Set(ids.filter(Boolean).map(String))].filter((id) => mongoose.isValidObjectId(id));
