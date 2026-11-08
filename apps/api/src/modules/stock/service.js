@@ -18,6 +18,7 @@ export {
   materialCostForGarments,
   materialCostTotal,
   pickerItems,
+  saleCostForInvoices,
   stockItemProfit,
   stockValuation,
 } from './queries.js';

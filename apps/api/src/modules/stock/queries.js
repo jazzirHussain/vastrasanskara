@@ -155,6 +155,18 @@ export async function pickerItems(branchId, { q } = {}) {
 // `$type` lets the planner use the partial index.
 export const garmentConsumeFilter = (garmentIds) => ({ garmentId: { $in: garmentIds.map(oid), $type: 'objectId' }, type: 'consume' });
 
+/** The find filter of the bills' sale movements (exported for the index test; by_invoice, `$type` for its partial filter). */
+export const invoiceSalesFilter = (invoiceIds) => ({ invoiceId: { $in: invoiceIds.map(oid), $type: 'objectId' }, type: 'sale' });
+
+/** Paise of stock sold on the bills, net of sales put back by a cancellation (−Σ valueChange). */
+export async function saleCostForInvoices(branchId, invoiceIds, session) {
+  if (!invoiceIds.length) return 0;
+  const moves = await StockMovement.find({ ...invoiceSalesFilter(invoiceIds), branchId: oid(branchId) }, { valueChange: 1 })
+    .session(session ?? null)
+    .lean();
+  return moves.reduce((sum, m) => sum - m.valueChange, 0);
+}
+
 /** The find filter of consume and sale movements in an IST date range (exported for the index test; by_date). */
 export const movementDateFilter = (branchId, { from, to }) => ({
   branchId: oid(branchId),

@@ -31,7 +31,15 @@ function Breakdown({ garment: g }) {
       <Text size="sm" fw={600} mt={4}>
         Materials
       </Text>
-      {g.materials.length === 0 && (
+      {g.sharedMaterial > 0 && (
+        <Group justify="space-between" gap="xs">
+          <Text size="sm">Share of stock sold on the bills</Text>
+          <Text size="sm" className="vs-figures">
+            {formatINR(g.sharedMaterial)}
+          </Text>
+        </Group>
+      )}
+      {g.materials.length === 0 && !(g.sharedMaterial > 0) && (
         <Text size="sm" c="var(--vs-muted)">
           None used
         </Text>

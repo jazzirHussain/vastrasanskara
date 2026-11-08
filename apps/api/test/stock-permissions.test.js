@@ -235,14 +235,14 @@ test('from order to profit', async () => {
   ok(await admin.agent.post(`/v1/billing/invoices/${bill.id}/credit-notes`).set('Idempotency-Key', 'e2e-cn')
     .send({ reason: 'Fitting discount', lines: [{ key: bill.lines[0].key, taxable: 200000 }] }), 201);
 
-  // Billed 800000 + shared 175000; materials 420000 + 46667; no other costs.
+  // Billed 800000 + shared 175000; materials 420000 + 46667 used, plus 46667 of zari sold on the bill; no other costs.
   const costs = await admin.agent.get(`/v1/costing/orders/${order.id}`);
   ok(costs);
   expect(costs.body.garments[0]).toMatchObject({
-    id: g.id, revenue: 975000, sharedRevenue: 175000, material: 466667, expense: 0, margin: 508333,
+    id: g.id, revenue: 975000, sharedRevenue: 175000, material: 513334, sharedMaterial: 46667, expense: 0, margin: 461666,
   });
   expect(costs.body.garments[0].materials).toEqual([{ stockItemId: zari.id, name: 'Zari', usageUnit: 'm', quantity: 5000, cost: 466667 }]);
-  expect(costs.body.order).toMatchObject({ revenue: 975000, material: 466667, expense: 0, margin: 508333 });
+  expect(costs.body.order).toMatchObject({ revenue: 975000, material: 513334, expense: 0, margin: 461666 });
 
   await expectBalanced(zari.id);
   await expectBalanced(w.silk.id);

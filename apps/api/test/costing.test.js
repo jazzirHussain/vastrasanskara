@@ -236,3 +236,25 @@ test('costing queries use indexes', async () => {
     expect(JSON.stringify(plan.queryPlanner.winningPlan)).not.toContain('COLLSCAN');
   }
 });
+
+test("materials sold on the order's bills cost the order what they cost the shelf", async () => {
+  const w = await world();
+  const material = await w.addItem({
+    name: 'Silk by the metre', kind: 'material', supplyType: 'goods', hsnSac: '5007', unit: 'MTR',
+    defaultPrice: 150000, gstSlabs: [{ upToUnitPrice: null, rateBp: 500 }], stockItemId: w.silk.id,
+  });
+  const order = await w.take([{}, {}]);
+  const draft = await draftFor(order);
+  const keep = ({ key, source, itemId, garmentId, stageEventId, description, quantity, rate, discount, discountReason }) =>
+    ({ key, source, itemId, garmentId, stageEventId, description, quantity, rate, discount, discountReason });
+  const put = await w.ops.agent.put(`/v1/billing/invoices/${draft.id}`).send({
+    version: draft.version, invoiceDiscount: null, notes: '',
+    lines: [...draft.lines.map(keep), { key: 'silk', source: 'manual', itemId: material.id, garmentId: null, stageEventId: null, description: 'Silk', quantity: 2, rate: 150000, discount: 0, discountReason: '' }],
+  });
+  ok(put, 200);
+  ok(await issue(w.ops, put.body.invoice));
+  // 2 m sold at ₹1,500 cost ₹1,000 a metre from the shelf: ₹3,000 billed, ₹2,000 cost, shared by both blouses.
+  const costs = await garmentCosts(w.branchId, order.id);
+  expect(costs.garments.map((g) => [g.sharedRevenue, g.sharedMaterial, g.material])).toEqual([[150000, 100000, 100000], [150000, 100000, 100000]]);
+  expect(costs.order).toMatchObject({ revenue: 2300000, material: 200000, margin: 2100000 });
+});

@@ -3,9 +3,25 @@ import { validationError } from '../../core/errors.js';
 import { orderRevenueLines } from '../billing/service.js';
 import { expenseCostForGarments } from '../expenses/service.js';
 import { getOrderForBilling } from '../orders/service.js';
-import { materialCostForGarments } from '../stock/service.js';
+import { materialCostForGarments, saleCostForInvoices } from '../stock/service.js';
 
 const MAX_ORDERS = 100;
+
+/** The garments that carry the order's shared figures: those not cancelled (all when every one is). */
+function carriersOf(garments) {
+  const live = garments.filter((g) => g.status !== 'cancelled');
+  return live.length ? live : garments;
+}
+
+/** `amount` split equally in garment order across the carriers: a Map of garment id to paise. */
+function shareOut(garments, amount) {
+  const shares = new Map(garments.map((g) => [String(g._id), 0]));
+  if (amount && garments.length) {
+    const carriers = carriersOf(garments);
+    allocateProRata(amount, carriers.map(() => 1)).forEach((share, i) => shares.set(String(carriers[i]._id), share));
+  }
+  return shares;
+}
 
 /**
  * Billed value per garment (spec §6.3, Decision 16): each garment's own lines (garment and charge
@@ -19,14 +35,7 @@ function revenueByGarment(garments, lines) {
     if (l.garmentId && own.has(l.garmentId)) own.set(l.garmentId, own.get(l.garmentId) + l.taxable);
     else unattributed += l.taxable;
   }
-  const shared = new Map(garments.map((g) => [String(g._id), 0]));
-  if (unattributed && garments.length) {
-    const live = garments.filter((g) => g.status !== 'cancelled');
-    const carriers = live.length ? live : garments;
-    const shares = allocateProRata(unattributed, carriers.map(() => 1));
-    carriers.forEach((g, i) => shared.set(String(g._id), shares[i]));
-  }
-  return { own, shared };
+  return { own, shared: shareOut(garments, unattributed) };
 }
 
 /**
@@ -43,6 +52,9 @@ export async function garmentCosts(branchId, orderId) {
     expenseCostForGarments(branchId, ids),
   ]);
   const { own, shared } = revenueByGarment(garments, lines);
+  // Stock sold on the order's bills (material lines without a garment) is shared like their revenue.
+  const soldCost = await saleCostForInvoices(branchId, [...new Set(lines.map((l) => l.invoiceId))]);
+  const sharedMaterial = shareOut(garments, soldCost);
 
   const rows = garments.map((g) => {
     const id = String(g._id);
@@ -50,6 +62,8 @@ export async function garmentCosts(branchId, orderId) {
     const revenue = own.get(id) + sharedRevenue;
     const mat = materials.get(id) ?? { cost: 0, lines: [] };
     const exp = expenses.get(id) ?? { cost: 0, expenses: [] };
+    const soldShare = sharedMaterial.get(id);
+    const material = mat.cost + soldShare;
     return {
       id,
       garmentNo: g.garmentNo,
@@ -57,9 +71,10 @@ export async function garmentCosts(branchId, orderId) {
       status: g.status,
       revenue,
       sharedRevenue,
-      material: mat.cost,
+      material,
+      sharedMaterial: soldShare,
       expense: exp.cost,
-      margin: revenue - mat.cost - exp.cost,
+      margin: revenue - material - exp.cost,
       materials: mat.lines,
       expenses: exp.expenses,
     };

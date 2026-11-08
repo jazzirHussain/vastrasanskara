@@ -20,7 +20,8 @@ function serve({ order: orderFields = {}, garments } = {}) {
   const order = orderDetailFixture({ garments: 2 });
   const rows = garments ?? [
     garmentCosts({
-      materials: [{ stockItemId: 's1', name: 'Red silk', usageUnit: 'm', quantity: 2400, cost: 240000 }],
+      sharedMaterial: 30000,
+      materials: [{ stockItemId: 's1', name: 'Red silk', usageUnit: 'm', quantity: 2400, cost: 210000 }],
       expenses: [{ expenseId: 'e7', number: 'EXP/2627/0007', kind: 'batch', share: 100000 }],
     }),
     garmentCosts({ id: 'g2', garmentNo: 'VS/ORD/2627/0007-02', description: 'Blouse 2', revenue: 0, material: 0, expense: 0, margin: 0 }),
@@ -87,7 +88,9 @@ test("a garment's breakdown lists materials and expenses", async () => {
   await userEvent.click(within(card).getByRole('button', { name: /VS\/ORD\/2627\/0007-01/ }));
   const breakdown = within(card).getByRole('region', { name: 'Costs of VS/ORD/2627/0007-01' });
   expect(within(breakdown).getByText('Red silk — 2.4 m')).toBeInTheDocument();
-  expect(within(breakdown).getByText('₹2,400.00')).toBeInTheDocument();
+  expect(within(breakdown).getByText('₹2,100.00')).toBeInTheDocument();
+  expect(within(breakdown).getByText('Share of stock sold on the bills')).toBeInTheDocument();
+  expect(within(breakdown).getByText('₹300.00')).toBeInTheDocument();
   const expense = within(breakdown).getByRole('link', { name: 'EXP/2627/0007' });
   expect(expense).toHaveAttribute('href', '/expenses/e7');
   expect(within(breakdown).getByText('₹1,000.00')).toBeInTheDocument();
