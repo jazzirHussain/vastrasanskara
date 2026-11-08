@@ -20,3 +20,5 @@ export * from './schemas/workshop.js';
 export * from './schemas/catalog.js';
 export * from './schemas/billing.js';
 export * from './schemas/expenses.js';
+export * from './stock.js';
+export * from './schemas/stock.js';

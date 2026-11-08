@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server, asAdmin, asDesigner, asOperations } from '../../test/server.js';
 import { renderApp } from '../../test/setup.js';
+import { asOwner, materialsAre, pickerRow } from '../../test/stock.js';
 
 const clothing = [
   { upToUnitPrice: 250000, rateBp: 500 },
@@ -205,4 +206,31 @@ test('a conflict offers reload', async () => {
   expect(await within(dialog).findByText('Someone else changed this. Reload and try again.')).toBeInTheDocument();
   await userEvent.click(within(dialog).getByRole('button', { name: 'Reload' }));
   await expect.poll(() => screen.queryByRole('dialog')).toBeNull();
+});
+
+test('a material item can be taken from stock', async () => {
+  asOwner();
+  items();
+  const silkId = '64b7f0c2a1b2c3d4e5f60718';
+  materialsAre({ picker: [pickerRow({ id: silkId })] });
+  let body;
+  server.use(
+    http.post('/v1/catalog/items', async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ ...blouse, ...body, id: 'new', version: 0 }, { status: 201 });
+    }),
+  );
+  renderApp('/catalog');
+  await userEvent.click(await screen.findByRole('button', { name: 'Add item' }));
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.type(within(dialog).getByLabelText('Name'), 'Silk by the metre');
+  await userEvent.click(within(dialog).getByText('Material'));
+  await userEvent.type(within(dialog).getByLabelText('HSN/SAC code'), '5007');
+  await userEvent.type(within(dialog).getByLabelText('Default price (₹)'), '1500');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Take from stock (optional)' }));
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Red silk · Raw silk — 8.5 m free' }));
+  expect(within(dialog).getByText('Taken from stock: Red silk')).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Save item' }));
+  await expect.poll(() => body?.stockItemId).toBe(silkId);
+  expect(body.kind).toBe('material');
 });

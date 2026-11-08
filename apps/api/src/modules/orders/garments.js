@@ -5,7 +5,16 @@ import { withTransaction } from '../../core/db.js';
 import { businessRule, conflict, forbidden, notFound } from '../../core/errors.js';
 import { readSettings } from '../settings/service.js';
 import { Garment, Order } from './model.js';
-import { assertStatus, buildGarments, checkGarmentInputs, orderScope, replanGarment, stagePlanFor, today } from './service.js';
+import {
+  assertStatus,
+  buildGarments,
+  checkGarmentInputs,
+  orderScope,
+  planGarmentMaterials,
+  replanGarment,
+  stagePlanFor,
+  today,
+} from './service.js';
 
 const OPEN = ['active', 'on_hold'];
 // Designers (production.update without orders.write) may change only these.
@@ -217,6 +226,7 @@ export async function addGarments(branchId, user, orderId, { garments }, actor) 
       buildGarments({ branchId, order, garments, startIndex: (last?.index ?? 0) + 1, settings, actor }),
       { session, ordered: true },
     );
+    await planGarmentMaterials(branchId, garments, docs, actor, session);
     await recordAudit(
       {
         branchId,

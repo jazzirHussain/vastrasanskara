@@ -11,6 +11,7 @@ import { GarmentHistory } from './GarmentHistory.jsx';
 import { isOpen } from './orderStatus.js';
 import { PlanEditor } from './PlanEditor.jsx';
 import { StageActions } from './StageActions.jsx';
+import { GarmentMaterials } from '../stock/GarmentMaterials.jsx';
 
 function Fact({ label, children }) {
   if (children === null || children === undefined || children === '') return null;
@@ -115,6 +116,7 @@ export function GarmentPanel({ order, garment, typeLabel, late }) {
               )}
             </div>
           )}
+          <GarmentMaterials garment={garment} />
           <StageActions order={order} garment={garment} />
           {canAdjust && (
             <Group gap="xs">

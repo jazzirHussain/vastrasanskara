@@ -62,6 +62,7 @@ export function orderBody(draft, latest) {
       quantity: g.quantity,
       dueDate: g.dueDate || null,
       referenceKeys: g.referenceKeys.map((r) => r.key ?? r),
+      materials: (g.materials ?? []).map(({ stockItemId, quantity }) => ({ stockItemId, quantity })),
       measurementId: g.measurementId === undefined ? (latest?.[g.type]?.id ?? null) : g.measurementId,
     })),
   };

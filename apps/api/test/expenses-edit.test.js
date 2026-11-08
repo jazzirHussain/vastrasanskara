@@ -259,3 +259,43 @@ test('an inactive vendor stays on an old expense but cannot be chosen anew', asy
   const typed = await edit(ops, kept.body.expense, { payee: { vendorId: null, name: 'Corner shop', gstin: null, stateCode: null } });
   expect([typed.status, paths(typed)]).toEqual([400, ['payee.gstin']]);
 });
+
+test("a purchase expense's amount and GST cannot be changed or voided from Expenses", async () => {
+  const { ops, vendor29 } = await world();
+  const created = await ops.agent.post('/v1/stock/items').set('Idempotency-Key', 'silk').send({
+    name: 'Red silk', usageUnit: 'm', purchaseUnit: 'm', factor: 1000,
+  });
+  ok(created, 201);
+  const vendorPayee = { vendorId: vendor29.id, name: '', gstin: null, stateCode: null };
+  const received = await ops.agent.post(`/v1/stock/items/${created.body.item.id}/receive`).set('Idempotency-Key', 'delivery').send({
+    quantity: 5000, total: 118000, mode: 'upi', payee: vendorPayee, gst: gstBill(),
+  });
+  ok(received, 201);
+  const expense = (await ops.agent.get(`/v1/expenses/${received.body.expense.id}`)).body.expense;
+  expect(expense.source).toBe('purchase');
+
+  const refused = [
+    { total: 236000, gst: gstBill({ taxable: 200000, cgst: 18000, sgst: 18000 }) },
+    { gst: gstBill({ itcEligible: false }) },
+    { date: '2026-11-14' },
+    { payee: { vendorId: null, name: 'Corner shop', gstin: VENDOR_GSTIN, stateCode: null } },
+    { category: 'rent' },
+  ];
+  for (const fields of refused) {
+    const r = await edit(ops, expense, fields);
+    expect([r.status, r.body.error?.code], JSON.stringify(fields)).toEqual([422, 'EXPENSE_FROM_STOCK']);
+  }
+  const voided = await voidIt(ops, expense);
+  expect([voided.status, voided.body.error.code]).toEqual([422, 'EXPENSE_FROM_STOCK']);
+  expect((await Expense.findById(expense.id).lean()).status).toBe('active');
+
+  // Sending the same amount, payee and GST is not a change; note, photos, mode and reference can change.
+  const photo = await upload(ops);
+  const r = await edit(ops, expense, {
+    total: 118000, payee: vendorPayee, gst: gstBill(), note: 'Silk for the wedding orders',
+    attachments: [{ key: photo, name: 'bill.jpg' }], mode: 'cash', reference: 'R-1',
+  });
+  ok(r);
+  expect(r.body.expense).toMatchObject({ note: 'Silk for the wedding orders', mode: 'cash', reference: 'R-1', total: 118000 });
+  expect(r.body.expense.attachments).toHaveLength(1);
+});

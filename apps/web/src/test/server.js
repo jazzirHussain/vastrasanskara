@@ -30,7 +30,7 @@ export const defaultBranch = {
 };
 
 // Defaults: nobody is signed in, no notifications, default settings and branch, no money on orders,
-// no records check run yet.
+// no records check run yet, no materials on any garment.
 // Tests override with server.use().
 export const server = setupServer(
   http.get('/v1/auth/me', notAuthenticated),
@@ -57,6 +57,7 @@ export const server = setupServer(
     HttpResponse.json({ billed: 0, received: 0, credited: 0, refunded: 0, outstanding: 0, overdue: 0, advanceHeld: 0 }),
   ),
   http.get('/v1/admin/audit/verify', () => HttpResponse.json({ run: null })),
+  http.get('/v1/stock/garments/:id/materials', ({ params }) => HttpResponse.json({ garmentId: params.id, version: 0, lines: [] })),
   http.get('/v1/billing/customers/:id/ledger', () => HttpResponse.json({ items: [], nextCursor: null })),
   http.get('/v1/billing/orders/:id/summary', () =>
     HttpResponse.json({
@@ -97,7 +98,7 @@ export const designerUser = {
   name: 'Meera',
   email: 'meera@x.com',
   roles: ['designer'],
-  permissions: ['orders.read.own', 'production.update', 'measurements.write', 'customers.read'],
+  permissions: ['orders.read.own', 'production.update', 'measurements.write', 'customers.read', 'stock.consume.own'],
   branchId: 'b1',
 };
 

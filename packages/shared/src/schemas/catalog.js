@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { billingAmount } from './common.js';
+import { billingAmount, objectId } from './common.js';
 import { garmentTypeKey } from './settings.js';
 import { GST_RATES_BP } from '../gst.js';
 
@@ -23,6 +23,7 @@ const fields = {
   garmentTypes: z.array(garmentTypeKey).max(50),
   chargeFor: z.enum(CHARGE_FOR).nullable(),
   active: z.boolean(),
+  stockItemId: objectId.nullable(),
 };
 
 /** Cross-field rules; the service also runs this on the merged item for a patch. */
@@ -43,6 +44,9 @@ export function checkCatalogItemRules(value, ctx) {
   if (value.garmentTypes?.length && value.kind && !['garment', 'stitching_service'].includes(value.kind)) {
     add('garmentTypes', 'Garment types only apply to garments and stitching');
   }
+  if (value.stockItemId && value.kind && value.kind !== 'material') {
+    add('stockItemId', 'Only materials can be linked to a stock item');
+  }
   if (value.chargeFor && value.kind && value.kind !== 'extra_charge') {
     add('chargeFor', 'Charge type only applies to extra charges');
   }
@@ -56,6 +60,7 @@ export const catalogItemSchema = z
     garmentTypes: fields.garmentTypes.default([]),
     chargeFor: fields.chargeFor.default(null),
     active: fields.active.default(true),
+    stockItemId: fields.stockItemId.default(null),
   })
   .superRefine(checkCatalogItemRules);
 

@@ -5,6 +5,7 @@ import { DateLabel, todayYmd } from '../../components/DateLabel.jsx';
 import { Money } from '../../components/Money.jsx';
 import { PageHeader } from '../../components/PageHeader.jsx';
 import { OrderMoneyPanel } from '../billing/OrderMoneyPanel.jsx';
+import { OrderCosts } from '../costing/OrderCosts.jsx';
 import { useSettings } from '../settings/settingsApi.js';
 import { GarmentPanel } from './GarmentPanel.jsx';
 import { OrderActions } from './OrderActions.jsx';
@@ -86,6 +87,7 @@ export function OrderPage() {
       </div>
 
       {can('money.view') && <OrderMoneyPanel order={o} />}
+      {can('costing.view') && <OrderCosts orderId={o.id} />}
 
       {openHold && (
         <Alert color="haldi" mb="md" title="On hold">

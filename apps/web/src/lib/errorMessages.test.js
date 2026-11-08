@@ -36,3 +36,12 @@ describe('expense error messages', () => {
     }
   });
 });
+
+describe('stock error messages', () => {
+  test('every stock error code has a plain message', () => {
+    const codes = ['STOCK_INSUFFICIENT', 'UNIT_FIXED', 'NOTHING_TO_CHANGE', 'MATERIALS_ALREADY_USED', 'MATERIALS_NOT_USED_YET', 'RECEIPT_USED', 'EXPENSE_FROM_STOCK'];
+    for (const code of codes) {
+      expect(errorMessages[code], code).toMatch(/^[A-Z].*[.]$/);
+    }
+  });
+});

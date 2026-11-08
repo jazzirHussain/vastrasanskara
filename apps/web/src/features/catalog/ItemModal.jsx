@@ -3,11 +3,14 @@ import { Alert, Button, Group, Modal, MultiSelect, NumberInput, Radio, Segmented
 import { useMediaQuery } from '@mantine/hooks';
 import { rupeesToPaise } from '@vs/shared/money.js';
 import { catalogItemSchema } from '@vs/shared/schemas/catalog.js';
+import { useAuth } from '../../auth/AuthContext.js';
 import { PHONE_QUERY } from '../../components/ResponsiveTable.jsx';
 import { fieldErrors } from '../../lib/fieldErrors.js';
 import { useSettings } from '../settings/settingsApi.js';
 import { useCatalogItems, useSaveItem } from './catalogApi.js';
 import { CLOTHING_SLABS, ONE_RATE_SLABS, SlabEditor } from './SlabEditor.jsx';
+import { ItemPicker } from '../stock/ItemPicker.jsx';
+import { useStockItem } from '../stock/stockApi.js';
 
 export const KIND_LABELS = {
   garment: 'Garment',
@@ -34,13 +37,13 @@ function startForm(item) {
   if (!item) {
     return {
       name: '', kind: 'garment', supplyType: 'goods', hsnSac: '', unit: 'PCS', price: '',
-      gstSlabs: CLOTHING_SLABS, garmentTypes: [], chargeFor: null, active: true,
+      gstSlabs: CLOTHING_SLABS, garmentTypes: [], chargeFor: null, active: true, stockItemId: null, stockItemName: null,
     };
   }
   return {
     name: item.name, kind: item.kind, supplyType: item.supplyType, hsnSac: item.hsnSac, unit: item.unit,
     price: item.defaultPrice / 100, gstSlabs: item.gstSlabs, garmentTypes: item.garmentTypes,
-    chargeFor: item.chargeFor, active: item.active,
+    chargeFor: item.chargeFor, active: item.active, stockItemId: item.stockItemId ?? null, stockItemName: null,
   };
 }
 
@@ -63,6 +66,8 @@ function toValues(form) {
     garmentTypes: GARMENT_KINDS.includes(form.kind) ? form.garmentTypes : [],
     chargeFor: form.kind === 'extra_charge' ? form.chargeFor : null,
     active: form.active,
+    // Only a material can take from stock; a link is cleared when the kind changes.
+    ...((form.kind === 'material' || form.stockItemId) && { stockItemId: form.kind === 'material' ? form.stockItemId : null }),
   };
 }
 
@@ -90,8 +95,49 @@ function takenWhat(error, values, activeItems, labelOf) {
   return parts.length ? parts.join(', ') : 'this';
 }
 
+/** "Take from stock (optional)": the stock item a material sells from, chosen with the stock picker. */
+function StockLink({ stockItemId, name, onChange }) {
+  const [picking, setPicking] = useState(false);
+  const linked = useStockItem(stockItemId && !name ? stockItemId : null);
+  const shown = name ?? linked.data?.name;
+  if (picking) {
+    return (
+      <ItemPicker
+        onPick={(it) => {
+          onChange(it.id, it.name);
+          setPicking(false);
+        }}
+      />
+    );
+  }
+  if (!stockItemId) {
+    return (
+      <div>
+        <Button variant="light" onClick={() => setPicking(true)}>
+          Take from stock (optional)
+        </Button>
+        <Text size="xs" c="var(--vs-muted)" mt={4}>
+          Selling it on a bill then takes it out of stock.
+        </Text>
+      </div>
+    );
+  }
+  return (
+    <Group gap="xs">
+      <Text size="sm">{`Taken from stock: ${shown ?? '…'}`}</Text>
+      <Button variant="subtle" size="compact-md" onClick={() => setPicking(true)}>
+        Change
+      </Button>
+      <Button variant="subtle" size="compact-md" color="kumkum" onClick={() => onChange(null)}>
+        Remove
+      </Button>
+    </Group>
+  );
+}
+
 /** Add (item null) or edit one price-list item; an edit sends only the fields that changed, with `version`. */
 export function ItemModal({ item, onClose }) {
+  const { can } = useAuth();
   const phone = useMediaQuery(PHONE_QUERY, false, { getInitialValueInEffect: false });
   const settings = useSettings();
   const activeItems = useCatalogItems({ active: true });
@@ -244,6 +290,14 @@ export function ItemModal({ item, onClose }) {
               value={form.chargeFor ?? 'none'}
               onChange={(next) => set({ chargeFor: next === 'none' ? null : next })}
               error={errors.chargeFor}
+            />
+          )}
+
+          {form.kind === 'material' && can('stock.view') && (
+            <StockLink
+              stockItemId={form.stockItemId}
+              name={form.stockItemName}
+              onChange={(stockItemId, stockItemName = null) => set({ stockItemId, stockItemName })}
             />
           )}
 

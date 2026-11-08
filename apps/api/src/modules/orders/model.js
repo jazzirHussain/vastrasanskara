@@ -112,6 +112,9 @@ const garmentSchema = new mongoose.Schema({
   // The rejected garment this one remakes.
   remakeOf: { type: ObjectId, default: null },
   materials: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  // Bumped by every change to the garment's materials (stock module), so a stage action or a
+  // cancellation at the same moment conflicts with it and retries. Not the garment's version.
+  materialsSeq: { type: Number, default: 0 },
 });
 garmentSchema.plugin(commonFields);
 garmentSchema.index({ branchId: 1, garmentNo: 1 }, { unique: true });

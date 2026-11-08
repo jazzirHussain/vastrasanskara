@@ -25,7 +25,7 @@ test('an admin adds a garment item with clothing slabs', async () => {
   expect(r.body).toEqual({
     id: expect.any(String), name: 'Blouse stitching', kind: 'stitching_service', supplyType: 'service',
     hsnSac: '998822', unit: 'PCS', defaultPrice: 150000, gstSlabs: SLABS, garmentTypes: ['blouse'],
-    chargeFor: null, active: true, version: 0,
+    chargeFor: null, stockItemId: null, active: true, version: 0,
   });
   const list = await agent.get('/v1/catalog/items').query({ kind: 'stitching_service', q: 'BLOU' });
   expect(list.body.items.map((i) => i.id)).toEqual([r.body.id]);
@@ -127,4 +127,28 @@ test('itemForGarmentType and itemForCharge find active items', async () => {
   expect([...map.keys()].sort()).toEqual([item.id, rush.id].sort());
   await agent.patch(`/v1/catalog/items/${item.id}`).send({ version: 0, active: false });
   expect(await itemForGarmentType(user.branchId, 'blouse')).toBeNull();
+});
+
+test('only material price-list items can be linked to stock', async () => {
+  const { agent } = await admin();
+  const stock = (await agent.post('/v1/stock/items').set('Idempotency-Key', 'cs1').send({ name: 'Silk', usageUnit: 'm', purchaseUnit: 'm', factor: 1000 })).body.item;
+  const material = { name: 'Silk by the metre', kind: 'material', supplyType: 'goods', hsnSac: '5007', gstSlabs: SLABS };
+  const linked = await agent.post('/v1/catalog/items').send({ ...material, stockItemId: stock.id });
+  expect(linked.status, JSON.stringify(linked.body)).toBe(201);
+  expect(linked.body.stockItemId).toBe(stock.id);
+
+  const notMaterial = await agent.post('/v1/catalog/items').send(blouse({ stockItemId: stock.id }));
+  expect(notMaterial.status).toBe(400);
+  expect(notMaterial.body.error.details.map((d) => d.path)).toContain('stockItemId');
+
+  const unknown = await agent.post('/v1/catalog/items').send({ ...material, name: 'Other', stockItemId: '65f000000000000000000000' });
+  expect(unknown.status).toBe(400);
+  expect(unknown.body.error.details.map((d) => d.path)).toContain('stockItemId');
+
+  const garment = (await agent.post('/v1/catalog/items').send(blouse())).body;
+  const patched = await agent.patch(`/v1/catalog/items/${garment.id}`).send({ version: 0, stockItemId: stock.id });
+  expect(patched.status).toBe(400);
+  const unlinked = await agent.patch(`/v1/catalog/items/${linked.body.id}`).send({ version: 0, stockItemId: null });
+  expect(unlinked.status, JSON.stringify(unlinked.body)).toBe(200);
+  expect(unlinked.body.stockItemId).toBeNull();
 });

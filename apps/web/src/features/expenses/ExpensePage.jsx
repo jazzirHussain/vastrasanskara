@@ -143,6 +143,15 @@ export function ExpensePage() {
             <LinkLine link={expense.link} canOpenOrder={can('orders.read.own')} />
           </Field>
         )}
+        {expense.source === 'purchase' && (
+          <Field label="Came from">
+            <span>From a stock delivery</span>
+            {' · '}
+            <Anchor component={Link} to="/stock?tab=to-buy&status=received">
+              See deliveries in Stock
+            </Anchor>
+          </Field>
+        )}
         {expense.note && <Field label="Note">{expense.note}</Field>}
         {expense.attachments.length > 0 && (
           <section aria-label="Photos of the bill">
@@ -177,9 +186,12 @@ export function ExpensePage() {
             <Button component={Link} to={`/expenses/${expense.id}/edit`} size="lg">
               Edit
             </Button>
-            <Button size="lg" variant="default" color="kumkum" onClick={() => setVoiding(true)}>
-              Void expense
-            </Button>
+            {/* A delivery's expense is voided by undoing the delivery in Stock. */}
+            {expense.source !== 'purchase' && (
+              <Button size="lg" variant="default" color="kumkum" onClick={() => setVoiding(true)}>
+                Void expense
+              </Button>
+            )}
           </Group>
         )}
       </Stack>

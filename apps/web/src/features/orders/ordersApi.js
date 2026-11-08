@@ -73,6 +73,8 @@ export function useStageAction() {
     Promise.all([
       queryClient.invalidateQueries({ queryKey: ORDERS_KEY }),
       queryClient.invalidateQueries({ queryKey: ['production'] }),
+      // Materials ready uses the garment's materials.
+      queryClient.invalidateQueries({ queryKey: ['stock'] }),
     ]);
   const mutation = useMutation({
     mutationFn: (body) => apiFetch('/v1/production/actions', { method: 'POST', body }),

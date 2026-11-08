@@ -23,3 +23,4 @@ export {
   listReceivables,
   orderMoney,
 } from './ledger.js';
+export { orderRevenueLines } from './attribution.js';

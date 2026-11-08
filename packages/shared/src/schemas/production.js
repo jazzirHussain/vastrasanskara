@@ -3,6 +3,7 @@ import { objectId, paise } from './common.js';
 import { ymd } from './orders.js';
 import { ACTIONS } from '../production.js';
 import { STAGE_KEYS } from '../stages.js';
+import { materialsUsedSchema } from './stock.js';
 
 const stageKey = z.enum(STAGE_KEYS);
 const CHARGEABLE = new Set(['qc_fail', 'rework', 'alteration']);
@@ -41,6 +42,7 @@ export const stageActionSchema = z
     readyBy: ymd.optional(),
     chargeable: z.boolean().default(false),
     chargeAmount: paise.nullable().optional(),
+    materialsUsed: materialsUsedSchema.optional(),
   })
   .superRefine((value, ctx) => {
     for (const [field, actions] of REQUIRED) {
@@ -53,6 +55,16 @@ export const stageActionSchema = z
     }
     if (!CHARGEABLE.has(value.action) && (value.chargeable || value.chargeAmount !== undefined)) {
       ctx.addIssue({ code: 'custom', path: ['chargeable'], message: 'Only rework, QC failures and alterations can be charged' });
+    }
+    if (value.materialsUsed !== undefined) {
+      if (value.stage !== 'materials_ready' || !['complete', 'skip'].includes(value.action)) {
+        ctx.addIssue({ code: 'custom', path: ['materialsUsed'], message: 'Materials used only goes with completing or skipping Materials ready' });
+      } else {
+        const ids = new Set(value.garments.map((g) => g.id.toLowerCase()));
+        if (value.materialsUsed.some((m) => !ids.has(m.garmentId.toLowerCase()))) {
+          ctx.addIssue({ code: 'custom', path: ['materialsUsed'], message: 'Materials used must belong to the garments chosen' });
+        }
+      }
     }
     if (ONE_GARMENT.has(value.action) && value.garments.length !== 1) {
       ctx.addIssue({ code: 'custom', path: ['garments'], message: 'Choose one garment' });
