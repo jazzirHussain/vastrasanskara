@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ActionIcon, Alert, Button, Group, Loader, Modal, Stack, Text, TextInput } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { IconTrash } from '@tabler/icons-react';
-import { STAGE_KEYS } from '@vs/shared';
+import { stageIndex, workingStage } from '@vs/shared';
 import { useAuth } from '../../auth/AuthContext.js';
 import { PHONE_QUERY } from '../../components/ResponsiveTable.jsx';
 import { ItemPicker } from './ItemPicker.jsx';
@@ -10,7 +10,17 @@ import { QtyStepper } from './QtyStepper.jsx';
 import { showQty } from './qty.js';
 import { useChangeUsed, useGarmentMaterials, useSetGarmentMaterials } from './stockApi.js';
 
-const MATERIALS_READY = STAGE_KEYS.indexOf('materials_ready');
+const MATERIALS_READY = stageIndex('materials_ready');
+
+/** Lines of `state` listed read-only: name and what the line says. */
+function ReadOnlyLines({ lines, text }) {
+  return lines.map((l) => (
+    <div key={`${l.stockItemId}-${l.state}`} data-material={l.stockItemId} style={{ borderBottom: '1px solid var(--vs-rule)', paddingBottom: 6 }}>
+      <Text fw={600}>{l.name}</Text>
+      <Text size="sm">{text(l)}</Text>
+    </div>
+  ));
+}
 
 /** Whether the user may see and change garment materials (quantities only). */
 export const canUseMaterials = (can) => can('stock.write') || can('stock.consume.own');
@@ -81,6 +91,7 @@ function PlanCard({ garmentId, card }) {
   };
   return (
     <Stack gap="sm">
+      <ReadOnlyLines lines={card.lines.filter((l) => l.state === 'used')} text={(l) => `Used ${showQty(l.used, l.usageUnit)}`} />
       <MaterialLinesEditor lines={draft.lines} onChange={(lines) => setDraft((d) => ({ ...d, lines }))} shortOf={shortOf} />
       {save.error && <Alert color="red">{save.error.message}</Alert>}
       {dirty && (
@@ -135,7 +146,8 @@ function UsedChange({ garmentId, card, line, direction, onClose }) {
 function UsedCard({ garmentId, card }) {
   const [sheet, setSheet] = useState(null);
   const used = card.lines.filter((l) => l.state === 'used');
-  if (!used.length) {
+  const planned = card.lines.filter((l) => l.state === 'planned');
+  if (!used.length && !planned.length) {
     return (
       <Text size="sm" c="var(--vs-muted)">
         No materials were listed for this garment.
@@ -144,6 +156,7 @@ function UsedCard({ garmentId, card }) {
   }
   return (
     <Stack gap="xs">
+      <ReadOnlyLines lines={planned} text={(l) => `Planned ${showQty(l.planned, l.usageUnit)}, not used yet`} />
       {used.map((l) => (
         <div key={l.stockItemId} data-material={l.stockItemId} style={{ borderBottom: '1px solid var(--vs-rule)', paddingBottom: 6 }}>
           <Group justify="space-between" wrap="wrap" gap="xs">
@@ -178,8 +191,9 @@ export function GarmentMaterials({ garment }) {
   const query = useGarmentMaterials(garment.id, { enabled: allowed });
   if (!allowed) return null;
   const card = query.data;
-  const pastMaterialsReady = STAGE_KEYS.indexOf(garment.currentStage) > MATERIALS_READY;
-  const usedMode = Boolean(card?.lines.some((l) => l.state === 'used')) || pastMaterialsReady;
+  // As the API decides: "Used more" / "Put back" only once the garment works past Materials ready;
+  // sent back to it by a rework, the plan is editable again.
+  const usedMode = stageIndex(workingStage(garment)) > MATERIALS_READY;
   const live = garment.status === 'in_progress' || garment.status === 'ready';
   if (card && !live && card.lines.length === 0) return null;
   return (

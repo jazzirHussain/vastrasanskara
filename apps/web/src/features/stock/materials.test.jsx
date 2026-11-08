@@ -74,3 +74,24 @@ test('after Materials ready the card offers used more and put back', async () =>
   await userEvent.click(within(sheet).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(sent.used.at(-1)).toEqual({ version: 3, changes: [{ stockItemId: 's1', change: -250 }], note: 'Offcut' }));
 });
+
+test('sent back to Materials ready, the card plans again and shows what was used', async () => {
+  asDesigner();
+  serveOrder({ currentStage: 'materials_ready', stageState: 'in_progress' });
+  materialsAre({
+    cards: {
+      g1: card([
+        materialLine({ state: 'used', used: 2000, reserved: 0 }),
+        materialLine({ stockItemId: 's2', name: 'Gold buttons', usageUnit: 'pcs', step: 1000, planned: 6000, reserved: 6000 }),
+      ], 4),
+    },
+  });
+  renderApp('/orders/o1');
+  const materials = await screen.findByRole('region', { name: 'Materials' });
+  expect(await within(materials).findByRole('button', { name: 'Add material' })).toBeInTheDocument();
+  expect(within(materials).getByText('Red silk')).toBeInTheDocument();
+  expect(within(materials).getByText('Used 2 m')).toBeInTheDocument();
+  expect(within(materials).getByText('Gold buttons')).toBeInTheDocument();
+  expect(within(materials).queryByRole('button', { name: 'Used more' })).toBeNull();
+  expect(within(materials).queryByRole('button', { name: 'Put back' })).toBeNull();
+});
