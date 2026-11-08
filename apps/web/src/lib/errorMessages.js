@@ -41,6 +41,8 @@ export const errorMessages = {
   STOCK_INSUFFICIENT: 'There is not enough of this in stock.',
   UNIT_FIXED: 'The unit cannot change once stock has moved.',
   NOTHING_TO_CHANGE: 'The count matches what is recorded.',
+  MATERIALS_ALREADY_USED: 'Materials for this garment are already used. Use "Used more" or "Put back".',
+  MATERIALS_NOT_USED_YET: 'Materials ready is not done yet. Change the planned list instead.',
   RECEIPT_USED: 'Some of this delivery has been used or counted. Count the stock instead.',
   EXPENSE_FROM_STOCK: 'This expense came from receiving stock. Undo the delivery in Stock to change it.',
   PRICE_NEEDED: 'Enter a price for every line.',

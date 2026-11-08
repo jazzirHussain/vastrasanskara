@@ -5,6 +5,8 @@ import { http, HttpResponse } from 'msw';
 import { addDaysYmd, istDate } from '@vs/shared';
 import { server, asOperations, asDesigner, customerFixture } from '../../test/server.js';
 import { renderApp } from '../../test/setup.js';
+import { materialsAre } from '../../test/stock.js';
+import { asFrontDesk } from '../../test/billing.js';
 import { DRAFT_KEY, garmentsReady } from './NewOrderPage.jsx';
 import { canAddGarment } from './new/GarmentsStep.jsx';
 
@@ -177,4 +179,23 @@ test('an order holds at most 50 garment lines', () => {
   expect(canAddGarment(lines(50))).toBe(false);
   expect(garmentsReady(lines(50))).toBe(true);
   expect(garmentsReady(lines(51))).toBe(false);
+});
+
+test('materials chosen for a garment line are sent with the order in milli-units', async () => {
+  asFrontDesk(); designers(); latest(); materialsAre(); let body;
+  taken((b) => { body = b; });
+  const [g] = draft().garments;
+  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft({ step: 1, garments: [{ ...g, quantity: 20 }] })));
+  renderApp('/orders/new');
+  const garment = await screen.findByRole('region', { name: 'Garment 1' });
+  await userEvent.click(within(garment).getByRole('button', { name: 'Materials (optional)' }));
+  expect(within(garment).getByText('Each of the 20 garments gets these')).toBeInTheDocument();
+  await userEvent.click(within(garment).getByRole('button', { name: 'Add material' }));
+  await userEvent.click(await within(garment).findByRole('button', { name: 'Red silk · Raw silk — 8.5 m free' }));
+  for (let i = 0; i < 3; i += 1) await userEvent.click(within(garment).getByRole('button', { name: 'More' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Next: dates' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Next: review' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Take order' }));
+  await screen.findByText('Order VS/ORD/2627/0007 taken');
+  expect(body.garments[0].materials).toEqual([{ stockItemId: 's1', quantity: 1000 }]);
 });

@@ -137,3 +137,34 @@ export function postsTo(path, reply) {
   );
   return posts;
 }
+
+/** A line of a garment's materials card. */
+export function materialLine(fields = {}) {
+  return { stockItemId: 's1', name: 'Red silk', usageUnit: 'm', step: 250, planned: 2000, reserved: 2000, used: 0, state: 'planned', short: 0, ...fields };
+}
+
+/** A picker row (quantities only). */
+export function pickerRow(fields = {}) {
+  return { id: 's1', name: 'Red silk', brand: 'Raw silk', colour: 'Red', usageUnit: 'm', step: 250, free: 8500, ...fields };
+}
+
+/** Answers each garment's materials card from `cards` (by garment id) and the picker with `picker`; records PUTs and used changes. */
+export function materialsAre({ cards = {}, picker = [pickerRow()] } = {}) {
+  const sent = { plans: [], used: [] };
+  server.use(
+    http.get('/v1/stock/garments/:id/materials', ({ params }) =>
+      HttpResponse.json(cards[params.id] ?? { garmentId: params.id, version: 0, lines: [] })),
+    http.get('/v1/stock/picker', () => HttpResponse.json({ items: picker })),
+    http.put('/v1/stock/garments/:id/materials', async ({ params, request }) => {
+      const body = await request.json();
+      sent.plans.push(body);
+      return HttpResponse.json({ garmentId: params.id, version: body.version + 1, lines: body.lines.map((l) => materialLine({ ...l, planned: l.quantity, reserved: l.quantity })) });
+    }),
+    http.post('/v1/stock/garments/:id/materials/used', async ({ params, request }) => {
+      const body = await request.json();
+      sent.used.push(body);
+      return HttpResponse.json(cards[params.id] ?? { garmentId: params.id, version: body.version + 1, lines: [] });
+    }),
+  );
+  return sent;
+}

@@ -19,6 +19,10 @@ import { addDaysYmd } from '@vs/shared/fy.js';
 import { todayYmd } from '../../components/DateLabel.jsx';
 import { PhotoUploads } from '../../components/PhotoUploads.jsx';
 import { useVendors, useWorkers } from '../workshop/workshopApi.js';
+import { canUseMaterials } from '../stock/GarmentMaterials.jsx';
+import { MaterialsUsed, plannedItems } from '../stock/MaterialsUsed.jsx';
+import { showQty } from '../stock/qty.js';
+import { useGarmentsMaterials } from '../stock/stockApi.js';
 import { useStageAction } from './ordersApi.js';
 import { actingStage, actionLabel, reworkTargets, stageName } from './stageSteps.js';
 
@@ -36,6 +40,13 @@ const RESOLUTIONS = [
 
 const keysOf = (photos) => photos.map((p) => p.key ?? p);
 
+/** "Only 1.5 m of Red silk is in stock. …" from a STOCK_INSUFFICIENT error, with the unit when the item is known. */
+function shortageMessage(details, items) {
+  const unit = items.find((it) => it.stockItemId === details?.stockItemId)?.usageUnit;
+  const free = Number.isSafeInteger(details?.free) ? showQty(details.free, unit) : 'too little';
+  return `Only ${free} of ${details?.name ?? 'this material'} is in stock. Receive the delivery first or change the quantity.`;
+}
+
 /**
  * Records one stage action on `garments` (one, or several at the same stage from the
  * production board), asking only for what the action needs. `onDone` runs after it is saved.
@@ -46,6 +57,10 @@ export function StageActionDialog({ action, garments, onClose, onDone }) {
   const run = useStageAction();
   const workers = useWorkers({ active: true });
   const vendors = useVendors({ active: true });
+  // Completing (or skipping) Materials ready uses the garments' planned materials.
+  const materialsStep = (action === 'complete' || action === 'skip') && actingStage(first, action) === 'materials_ready' && canUseMaterials(can);
+  const materialCards = useGarmentsMaterials(materialsStep ? garments.map((g) => g.id) : []);
+  const [materialsUsed, setMaterialsUsed] = useState([]);
   const [form, setForm] = useState({
     workerIds: [],
     remarks: '',
@@ -92,6 +107,7 @@ export function StageActionDialog({ action, garments, onClose, onDone }) {
       ...(action === 'rejected' && { resolution: form.resolution }),
       ...(CHARGEABLE.has(action) && { chargeable: form.chargeable }),
       ...(priced && form.charge !== '' && { chargeAmount: Math.round(Number(form.charge) * 100) }),
+      ...(materialsStep && materialsUsed.length > 0 && { materialsUsed }),
     };
   }
 
@@ -116,7 +132,9 @@ export function StageActionDialog({ action, garments, onClose, onDone }) {
           {run.error && (
             <Alert color="red">
               <Group justify="space-between">
-                {run.error.message}
+                {run.error.code === 'STOCK_INSUFFICIENT'
+                  ? shortageMessage(run.error.details, plannedItems(materialCards.map((q) => q.data)))
+                  : run.error.message}
                 {run.error.code === 'CONFLICT' && (
                   <Button
                     size="xs"
@@ -191,6 +209,15 @@ export function StageActionDialog({ action, garments, onClose, onDone }) {
                 ))}
               </Group>
             </Checkbox.Group>
+          )}
+          {materialsStep && (
+            <MaterialsUsed
+              garments={garments}
+              onChange={(used) => {
+                run.reset();
+                setMaterialsUsed(used);
+              }}
+            />
           )}
           <Textarea label="Remarks" autosize minRows={2} value={form.remarks} onChange={(e) => set({ remarks: e.currentTarget.value })} />
           {WITH_PHOTOS.has(action) && (

@@ -18,6 +18,7 @@ import { shortDate } from '../../../components/DateLabel.jsx';
 import { IMAGE_TYPES, PhotoUploads } from '../../../components/PhotoUploads.jsx';
 import { MeasurementForm } from '../../customers/MeasurementForm.jsx';
 import { useRecordMeasurement } from '../../customers/customersApi.js';
+import { MaterialLinesEditor } from '../../stock/GarmentMaterials.jsx';
 
 const ACCEPT = [...IMAGE_TYPES, 'application/pdf'];
 
@@ -33,7 +34,31 @@ export function newGarment() {
     quantity: 1,
     dueDate: '',
     referenceKeys: [],
+    materials: [],
   };
+}
+
+/** "Materials (optional)": folded until opened; a batch gives each of its garments the list. */
+function GarmentMaterialsFold({ garment, onChange }) {
+  const { can } = useAuth();
+  const materials = garment.materials ?? [];
+  const [open, setOpen] = useState(materials.length > 0);
+  if (!can('stock.view') && !can('stock.consume.own')) return null;
+  return (
+    <div>
+      <Button variant="subtle" size="compact-md" px={0} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        Materials (optional)
+      </Button>
+      {open && (
+        <Stack gap="xs" mt={6}>
+          {garment.quantity > 1 && (
+            <Text size="sm" c="var(--vs-indigo)">{`Each of the ${garment.quantity} garments gets these`}</Text>
+          )}
+          <MaterialLinesEditor lines={materials} onChange={onChange} />
+        </Stack>
+      )}
+    </div>
+  );
 }
 
 function Measurements({ garment, latest, customerId, garmentTypes, onChosen }) {
@@ -170,6 +195,7 @@ export function GarmentsStep({ draft, update, garmentTypes, latest }) {
               />
             )}
             <References garment={g} onChange={(referenceKeys) => setGarment(g.uid, { referenceKeys })} />
+            <GarmentMaterialsFold garment={g} onChange={(materials) => setGarment(g.uid, { materials })} />
           </Stack>
         </section>
       ))}

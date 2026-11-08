@@ -1,4 +1,4 @@
-import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/api.js';
 
 export const STOCK_KEY = ['stock'];
@@ -105,3 +105,44 @@ export function useUndoReceipt(id) {
     },
   });
 }
+
+// --- Garment materials (quantities only) -------------------------------------------------------
+
+const garmentKey = (garmentId) => [...STOCK_KEY, 'garment', garmentId];
+
+/** A garment's materials card: { garmentId, version, lines }. */
+export function useGarmentMaterials(garmentId, { enabled = true } = {}) {
+  return useQuery({
+    queryKey: garmentKey(garmentId),
+    queryFn: () => apiFetch(`/v1/stock/garments/${garmentId}/materials`),
+    enabled: Boolean(garmentId) && enabled,
+  });
+}
+
+/** Several garments' materials cards at once (for a bulk Materials ready). */
+export function useGarmentsMaterials(garmentIds) {
+  return useQueries({
+    queries: garmentIds.map((id) => ({ queryKey: garmentKey(id), queryFn: () => apiFetch(`/v1/stock/garments/${id}/materials`) })),
+  });
+}
+
+function useGarmentMutation(garmentId, fn) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: (card) => {
+      queryClient.setQueryData(garmentKey(garmentId), card);
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['production'] });
+      queryClient.invalidateQueries({ queryKey: STOCK_KEY, predicate: (q) => q.queryKey[1] !== 'garment' });
+    },
+  });
+}
+
+/** Saves the planned list before Materials ready: `{ version, lines: [{ stockItemId, quantity }] }`. */
+export const useSetGarmentMaterials = (garmentId) =>
+  useGarmentMutation(garmentId, (body) => apiFetch(`/v1/stock/garments/${garmentId}/materials`, { method: 'PUT', body }));
+
+/** "Used more" / "Put back" after Materials ready: `{ version, changes: [{ stockItemId, change }], note }`. */
+export const useChangeUsed = (garmentId) =>
+  useGarmentMutation(garmentId, (body) => apiFetch(`/v1/stock/garments/${garmentId}/materials/used`, { method: 'POST', body }));
