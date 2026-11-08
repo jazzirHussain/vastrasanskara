@@ -16,6 +16,9 @@ import { StockPage } from './features/stock/StockPage.jsx';
 import { StockItemPage } from './features/stock/StockItemPage.jsx';
 import { CustomerPage } from './features/customers/CustomerPage.jsx';
 import { CustomersPage } from './features/customers/CustomersPage.jsx';
+import { EnquiriesPage } from './features/enquiries/EnquiriesPage.jsx';
+import { EnquiryPage } from './features/enquiries/EnquiryPage.jsx';
+import { NewEnquiryPage } from './features/enquiries/NewEnquiryPage.jsx';
 import { HomePage } from './features/home/HomePage.jsx';
 import { NewOrderPage } from './features/orders/NewOrderPage.jsx';
 import { OrderPage } from './features/orders/OrderPage.jsx';
@@ -40,6 +43,11 @@ export default function App() {
             <Route element={<RequirePermission permission="customers.read" />}>
               <Route path="/customers" element={<CustomersPage />} />
               <Route path="/customers/:id" element={<CustomerPage />} />
+            </Route>
+            <Route element={<RequirePermission permission="enquiries.write" />}>
+              <Route path="/enquiries" element={<EnquiriesPage />} />
+              <Route path="/enquiries/new" element={<NewEnquiryPage />} />
+              <Route path="/enquiries/:id" element={<EnquiryPage />} />
             </Route>
             <Route element={<RequirePermission permission="orders.read.own" />}>
               <Route path="/orders" element={<OrdersPage />} />

@@ -45,3 +45,11 @@ describe('stock error messages', () => {
     }
   });
 });
+
+describe('enquiry error messages', () => {
+  test('every enquiry error code has a plain message', () => {
+    for (const code of ['ENQUIRY_EXISTS', 'ENQUIRY_CLOSED', 'ENQUIRY_CUSTOMER_MISMATCH']) {
+      expect(errorMessages[code], code).toMatch(/^[A-Z].*[.]$/);
+    }
+  });
+});
