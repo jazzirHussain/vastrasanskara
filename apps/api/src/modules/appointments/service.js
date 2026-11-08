@@ -13,6 +13,7 @@ import { getGarmentsForAppointment } from '../orders/service.js';
 import { readSettings } from '../settings/service.js';
 import { isActiveDesigner } from '../users/service.js';
 import { Appointment, ensureDesignerDayLocks, lockDesignerDay, lockKey } from './model.js';
+import { emitAppointmentEvent } from './notifications.js';
 import { appointmentScope } from './queries.js';
 
 export {
@@ -136,6 +137,7 @@ export async function bookAppointment(branchId, input, actor) {
       { session },
     );
     if (enquiry) await noteAppointmentBooked(branchId, enquiry._id, { when: appointmentWhen(start) }, actor, session);
+    await emitAppointmentEvent('appointment.booked', appointment.toObject(), { refId: String(appointment._id) }, session);
     return appointment.toObject();
   });
 }
@@ -193,7 +195,21 @@ export async function moveAppointment(branchId, id, { version, patch }, actor) {
     appointment.updatedBy = actor.userId;
     appointment.increment();
     await appointment.save({ session });
-    return { appointment: appointment.toObject(), previous, timingChanged };
+    const moved = appointment.toObject();
+    if (timingChanged) {
+      // The version after this save names the move, so each move is told once.
+      const ref = `${moved._id}:${moved.__v}`;
+      await emitAppointmentEvent('appointment.changed', moved, { previous, refId: ref }, session);
+      if (previous.designerId !== String(moved.designerId)) {
+        await emitAppointmentEvent(
+          'appointment.cancelled',
+          { ...moved, start: previous.start, end: previous.end },
+          { refId: `${moved._id}:moved:${moved.__v}`, includeClient: false, designerId: previous.designerId },
+          session,
+        );
+      }
+    }
+    return { appointment: moved, previous, timingChanged };
   });
 }
 
@@ -205,6 +221,7 @@ export function cancelAppointment(branchId, id, { version, patch: { reason } }, 
     appointment.updatedBy = actor.userId;
     appointment.increment();
     await appointment.save({ session });
+    await emitAppointmentEvent('appointment.cancelled', appointment.toObject(), { refId: String(appointment._id) }, session);
     return appointment.toObject();
   });
 }

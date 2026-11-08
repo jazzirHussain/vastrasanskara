@@ -1,5 +1,6 @@
 import { getCustomerForNotification } from '../../modules/customers/service.js';
 import { User } from '../../modules/users/model.js';
+import { isActiveDesigner } from '../../modules/users/service.js';
 
 /**
  * Recipient = { kind: 'user'|'client', id, name, addresses: { email?, phone?, in_app? },
@@ -40,3 +41,10 @@ registerRecipientResolver('client', async ({ data, session }) => {
   const recipient = data?.customerId ? await getCustomerForNotification(data.customerId, session) : null;
   return recipient ? [recipient] : [];
 });
+// The designer named in data.designerId (an order's or an appointment's), while they are an
+// active designer of the branch.
+registerRecipientResolver('designer', async ({ branchId, data, session }) =>
+  data?.designerId && (await isActiveDesigner(branchId, data.designerId))
+    ? resolveRecipients('user', { data: { userId: data.designerId }, session })
+    : [],
+);

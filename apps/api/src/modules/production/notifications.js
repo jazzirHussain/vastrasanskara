@@ -1,15 +1,6 @@
 // Production notification events. Imported by production/service.js, so both the API and the
 // worker define them.
-import { defineEvent, registerRecipientResolver } from '../../core/notify/catalog.js';
-import { resolveRecipients } from '../../core/notify/recipients.js';
-import { isActiveDesigner } from '../users/service.js';
-
-// The order's designer (data.designerId), while they are an active designer of the branch.
-registerRecipientResolver('designer', async ({ branchId, data, session }) =>
-  data?.designerId && (await isActiveDesigner(branchId, data.designerId))
-    ? resolveRecipients('user', { data: { userId: data.designerId }, session })
-    : [],
-);
+import { defineEvent } from '../../core/notify/catalog.js';
 
 const STAFF = (subject, body) => ({ in_app: { body }, email: { subject, body } });
 const STAFF_CHANNELS = ['in_app', 'email'];
