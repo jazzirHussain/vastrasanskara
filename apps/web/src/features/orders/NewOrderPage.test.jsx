@@ -199,3 +199,93 @@ test('materials chosen for a garment line are sent with the order in milli-units
   await screen.findByText('Order VS/ORD/2627/0007 taken');
   expect(body.garments[0].materials).toEqual([{ stockItemId: 's1', quantity: 1000 }]);
 });
+
+const fromEnquiry = (fields = {}) =>
+  server.use(
+    http.get('/v1/enquiries/e1', () =>
+      HttpResponse.json({
+        enquiry: {
+          id: 'e1',
+          name: 'Priya Sharma',
+          phone: '+919845012345',
+          garmentTypes: ['lehenga', 'blouse'],
+          interest: 'Bridal, red',
+          budget: 15000000,
+          source: 'instagram',
+          occasionDate: addDaysYmd(today(), 90),
+          followUpDate: null,
+          status: 'contacted',
+          isOpen: true,
+          lostReason: null,
+          enquiryDate: today(),
+          convertedCustomer: { id: 'c9', name: 'Priya Sharma', phone: '+919845012345' },
+          convertedOrder: null,
+          log: [],
+          createdAt: '2026-11-08T05:00:00Z',
+          version: 1,
+          ...fields,
+        },
+      }),
+    ),
+  );
+
+test('an order from an enquiry starts with the customer, budget, occasion and garment types filled in', async () => {
+  asFrontDesk(); designers(); latest(); fromEnquiry();
+  renderApp('/orders/new?enquiry=e1');
+  expect(await screen.findByText('From enquiry: Priya Sharma')).toBeInTheDocument();
+  expect(screen.getByText('Priya Sharma', { selector: 'p' })).toBeInTheDocument();
+  const saved = JSON.parse(sessionStorage.getItem(DRAFT_KEY));
+  expect(saved).toMatchObject({
+    enquiryId: 'e1',
+    customer: { id: 'c9', name: 'Priya Sharma', phone: '+919845012345' },
+    expectedBudget: '150000',
+    occasionDate: addDaysYmd(today(), 90),
+    notes: 'Bridal, red',
+  });
+  await userEvent.click(await screen.findByRole('radio', { name: 'Meera' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Next: garments' }));
+  const types = await screen.findAllByLabelText('Garment type');
+  expect(types.map((t) => t.value)).toEqual(['lehenga', 'blouse']);
+});
+
+test('the order is sent with the enquiry id', async () => {
+  asFrontDesk(); designers(); latest(); let body;
+  taken((b) => { body = b; });
+  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft({ enquiryId: 'e1', enquiryName: 'Priya Sharma' })));
+  renderApp('/orders/new');
+  expect(await screen.findByText('From enquiry: Priya Sharma')).toBeInTheDocument();
+  await userEvent.click(await screen.findByRole('button', { name: 'Take order' }));
+  await waitFor(() => expect(body).toBeTruthy());
+  expect(body.enquiryId).toBe('e1');
+});
+
+test('"Not from an enquiry" drops the link', async () => {
+  asFrontDesk(); designers(); latest(); let body;
+  taken((b) => { body = b; });
+  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft({ enquiryId: 'e1', enquiryName: 'Priya Sharma' })));
+  renderApp('/orders/new');
+  await userEvent.click(await screen.findByRole('button', { name: 'Not from an enquiry' }));
+  expect(screen.queryByText('From enquiry: Priya Sharma')).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Take order' }));
+  await waitFor(() => expect(body).toBeTruthy());
+  expect(body.enquiryId).toBeNull();
+});
+
+test('an order without an enquiry sends enquiryId null', async () => {
+  asFrontDesk(); designers(); latest(); let body;
+  taken((b) => { body = b; });
+  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft()));
+  renderApp('/orders/new');
+  await userEvent.click(await screen.findByRole('button', { name: 'Take order' }));
+  await waitFor(() => expect(body).toBeTruthy());
+  expect(body.enquiryId).toBeNull();
+  expect(screen.queryByText(/From enquiry/)).toBeNull();
+});
+
+test('a saved draft for the same enquiry is kept', async () => {
+  asFrontDesk(); designers(); latest(); fromEnquiry();
+  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft({ enquiryId: 'e1', enquiryName: 'Priya Sharma', notes: 'Kept' })));
+  renderApp('/orders/new?enquiry=e1');
+  expect(await screen.findByRole('button', { name: 'Take order' })).toBeInTheDocument();
+  expect(JSON.parse(sessionStorage.getItem(DRAFT_KEY)).notes).toBe('Kept');
+});

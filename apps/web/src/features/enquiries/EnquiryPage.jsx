@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Alert, Anchor, Button, Group, Loader, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { IconPhoneCall } from '@tabler/icons-react';
 import { formatINR } from '@vs/shared/money.js';
@@ -8,6 +8,7 @@ import { PageHeader } from '../../components/PageHeader.jsx';
 import { displayPhone } from '../customers/CustomersPage.jsx';
 import { useSettings } from '../settings/settingsApi.js';
 import { interestText } from './EnquiriesPage.jsx';
+import { ConvertDialog } from './ConvertDialog.jsx';
 import { EnquiryStatus } from './EnquiryStatus.jsx';
 import { sourceLabel } from './enquiryForm.js';
 import { useEnquiry, useReopenEnquiry } from './enquiriesApi.js';
@@ -35,6 +36,7 @@ const atText = (at) => {
 /** One enquiry: who, what they want, when to call, what was said; the next step as a button. */
 export function EnquiryPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const enquiry = useEnquiry(id);
   const settings = useSettings();
   const reopen = useReopenEnquiry(id);
@@ -62,6 +64,15 @@ export function EnquiryPage() {
             <Button size="lg" variant="default" component={Link} to={`/appointments/new?enquiryId=${e.id}`}>
               Book appointment
             </Button>
+            {e.convertedCustomer ? (
+              <Button size="lg" color="neem" onClick={() => navigate(`/orders/new?enquiry=${e.id}`)}>
+                Continue to order
+              </Button>
+            ) : (
+              <Button size="lg" color="neem" onClick={() => setDialog('convert')}>
+                Convert to order
+              </Button>
+            )}
             <Button size="lg" variant="subtle" color="kumkum" onClick={() => setDialog('lost')}>
               Not interested
             </Button>
@@ -76,6 +87,7 @@ export function EnquiryPage() {
       {reopen.error && <Alert color="red">{reopen.error.message}</Alert>}
 
       {e.status === 'lost' && <Alert color="gray">Not interested: {e.lostReason}</Alert>}
+      {e.isOpen && e.convertedCustomer && <Alert color="green">Customer ready — continue to order</Alert>}
       {e.status === 'converted' && (
         <Alert color="green">
           {e.convertedOrder && (
@@ -130,6 +142,7 @@ export function EnquiryPage() {
 
       {dialog === 'call' && <LogCallDialog enquiry={e} onClose={() => setDialog(null)} />}
       {dialog === 'lost' && <LostDialog enquiry={e} onClose={() => setDialog(null)} />}
+      {dialog === 'convert' && <ConvertDialog enquiry={e} onClose={() => setDialog(null)} />}
     </Stack>
   );
 }

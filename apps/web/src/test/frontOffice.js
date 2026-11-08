@@ -73,6 +73,13 @@ export function enquiriesAre({ list = () => [], one = enquiryFixture(), check = 
       seen.posts.push({ path: `/v1/enquiries/${params.id}/${params.action}`, body });
       const status = { call: current.status === 'new' ? 'contacted' : current.status, lost: 'lost', reopen: 'contacted' }[params.action];
       current = { ...current, status: status ?? current.status, isOpen: status !== 'lost', version: current.version + 1 };
+      if (params.action === 'convert') {
+        const customer = body.customerId
+          ? { id: body.customerId, name: 'Asha Rao', phone: '+919876543210' }
+          : { id: 'c9', name: current.name, phone: current.phone };
+        current = { ...current, convertedCustomer: customer };
+        return HttpResponse.json({ enquiry: current, customer, matched: false });
+      }
       return HttpResponse.json({ enquiry: current });
     }),
   );

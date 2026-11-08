@@ -65,3 +65,15 @@ export const useUpdateEnquiry = (id) => useEnquiryMutation(action(id, '', 'PATCH
 export const useLogCall = (id) => useEnquiryMutation(action(id, '/call'));
 export const useMarkLost = (id) => useEnquiryMutation(action(id, '/lost'));
 export const useReopenEnquiry = (id) => useEnquiryMutation(action(id, '/reopen'));
+
+/** "Convert to order", step one: `{ version, customerId }` → `{ enquiry, customer, matched }`. */
+export function useConvertEnquiry(id) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body) => apiFetch(`/v1/enquiries/${id}/convert`, { method: 'POST', body }),
+    onSuccess: ({ enquiry }) => {
+      queryClient.setQueryData([...ENQUIRIES_KEY, 'one', id], enquiry);
+      queryClient.invalidateQueries({ queryKey: ENQUIRIES_KEY });
+    },
+  });
+}

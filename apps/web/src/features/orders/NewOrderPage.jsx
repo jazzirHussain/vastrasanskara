@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Alert, Button, Group, Loader, Stack } from '@mantine/core';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Alert, Button, Group, Loader, Stack, Text } from '@mantine/core';
+import { useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { PageHeader } from '../../components/PageHeader.jsx';
 import { todayYmd } from '../../components/DateLabel.jsx';
 import { useLatestMeasurements } from '../customers/customersApi.js';
+import { ENQUIRIES_KEY, useEnquiry } from '../enquiries/enquiriesApi.js';
+import { rupeeText } from '../billing/rupees.js';
 import { useSettings } from '../settings/settingsApi.js';
 import { CustomerStep } from './new/CustomerStep.jsx';
 import { DatesStep, datesProblem } from './new/DatesStep.jsx';
@@ -27,6 +30,9 @@ function freshDraft() {
     occasionDate: '',
     notes: '',
     expectedBudget: '',
+    // The enquiry this order is taken from (saving the order marks it converted).
+    enquiryId: null,
+    enquiryName: null,
   };
 }
 
@@ -43,6 +49,25 @@ function loadDraft() {
 
 const toPaise = (rupees) => Math.round(Number(rupees) * 100);
 
+/**
+ * A new draft from a converted enquiry: its customer, budget, occasion, what they want as notes and
+ * one garment line per garment type they asked about.
+ */
+export function draftFromEnquiry(enquiry) {
+  return {
+    ...freshDraft(),
+    customer: enquiry.convertedCustomer
+      ? { id: enquiry.convertedCustomer.id, name: enquiry.convertedCustomer.name, phone: enquiry.convertedCustomer.phone }
+      : null,
+    expectedBudget: enquiry.budget ? rupeeText(enquiry.budget) : '',
+    occasionDate: enquiry.occasionDate ?? '',
+    notes: enquiry.interest ?? '',
+    garments: enquiry.garmentTypes.length ? enquiry.garmentTypes.map((type) => newGarment({ type })) : [newGarment()],
+    enquiryId: enquiry.id,
+    enquiryName: enquiry.name,
+  };
+}
+
 /** The request body; garments without a chosen set use the customer's latest for that type. */
 export function orderBody(draft, latest) {
   return {
@@ -53,6 +78,7 @@ export function orderBody(draft, latest) {
     pickupDate: draft.pickupDate,
     occasionDate: draft.occasionDate || null,
     notes: draft.notes.trim(),
+    enquiryId: draft.enquiryId ?? null,
     garments: draft.garments.map((g) => ({
       type: g.type,
       description: g.description.trim(),
@@ -119,7 +145,16 @@ function StepThread({ step, onPick }) {
 
 export function NewOrderPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [params, setParams] = useSearchParams();
+  const enquiryParam = params.get('enquiry');
   const [draft, setDraft] = useState(loadDraft);
+  // Opened from "Convert to order": start from the enquiry unless the draft already is for it.
+  const seedFrom = enquiryParam && draft.enquiryId !== enquiryParam ? enquiryParam : null;
+  const enquiry = useEnquiry(seedFrom);
+  useEffect(() => {
+    if (seedFrom && enquiry.data?.id === seedFrom) setDraft(draftFromEnquiry(enquiry.data));
+  }, [seedFrom, enquiry.data]);
   const settings = useSettings();
   const designers = useDesigners();
   const latest = useLatestMeasurements(draft.customer?.id);
@@ -155,6 +190,7 @@ export function NewOrderPage() {
       {
         onSuccess: (order) => {
           sessionStorage.removeItem(DRAFT_KEY);
+          if (draft.enquiryId) queryClient.invalidateQueries({ queryKey: ENQUIRIES_KEY });
           notifications.show({ color: 'neem', message: `Order ${order.orderNo} taken` });
           navigate(`/orders/${order.id}`);
         },
@@ -162,8 +198,9 @@ export function NewOrderPage() {
     );
   }
 
-  if (settings.isPending) return <Loader />;
+  if (settings.isPending || (seedFrom && enquiry.isPending)) return <Loader />;
   if (settings.error) return <Alert color="red">{settings.error.message}</Alert>;
+  if (seedFrom && enquiry.error) return <Alert color="red">{enquiry.error.message}</Alert>;
   const garmentTypes = settings.data.garmentTypes;
   const problem = draft.step >= 2 ? datesProblem(draft, today) : null;
   const canAdvance = [
@@ -184,6 +221,19 @@ export function NewOrderPage() {
           </Button>
         }
       />
+      {draft.enquiryId && (
+        <Alert color="indigo" mb="md">
+          <Group justify="space-between" gap="xs">
+            <Text size="sm">From enquiry: {draft.enquiryName}</Text>
+            <Button size="compact-sm" variant="subtle" onClick={() => {
+                update({ enquiryId: null, enquiryName: null });
+                if (enquiryParam) setParams({}, { replace: true });
+              }}>
+              Not from an enquiry
+            </Button>
+          </Group>
+        </Alert>
+      )}
       <StepThread step={draft.step} onPick={go} />
 
       {draft.step === 0 && <CustomerStep draft={draft} update={update} designers={designers.data?.items ?? []} />}
