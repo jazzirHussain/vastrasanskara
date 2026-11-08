@@ -12,6 +12,7 @@ import { MeasurementHistory } from './MeasurementHistory.jsx';
 import { useCustomer, useMeasurements, useRecordMeasurement, useUpdateCustomer } from './customersApi.js';
 import { CustomerMoney } from '../billing/CustomerMoney.jsx';
 import { CustomerOrders } from './CustomerOrders.jsx';
+import { PartyAppointments } from '../appointments/PartyAppointments.jsx';
 
 const CHANNEL_LABELS = { whatsapp: 'WhatsApp', sms: 'SMS', email: 'Email' };
 const labelOf = (list, value) => list.find((x) => x.value === value)?.label ?? value;
@@ -99,6 +100,8 @@ export function CustomerPage() {
       <CustomerMoney customer={c} />
 
       <CustomerOrders customerId={c.id} />
+
+      {can('appointments.own') && <PartyAppointments customerId={c.id} />}
 
       <Drawer opened={editing} onClose={() => { setEditing(false); update.reset(); }} title="Edit details" position="right" size="md">
         {editing && <CustomerForm customer={c} mutation={update} onSaved={() => setEditing(false)} />}

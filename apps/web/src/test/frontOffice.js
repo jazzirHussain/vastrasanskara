@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { server } from './server.js';
 import { todayYmd } from './orders.js';
-import { addDaysYmd } from '@vs/shared/fy.js';
+import { addDaysYmd, atIstTime } from '@vs/shared/fy.js';
 
 /** An enquiry as GET /v1/enquiries/:id returns it. */
 export function enquiryFixture(fields = {}) {
@@ -87,3 +87,74 @@ export function enquiriesAre({ list = () => [], one = enquiryFixture(), check = 
 }
 
 export const tomorrowYmd = () => addDaysYmd(todayYmd(), 1);
+
+/** An appointment as the API returns it, on `date` at `time` (IST). */
+export function appointmentFixture({ date = tomorrowYmd(), time = '11:00', minutes = 60, ...fields } = {}) {
+  const start = atIstTime(date, time);
+  return {
+    id: 'a1',
+    type: 'consultation',
+    date,
+    time,
+    minutes,
+    start: start.toISOString(),
+    end: new Date(start.getTime() + minutes * 60_000).toISOString(),
+    status: 'booked',
+    designer: { id: 'des1', name: 'Meera' },
+    customer: { id: 'c1', name: 'Asha Rao', phone: '+919876543210' },
+    enquiry: null,
+    garments: [],
+    note: '',
+    cancelReason: null,
+    statusAt: null,
+    statusBy: null,
+    createdAt: '2026-11-08T05:00:00Z',
+    version: 0,
+    ...fields,
+  };
+}
+
+/** GET /v1/appointments/day: `columns` is [{ id, name, appointments }]. */
+export const dayFixture = (date, columns) => ({ date, openingTime: '10:00', closingTime: '20:00', designers: columns });
+
+export const designersAre = (items = [{ id: 'des1', name: 'Meera' }, { id: 'des2', name: 'Nila' }]) =>
+  server.use(http.get('/v1/designers', () => HttpResponse.json({ items })));
+
+/**
+ * Answers the appointment routes. `day(params)` → the day view; `list(params)` → items; `book` →
+ * the POST answer (a function of the body, or an error { status, error }). Returns what was asked:
+ * `days`, `lists` (URLSearchParams), `posts` ([{ path, body, key }]), `patches`.
+ */
+export function appointmentsAre({ day = (p) => dayFixture(p.get('date'), []), list = () => [], book } = {}) {
+  const seen = { days: [], lists: [], posts: [], patches: [] };
+  server.use(
+    http.get('/v1/appointments/day', ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      seen.days.push(params);
+      return HttpResponse.json(day(params));
+    }),
+    http.get('/v1/appointments', ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      seen.lists.push(params);
+      return HttpResponse.json({ items: list(params), nextCursor: null });
+    }),
+    http.post('/v1/appointments', async ({ request }) => {
+      const body = await request.json();
+      seen.posts.push({ path: '/v1/appointments', body, key: request.headers.get('Idempotency-Key') });
+      const answer = book ? book(body) : { appointment: appointmentFixture({ ...body, id: 'a9' }) };
+      if (answer.error) return HttpResponse.json({ error: answer.error }, { status: answer.status });
+      return HttpResponse.json(answer, { status: 201 });
+    }),
+    http.patch('/v1/appointments/:id', async ({ request, params }) => {
+      const body = await request.json();
+      seen.patches.push({ path: `/v1/appointments/${params.id}`, body });
+      return HttpResponse.json({ appointment: appointmentFixture({ id: params.id, version: body.version + 1 }) });
+    }),
+    http.post('/v1/appointments/:id/:action', async ({ request, params }) => {
+      const body = await request.json();
+      seen.posts.push({ path: `/v1/appointments/${params.id}/${params.action}`, body });
+      return HttpResponse.json({ appointment: appointmentFixture({ id: params.id, version: body.version + 1 }) });
+    }),
+  );
+  return seen;
+}

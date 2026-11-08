@@ -8,6 +8,7 @@ import { PageHeader } from '../../components/PageHeader.jsx';
 import { displayPhone } from '../customers/CustomersPage.jsx';
 import { useSettings } from '../settings/settingsApi.js';
 import { interestText } from './EnquiriesPage.jsx';
+import { PartyAppointments } from '../appointments/PartyAppointments.jsx';
 import { ConvertDialog } from './ConvertDialog.jsx';
 import { EnquiryStatus } from './EnquiryStatus.jsx';
 import { sourceLabel } from './enquiryForm.js';
@@ -139,6 +140,8 @@ export function EnquiryPage() {
           </ul>
         )}
       </section>
+
+      <PartyAppointments enquiryId={e.id} />
 
       {dialog === 'call' && <LogCallDialog enquiry={e} onClose={() => setDialog(null)} />}
       {dialog === 'lost' && <LostDialog enquiry={e} onClose={() => setDialog(null)} />}

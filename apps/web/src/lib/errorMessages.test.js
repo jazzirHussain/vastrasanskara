@@ -53,3 +53,11 @@ describe('enquiry error messages', () => {
     }
   });
 });
+
+describe('appointment error messages', () => {
+  test('every appointment error code has a plain message', () => {
+    for (const code of ['SLOT_TAKEN', 'APPOINTMENT_IN_PAST', 'APPOINTMENT_CLOSED', 'APPOINTMENT_NOT_DUE']) {
+      expect(errorMessages[code], code).toMatch(/^[A-Z].*[.]$/);
+    }
+  });
+});

@@ -1,4 +1,4 @@
-import { NumberInput, SimpleGrid } from '@mantine/core';
+import { NumberInput, SimpleGrid, Stack, TextInput } from '@mantine/core';
 
 const TYPES = [
   ['consultation', 'Consultation'],
@@ -10,6 +10,17 @@ const TYPES = [
 export function AppointmentsTab({ values, set, errors }) {
   const durations = values.appointmentDurations;
   return (
+    <Stack gap="md">
+      <TextInput
+        label="Appointments start at"
+        description="Free times are offered from here until closing time."
+        type="time"
+        step={900}
+        maw={220}
+        value={values.openingTime}
+        onChange={(e) => set('openingTime', e.currentTarget.value)}
+        error={errors.openingTime}
+      />
     <SimpleGrid cols={{ base: 1, sm: 2 }}>
       {TYPES.map(([type, label]) => (
         <NumberInput
@@ -24,5 +35,6 @@ export function AppointmentsTab({ values, set, errors }) {
         />
       ))}
     </SimpleGrid>
+    </Stack>
   );
 }

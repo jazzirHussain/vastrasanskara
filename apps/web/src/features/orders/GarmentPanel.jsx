@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Anchor, Button, Group, Stack, Text } from '@mantine/core';
 import { useAuth } from '../../auth/AuthContext.js';
 import { DateLabel } from '../../components/DateLabel.jsx';
@@ -118,6 +119,17 @@ export function GarmentPanel({ order, garment, typeLabel, late }) {
           )}
           <GarmentMaterials garment={garment} />
           <StageActions order={order} garment={garment} />
+          {isOpen(order) && garment.currentStage === 'trials_fittings' && garment.status === 'in_progress' && can('appointments.write') && (
+            <Button
+              component={Link}
+              variant="light"
+              size="xs"
+              style={{ alignSelf: 'flex-start' }}
+              to={`/appointments/new?type=fitting&customerId=${order.customer.id}&designerId=${order.designer.id}&orderId=${order.id}&garmentId=${garment.id}`}
+            >
+              Book a fitting
+            </Button>
+          )}
           {canAdjust && (
             <Group gap="xs">
               <Button variant="default" size="xs" onClick={() => setEditing(true)}>
