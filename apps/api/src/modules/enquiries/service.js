@@ -8,7 +8,14 @@ import { AppError, businessRule, conflict, notFound, validationError } from '../
 import { createCustomer, findCustomerByPhone, getCustomer } from '../customers/service.js';
 import { Enquiry } from './model.js';
 
-export { enquiryListFilter, followUpsDue, listEnquiries } from './queries.js';
+export {
+  conversionMatch,
+  enquiryConversionBySource,
+  enquiryIdsForCustomer,
+  enquiryListFilter,
+  followUpsDue,
+  listEnquiries,
+} from './queries.js';
 
 const enquiryExists = (enquiryId) =>
   new AppError(409, 'ENQUIRY_EXISTS', 'There is already an open enquiry for this phone', { enquiryId: String(enquiryId) });

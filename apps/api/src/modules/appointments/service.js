@@ -7,15 +7,26 @@ import { appointmentWhen, appointmentWindow, istDate, istTime } from '@vs/shared
 import { clock } from '../../clock.js';
 import { withTransaction } from '../../core/db.js';
 import { businessRule, conflict, notFound, validationError } from '../../core/errors.js';
-import { getCustomer, getCustomerSummaries } from '../customers/service.js';
-import { getEnquiry, getEnquiryParties, noteAppointmentBooked } from '../enquiries/service.js';
+import { getCustomer } from '../customers/service.js';
+import { getEnquiry, noteAppointmentBooked } from '../enquiries/service.js';
 import { getGarmentsForAppointment } from '../orders/service.js';
 import { readSettings } from '../settings/service.js';
-import { getUserNames, isActiveDesigner } from '../users/service.js';
-import { clientIdOf, toAppointmentJson } from './json.js';
+import { isActiveDesigner } from '../users/service.js';
 import { Appointment, ensureDesignerDayLocks, lockDesignerDay, lockKey } from './model.js';
+import { appointmentScope } from './queries.js';
 
-const WRITE = 'appointments.write';
+export {
+  appointmentCounts,
+  appointmentScope,
+  appointmentJsonContext,
+  appointmentListFilter,
+  appointmentsForDay,
+  appointmentsJson,
+  dayFilter,
+  listAppointments,
+  reminderFilter,
+} from './queries.js';
+
 const fieldError = (path, message) => validationError([{ path, message }]);
 const closedAppointment = () => businessRule('APPOINTMENT_CLOSED', 'This appointment is closed');
 const inPast = () => businessRule('APPOINTMENT_IN_PAST', 'This time has already passed');
@@ -26,8 +37,6 @@ const slotTaken = (a) =>
     end: a.end.toISOString(),
   });
 
-/** Users without appointments.write see only appointments where they are the designer. */
-export const appointmentScope = (user) => (user?.permissions?.has(WRITE) ? {} : { designerId: user.id });
 
 function windowOf({ date, time, minutes }) {
   try {
@@ -227,20 +236,3 @@ export async function getAppointment(branchId, user, id) {
   return appointment;
 }
 
-/** Everything toAppointmentJson needs for these appointments, in four batched reads. */
-export async function appointmentJsonContext(branchId, appointments, session) {
-  const enquiries = await getEnquiryParties(branchId, appointments.map((a) => a.enquiryId), session);
-  const [names, customers, garmentRows] = await Promise.all([
-    getUserNames(appointments.flatMap((a) => [a.designerId, a.statusBy])),
-    getCustomerSummaries(branchId, appointments.map((a) => clientIdOf(a, enquiries)), session),
-    getGarmentsForAppointment(branchId, appointments.flatMap((a) => a.garmentIds ?? []), session),
-  ]);
-  const garments = new Map(garmentRows.map((g) => [g.id, g]));
-  return { names, customers, enquiries, garments };
-}
-
-/** Appointments as the API answers them. */
-export async function appointmentsJson(branchId, appointments) {
-  const ctx = await appointmentJsonContext(branchId, appointments);
-  return appointments.map((a) => toAppointmentJson(a, ctx));
-}

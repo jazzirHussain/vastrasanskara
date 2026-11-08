@@ -1,14 +1,23 @@
 import { Router } from 'express';
-import { appointmentCancelSchema, appointmentMarkSchema, appointmentMoveSchema, appointmentSchema } from '@vs/shared';
+import {
+  appointmentCancelSchema,
+  appointmentDayQuery,
+  appointmentListQuery,
+  appointmentMarkSchema,
+  appointmentMoveSchema,
+  appointmentSchema,
+} from '@vs/shared';
 import { actorFrom, requirePermission } from '../../core/auth/middleware.js';
 import { idempotent } from '../../core/idempotency.js';
 import { validate, versioned } from '../../core/validate.js';
 import { logger } from '../../logger.js';
 import {
+  appointmentsForDay,
   appointmentsJson,
   bookAppointment,
   cancelAppointment,
   getAppointment,
+  listAppointments,
   markAppointment,
   moveAppointment,
 } from './service.js';
@@ -42,6 +51,16 @@ export function appointmentsRouter() {
 
   router.post('/', requirePermission(WRITE), validate({ body: appointmentSchema }), idempotent(), async (req, res) => {
     await respondCommitted(req, res, await bookAppointment(req.user.branchId, req.body, actorFrom(req)));
+  });
+
+  router.get('/day', requirePermission(OWN), validate({ query: appointmentDayQuery }), async (req, res) => {
+    res.json(await appointmentsForDay(req.user.branchId, req.user, req.validatedQuery));
+  });
+
+  router.get('/', requirePermission(OWN), validate({ query: appointmentListQuery }), async (req, res) => {
+    const { branchId } = req.user;
+    const { items, nextCursor } = await listAppointments(branchId, req.user, req.validatedQuery);
+    res.json({ items: await appointmentsJson(branchId, items), nextCursor });
   });
 
   router.get('/:id', requirePermission(OWN), async (req, res) => {
