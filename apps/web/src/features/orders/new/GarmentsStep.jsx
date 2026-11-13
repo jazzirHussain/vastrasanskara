@@ -23,7 +23,7 @@ import { MaterialLinesEditor } from '../../stock/GarmentMaterials.jsx';
 const ACCEPT = [...IMAGE_TYPES, 'application/pdf'];
 
 /** A blank garment line. `measurementId` undefined means "the latest set for its type". */
-export function newGarment() {
+export function newGarment(fields = {}) {
   return {
     uid: crypto.randomUUID(),
     type: 'blouse',
@@ -35,6 +35,7 @@ export function newGarment() {
     dueDate: '',
     referenceKeys: [],
     materials: [],
+    ...fields,
   };
 }
 

@@ -35,24 +35,31 @@ function assertCustomerRules(customer) {
   if (issues.length) throw validationError(issues);
 }
 
-/** Creates a customer; the branch's state is used when no state code is given. */
-export async function createCustomer(branchId, input, actor) {
+// The body of createCustomer, inside the caller's transaction.
+async function insertCustomer(branchId, fields, actor, session) {
+  await assertPhoneFree(branchId, fields.phone, null, session);
+  const [customer] = await Customer.create(
+    [{ ...fields, branchId, searchName: fields.name.toLowerCase(), createdBy: actor.userId, updatedBy: actor.userId }],
+    { session },
+  );
+  await recordAudit(
+    { branchId, entityType: 'customer', entityId: customer._id, action: 'create', before: null, after: auditFields(customer), actor },
+    session,
+  );
+  return customer.toObject();
+}
+
+/**
+ * Creates a customer; the branch's state is used when no state code is given. With `session` it
+ * joins the caller's transaction (a duplicate phone then aborts it), else it opens its own.
+ */
+export async function createCustomer(branchId, input, actor, { session } = {}) {
   const stateCode = input.stateCode ?? (await getBranch(branchId)).stateCode;
   const fields = { ...input, stateCode };
   assertCustomerRules(fields);
+  if (session) return insertCustomer(branchId, fields, actor, session);
   try {
-    return await withTransaction(async (session) => {
-      await assertPhoneFree(branchId, fields.phone, null, session);
-      const [customer] = await Customer.create(
-        [{ ...fields, branchId, searchName: fields.name.toLowerCase(), createdBy: actor.userId, updatedBy: actor.userId }],
-        { session },
-      );
-      await recordAudit(
-        { branchId, entityType: 'customer', entityId: customer._id, action: 'create', before: null, after: auditFields(customer), actor },
-        session,
-      );
-      return customer.toObject();
-    });
+    return await withTransaction((txn) => insertCustomer(branchId, fields, actor, txn));
   } catch (err) {
     return rethrowDuplicate(err, branchId, fields.phone);
   }
@@ -96,10 +103,23 @@ export async function getCustomer(branchId, id, session) {
   return customer;
 }
 
+/** The branch's customer with this (E.164) phone, or null. */
+export function findCustomerByPhone(branchId, phone, session) {
+  return Customer.findOne({ branchId, phone }).session(session ?? null).lean();
+}
+
 /** Names of the given customers of the branch, by id (for order lists). */
 export async function getCustomerNames(branchId, ids) {
   const customers = await Customer.find({ branchId, _id: { $in: ids } }, { name: 1 }).lean();
   return new Map(customers.map((c) => [String(c._id), c.name]));
+}
+
+/** Name and phone of the given customers of the branch, by id (for appointments). */
+export async function getCustomerSummaries(branchId, ids, session) {
+  const unique = [...new Set(ids.filter(Boolean).map(String))].filter((id) => mongoose.isValidObjectId(id));
+  if (!unique.length) return new Map();
+  const customers = await Customer.find({ branchId, _id: { $in: unique } }, { name: 1, phone: 1 }).session(session ?? null).lean();
+  return new Map(customers.map((c) => [String(c._id), { name: c.name, phone: c.phone }]));
 }
 
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

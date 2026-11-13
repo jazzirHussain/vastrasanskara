@@ -74,3 +74,15 @@ test('saves only changed settings', async () => {
   expect(await screen.findByText('No changes to save.')).toBeInTheDocument();
   expect(bodies).toHaveLength(1);
 });
+test('the appointments tab sets the opening time', async () => {
+  asAdmin(); withBranch(); let sent;
+  server.use(http.put('/v1/settings', async ({ request }) => { sent = await request.json(); return HttpResponse.json({ ...defaultSettings, ...sent }); }));
+  renderApp('/settings');
+  await userEvent.click(await screen.findByRole('tab', { name: 'Appointments' }));
+  const input = screen.getByLabelText('Appointments start at');
+  expect(input).toHaveValue('10:00');
+  expect(screen.getByText('Free times are offered from here until closing time.')).toBeInTheDocument();
+  await userEvent.clear(input); await userEvent.type(input, '09:30');
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await expect.poll(() => sent?.openingTime).toBe('09:30');
+});

@@ -45,3 +45,19 @@ describe('stock error messages', () => {
     }
   });
 });
+
+describe('enquiry error messages', () => {
+  test('every enquiry error code has a plain message', () => {
+    for (const code of ['ENQUIRY_EXISTS', 'ENQUIRY_CLOSED', 'ENQUIRY_CUSTOMER_MISMATCH']) {
+      expect(errorMessages[code], code).toMatch(/^[A-Z].*[.]$/);
+    }
+  });
+});
+
+describe('appointment error messages', () => {
+  test('every appointment error code has a plain message', () => {
+    for (const code of ['SLOT_TAKEN', 'APPOINTMENT_IN_PAST', 'APPOINTMENT_CLOSED', 'APPOINTMENT_NOT_DUE']) {
+      expect(errorMessages[code], code).toMatch(/^[A-Z].*[.]$/);
+    }
+  });
+});

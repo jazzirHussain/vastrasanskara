@@ -36,7 +36,7 @@ const expenseCategories = z
     if (!cats.some((c) => c.active)) ctx.addIssue({ code: 'custom', message: 'Keep at least one category showing' });
   });
 
-export const settingsSchema = z.strictObject({
+const settingsFields = z.strictObject({
   advancePercent: z.int().min(0).max(100),
   billDueDays: z.int().min(0).max(365),
   cancellationRefundSchedule: z
@@ -63,13 +63,23 @@ export const settingsSchema = z.strictObject({
   // '<docType>:<fyCode>' → first number of that series, e.g. 'invoice:2627' → 101
   numberSeries: z.record(z.string().regex(/^[a-z_]+:\d{4}$/), z.int().positive()),
   dailyJobTime: hhmm,
+  openingTime: hhmm,
   closingTime: hhmm,
   garmentTypes,
   expenseCategories,
 });
 
+// Free appointment times are offered from the opening to the closing time.
+function checkOpeningHours(value, ctx) {
+  if (value.openingTime && value.closingTime && value.openingTime >= value.closingTime) {
+    ctx.addIssue({ code: 'custom', path: ['openingTime'], message: 'Opening time must be before closing time' });
+  }
+}
+
+export const settingsSchema = settingsFields.superRefine(checkOpeningHours);
+
 /** A PUT /v1/settings body: any subset of top-level settings (each replaced whole). */
-export const settingsPatchSchema = settingsSchema.partial();
+export const settingsPatchSchema = settingsFields.partial().superRefine(checkOpeningHours);
 
 const NIGHT = { start: '21:00', end: '09:00' };
 
@@ -100,6 +110,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   b2clThreshold: 10000000,
   numberSeries: {},
   dailyJobTime: '08:00',
+  openingTime: '10:00',
   closingTime: '20:00',
   garmentTypes: [
     {

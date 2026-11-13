@@ -30,6 +30,8 @@ export const orderCreateSchema = z.strictObject({
   occasionDate: ymd.nullable().default(null),
   notes: z.string().trim().max(2000).default(''),
   garments: z.array(garmentInputSchema).min(1).max(50),
+  // The enquiry this order was taken from; saving the order marks it converted.
+  enquiryId: objectId.nullable().default(null),
 });
 
 /** PATCH /v1/orders/:id (with `version`): any subset of these. */

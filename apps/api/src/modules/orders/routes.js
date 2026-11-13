@@ -165,6 +165,12 @@ async function respondCommitted(req, res, order) {
   res.status(201).json(body);
 }
 
+// An order saved for an enquiry closes that enquiry, so it needs the enquiry permission too.
+function requireEnquiryPermission(req, res, next) {
+  if (req.body?.enquiryId) return requirePermission('enquiries.write')(req, res, next);
+  return next();
+}
+
 export function ordersRouter() {
   const router = Router();
 
@@ -203,6 +209,7 @@ export function ordersRouter() {
   router.post(
     '/',
     requirePermission('orders.write'),
+    requireEnquiryPermission,
     validate({ body: orderCreateSchema }),
     idempotent(),
     async (req, res) => {

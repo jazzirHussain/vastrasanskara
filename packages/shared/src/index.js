@@ -22,3 +22,5 @@ export * from './schemas/billing.js';
 export * from './schemas/expenses.js';
 export * from './stock.js';
 export * from './schemas/stock.js';
+export * from './frontOffice.js';
+export * from './schemas/frontOffice.js';

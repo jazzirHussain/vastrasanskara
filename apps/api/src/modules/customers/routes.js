@@ -3,26 +3,8 @@ import { z } from 'zod';
 import { customerPatchSchema, customerSchema } from '@vs/shared/schemas/customers.js';
 import { actorFrom, requirePermission } from '../../core/auth/middleware.js';
 import { validate, versioned } from '../../core/validate.js';
+import { toCustomerJson } from './json.js';
 import { createCustomer, findCustomers, getCustomer, updateCustomer } from './service.js';
-
-export function toCustomerJson(c) {
-  return {
-    id: String(c._id),
-    name: c.name,
-    phone: c.phone,
-    email: c.email ?? null,
-    type: c.type,
-    gstin: c.gstin ?? null,
-    stateCode: c.stateCode,
-    billingAddress: { line1: '', line2: '', city: '', pincode: '', ...c.billingAddress },
-    source: c.source,
-    consent: { email: false, whatsapp: false, sms: false, ...c.consent },
-    consentNote: c.consentNote ?? '',
-    preferredChannel: c.preferredChannel ?? null,
-    createdAt: c.createdAt,
-    version: c.__v,
-  };
-}
 
 const listQuery = z.strictObject({
   q: z.string().max(100).optional(),

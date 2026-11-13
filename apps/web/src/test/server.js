@@ -38,6 +38,12 @@ export const server = setupServer(
   http.get('/v1/settings', () => HttpResponse.json(defaultSettings)),
   http.get('/v1/branch', () => HttpResponse.json(defaultBranch)),
   http.get('/v1/orders', () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get('/v1/enquiries', () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get('/v1/enquiries/follow-ups/count', () => HttpResponse.json({ count: 0, overdue: 0 })),
+  http.get('/v1/appointments', () => HttpResponse.json({ items: [], nextCursor: null })),
+  http.get('/v1/appointments/day', ({ request }) =>
+    HttpResponse.json({ date: new URL(request.url).searchParams.get('date'), openingTime: '10:00', closingTime: '20:00', designers: [] }),
+  ),
   http.get('/v1/expenses/payees', () => HttpResponse.json({ vendors: [], recent: [] })),
   http.get('/v1/expenses', () => HttpResponse.json({ items: [], nextCursor: null })),
   http.get('/v1/expenses/summary', ({ request }) =>
@@ -98,7 +104,7 @@ export const designerUser = {
   name: 'Meera',
   email: 'meera@x.com',
   roles: ['designer'],
-  permissions: ['orders.read.own', 'production.update', 'measurements.write', 'customers.read', 'stock.consume.own'],
+  permissions: ['orders.read.own', 'production.update', 'measurements.write', 'customers.read', 'stock.consume.own', 'appointments.own'],
   branchId: 'b1',
 };
 

@@ -2,7 +2,9 @@ import { z } from 'zod';
 import { email, gstin, phone, stateCode } from './common.js';
 
 const CUSTOMER_TYPES = ['individual', 'business', 'film_production'];
-const SOURCES = ['instagram', 'referral', 'walk_in', 'website', 'film_industry', 'other'];
+/** Where a customer (or an enquiry) heard of the house. */
+export const CUSTOMER_SOURCES = Object.freeze(['instagram', 'referral', 'walk_in', 'website', 'film_industry', 'other']);
+const SOURCES = CUSTOMER_SOURCES;
 const CHANNELS = ['email', 'whatsapp', 'sms'];
 
 const consent = z.strictObject({ email: z.boolean(), whatsapp: z.boolean(), sms: z.boolean() });
