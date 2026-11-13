@@ -27,8 +27,11 @@ async function remindBranch(branchId, now) {
   const quiet = await clientQuietNow(branchId, now);
   let queued = 0;
   for (const { a, kind } of due) {
-    queued += await withTransaction((session) =>
-      emitAppointmentEvent(
+    queued += await withTransaction(async (session) => {
+      // Cancelled or moved since the scan read it: nothing to remind.
+      const still = await Appointment.exists({ _id: a._id, status: 'booked', start: a.start }).session(session);
+      if (!still) return 0;
+      return emitAppointmentEvent(
         'appointment.reminder',
         a,
         {
@@ -38,8 +41,8 @@ async function remindBranch(branchId, now) {
           now,
         },
         session,
-      ),
-    );
+      );
+    });
   }
   return queued;
 }

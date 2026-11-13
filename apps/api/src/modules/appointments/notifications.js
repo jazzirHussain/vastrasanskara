@@ -4,7 +4,7 @@
 import { APPOINTMENT_TYPE_LABELS, appointmentWhen, istDate } from '@vs/shared';
 import { clock } from '../../clock.js';
 import { defineEvent } from '../../core/notify/catalog.js';
-import { emit } from '../../core/notify/emit.js';
+import { emit, withdrawPending } from '../../core/notify/emit.js';
 import { getCustomerSummaries } from '../customers/service.js';
 import { getEnquiryParties } from '../enquiries/service.js';
 import { getUserNames } from '../users/service.js';
@@ -99,4 +99,14 @@ export async function emitAppointmentEvent(
     { session },
   );
   return queued;
+}
+
+/**
+ * Withdraws the reminders of an appointment that are still waiting (for every start time it has
+ * had), so a cancelled or moved appointment is never reminded at its old time. Inside `session`.
+ */
+export async function withdrawAppointmentReminders(appointment, session) {
+  const target = { branchId: appointment.branchId, refId: String(appointment._id) };
+  await withdrawPending('appointment.reminder', target, { session });
+  await withdrawPending('appointment.reminder.designer', target, { session });
 }

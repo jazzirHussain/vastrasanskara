@@ -13,7 +13,7 @@ import { getGarmentsForAppointment } from '../orders/service.js';
 import { readSettings } from '../settings/service.js';
 import { isActiveDesigner } from '../users/service.js';
 import { Appointment, ensureDesignerDayLocks, lockDesignerDay, lockKey } from './model.js';
-import { emitAppointmentEvent } from './notifications.js';
+import { emitAppointmentEvent, withdrawAppointmentReminders } from './notifications.js';
 import { appointmentScope } from './queries.js';
 
 export {
@@ -197,6 +197,7 @@ export async function moveAppointment(branchId, id, { version, patch }, actor) {
     await appointment.save({ session });
     const moved = appointment.toObject();
     if (timingChanged) {
+      await withdrawAppointmentReminders(moved, session);
       // The version after this save names the move, so each move is told once.
       const ref = `${moved._id}:${moved.__v}`;
       await emitAppointmentEvent('appointment.changed', moved, { previous, refId: ref }, session);
@@ -221,6 +222,7 @@ export function cancelAppointment(branchId, id, { version, patch: { reason } }, 
     appointment.updatedBy = actor.userId;
     appointment.increment();
     await appointment.save({ session });
+    await withdrawAppointmentReminders(appointment, session);
     await emitAppointmentEvent('appointment.cancelled', appointment.toObject(), { refId: String(appointment._id) }, session);
     return appointment.toObject();
   });

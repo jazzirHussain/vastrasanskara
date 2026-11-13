@@ -4,6 +4,7 @@ import { buildTestApp } from './helpers/app.js';
 import { frontOfficeHelpers } from './helpers/frontOffice.js';
 import { Outbox } from '../src/core/notify/models.js';
 import { getJobDefinitions } from '../src/core/jobs/registry.js';
+import { Appointment } from '../src/modules/appointments/model.js';
 import { runAppointmentReminders } from '../src/modules/appointments/reminders.js';
 import '../src/jobs.js';
 
@@ -202,4 +203,45 @@ test('reminder messages carry no phone number', async () => {
 
 test('the reminders job is registered every 15 minutes', () => {
   expect(getJobDefinitions().get('appointments-reminders')).toMatchObject({ schedule: '*/15 * * * *' });
+});
+
+const pendingReminders = () => Outbox.countDocuments({ event: /^appointment\.reminder/, status: 'pending' });
+
+test('cancelling withdraws reminders that are still waiting', async () => {
+  const { ops, bookAt } = await setup();
+  const a = await bookAt('11:00', { date: D1 });
+  atIst(D, '11:00');
+  expect((await runAppointmentReminders()).queued).toBe(3);
+  expect(await pendingReminders()).toBe(3);
+  ok(await ops.agent.post(`/v1/appointments/${a.id}/cancel`).send({ version: 0 }));
+  expect(await pendingReminders()).toBe(0);
+  const rows = await Outbox.find({ event: /^appointment\.reminder/ }).lean();
+  expect(rows.map((r) => [r.status, r.skipReason])).toEqual(rows.map(() => ['skipped', 'withdrawn']));
+});
+
+test('moving withdraws the reminders of the old time', async () => {
+  const { ops, bookAt } = await setup();
+  const a = await bookAt('11:00', { date: D1 });
+  atIst(D, '11:00');
+  await runAppointmentReminders();
+  expect(await pendingReminders()).toBe(3);
+  ok(await ops.agent.patch(`/v1/appointments/${a.id}`).send({ version: 0, time: '12:00' }));
+  expect(await pendingReminders()).toBe(0);
+  // A note change leaves reminders alone.
+  atIst(D, '12:00');
+  await runAppointmentReminders();
+  expect(await pendingReminders()).toBe(3);
+  ok(await ops.agent.patch(`/v1/appointments/${a.id}`).send({ version: 1, note: 'Bring the blouse' }));
+  expect(await pendingReminders()).toBe(3);
+});
+
+test('a reminder scan that read an appointment before it was cancelled queues nothing', async () => {
+  const { ops, bookAt } = await setup();
+  const a = await bookAt('11:00', { date: D1 });
+  atIst(D, '11:00');
+  const stale = await Appointment.find({ _id: a.id }).lean();
+  ok(await ops.agent.post(`/v1/appointments/${a.id}/cancel`).send({ version: 0 }));
+  vi.spyOn(Appointment, 'find').mockReturnValue({ lean: async () => stale });
+  expect((await runAppointmentReminders()).queued).toBe(0);
+  expect(await Outbox.countDocuments({ event: /^appointment\.reminder/ })).toBe(0);
 });
