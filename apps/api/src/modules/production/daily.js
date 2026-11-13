@@ -3,7 +3,7 @@
 // reached settings.dailyJobTime, and the outbox dedupe keys (one per day) keep every message to
 // once a day however often it runs.
 import { addDaysYmd, istDate, istTime } from '@vs/shared/fy.js';
-import { isGarmentLate, isNearlyReady, workingStage } from '@vs/shared/production.js';
+import { isGarmentLate, isPickupAtRisk, workingStage } from '@vs/shared/production.js';
 import { STAGES } from '@vs/shared/stages.js';
 import { clock } from '../../clock.js';
 import { withTransaction } from '../../core/db.js';
@@ -40,11 +40,8 @@ async function checkBranch(branchId, settings, day) {
     });
   }
 
-  const soon = addDaysYmd(day, 3);
   // Pickup in three days or fewer (spec: the order's pickup, whatever a garment's own due date).
-  const atRisk = items.filter(
-    (r) => r.garment.status === 'in_progress' && r.order.pickupDate >= day && r.order.pickupDate <= soon && !isNearlyReady(r.garment),
-  );
+  const atRisk = items.filter((r) => isPickupAtRisk(r, day));
   for (const rows of groupBy(atRisk, (r) => String(r.order._id)).values()) {
     const { order, customerName } = rows[0];
     queued += await send('pickup.at_risk', {

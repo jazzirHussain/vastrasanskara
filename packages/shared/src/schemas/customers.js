@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { email, gstin, phone, stateCode } from './common.js';
 
-const CUSTOMER_TYPES = ['individual', 'business', 'film_production'];
+export const CUSTOMER_TYPES = Object.freeze(['individual', 'business', 'film_production']);
 /** Where a customer (or an enquiry) heard of the house. */
 export const CUSTOMER_SOURCES = Object.freeze(['instagram', 'referral', 'walk_in', 'website', 'film_industry', 'other']);
 const SOURCES = CUSTOMER_SOURCES;

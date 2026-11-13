@@ -1,5 +1,6 @@
 // Production rules: which stage action a garment accepts in which state, and the state that
 // follows. Pure, so the API decides with it and the web offers only what the API will accept.
+import { addDaysYmd } from './fy.js';
 import { WORK_STAGES } from './planning.js';
 import { STAGE_KEYS, stageIndex } from './stages.js';
 
@@ -57,6 +58,19 @@ export function isGarmentLate(garment, order, today) {
 export function isNearlyReady(garment) {
   if (garment.status === 'ready' || garment.status === 'picked_up') return true;
   return stageIndex(workingStage(garment)) >= stageIndex('final_qc');
+}
+
+/**
+ * Pickup at risk: the garment is in progress, its order's pickup falls today or within the next
+ * three days, and the garment is not yet nearly ready.
+ */
+export function isPickupAtRisk({ garment, order }, today) {
+  return (
+    garment.status === 'in_progress' &&
+    order.pickupDate >= today &&
+    order.pickupDate <= addDaysYmd(today, 3) &&
+    !isNearlyReady(garment)
+  );
 }
 
 /**

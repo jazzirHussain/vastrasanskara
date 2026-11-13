@@ -24,3 +24,8 @@ export * from './stock.js';
 export * from './schemas/stock.js';
 export * from './frontOffice.js';
 export * from './schemas/frontOffice.js';
+export * from './dashboard.js';
+export * from './reports/catalog.js';
+export * from './reports/csv.js';
+export * from './schemas/dashboard.js';
+export * from './schemas/reports.js';

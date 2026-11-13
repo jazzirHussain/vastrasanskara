@@ -7,6 +7,7 @@ import {
   applyStageAction,
   isGarmentLate,
   isNearlyReady,
+  isPickupAtRisk,
   nextStage,
   workingStage,
 } from '../src/production.js';
@@ -186,4 +187,15 @@ test('nearly ready from final QC on', () => {
   expect(isNearlyReady(garment({ currentStage: 'branding' }))).toBe(false);
   expect(isNearlyReady(garment({ currentStage: 'final_qc' }))).toBe(true);
   expect(isNearlyReady(garment({ currentStage: 'ready_for_pickup', status: 'ready' }))).toBe(true);
+});
+
+test('isPickupAtRisk matches the daily job rule', () => {
+  const order = (pickupDate) => ({ pickupDate });
+  const g = (over = {}) => garment({ currentStage: 'branding', ...over });
+  expect(isPickupAtRisk({ garment: g(), order: order('2026-11-13') }, TODAY)).toBe(true);
+  expect(isPickupAtRisk({ garment: g(), order: order(TODAY) }, TODAY)).toBe(true);
+  expect(isPickupAtRisk({ garment: g(), order: order('2026-11-14') }, TODAY)).toBe(false);
+  expect(isPickupAtRisk({ garment: g(), order: order('2026-11-09') }, TODAY)).toBe(false);
+  expect(isPickupAtRisk({ garment: g({ currentStage: 'final_qc' }), order: order('2026-11-12') }, TODAY)).toBe(false);
+  expect(isPickupAtRisk({ garment: g({ status: 'ready' }), order: order('2026-11-12') }, TODAY)).toBe(false);
 });
