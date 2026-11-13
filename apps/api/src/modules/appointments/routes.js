@@ -20,12 +20,14 @@ import {
   listAppointments,
   markAppointment,
   moveAppointment,
+  seesAll,
 } from './service.js';
 
 const WRITE = 'appointments.write';
 const OWN = 'appointments.own';
 
-const one = async (branchId, appointment) => (await appointmentsJson(branchId, [appointment]))[0];
+const one = async (user, appointment) =>
+  (await appointmentsJson(user.branchId, [appointment], { showEnquiryPhone: seesAll(user) }))[0];
 
 /**
  * Answers 201 for a booking that has committed. If reading it back fails the reply is still a
@@ -34,7 +36,7 @@ const one = async (branchId, appointment) => (await appointmentsJson(branchId, [
 async function respondCommitted(req, res, appointment) {
   let body;
   try {
-    body = { appointment: await one(req.user.branchId, appointment) };
+    body = { appointment: await one(req.user, appointment) };
   } catch (err) {
     logger.warn({ err, appointmentId: String(appointment._id), requestId: req.id }, 'appointment booked; reading it back failed');
     body = { appointment: { id: String(appointment._id), status: appointment.status, version: appointment.__v } };
@@ -60,29 +62,29 @@ export function appointmentsRouter() {
   router.get('/', requirePermission(OWN), validate({ query: appointmentListQuery }), async (req, res) => {
     const { branchId } = req.user;
     const { items, nextCursor } = await listAppointments(branchId, req.user, req.validatedQuery);
-    res.json({ items: await appointmentsJson(branchId, items), nextCursor });
+    res.json({ items: await appointmentsJson(branchId, items, { showEnquiryPhone: seesAll(req.user) }), nextCursor });
   });
 
   router.get('/:id', requirePermission(OWN), async (req, res) => {
     const { branchId } = req.user;
-    res.json({ appointment: await one(branchId, await getAppointment(branchId, req.user, req.params.id)) });
+    res.json({ appointment: await one(req.user, await getAppointment(branchId, req.user, req.params.id)) });
   });
 
   router.patch('/:id', requirePermission(WRITE), validate({ body: versioned(appointmentMoveSchema) }), async (req, res) => {
     const { branchId } = req.user;
     const { appointment } = await moveAppointment(branchId, req.params.id, req.body, actorFrom(req));
-    res.json({ appointment: await one(branchId, appointment) });
+    res.json({ appointment: await one(req.user, appointment) });
   });
 
   router.post('/:id/cancel', requirePermission(WRITE), validate({ body: versioned(appointmentCancelSchema) }), async (req, res) => {
     const { branchId } = req.user;
-    res.json({ appointment: await one(branchId, await cancelAppointment(branchId, req.params.id, req.body, actorFrom(req))) });
+    res.json({ appointment: await one(req.user, await cancelAppointment(branchId, req.params.id, req.body, actorFrom(req))) });
   });
 
   router.post('/:id/mark', requirePermission(OWN), validate({ body: versioned(appointmentMarkSchema) }), async (req, res) => {
     const { branchId } = req.user;
     const appointment = await markAppointment(branchId, req.user, req.params.id, req.body, actorFrom(req));
-    res.json({ appointment: await one(branchId, appointment) });
+    res.json({ appointment: await one(req.user, appointment) });
   });
 
   return router;

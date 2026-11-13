@@ -185,3 +185,27 @@ test('an enquiry from phone call to order', async () => {
     { source: 'instagram', total: 1, converted: 1, lost: 0, open: 0 },
   ]);
 });
+
+test("designers never see an enquiry's phone; front desk does", async () => {
+  const { ops, d1 } = await world();
+  const e = (await addEnquiry(ops, { phone: '98450 12345' })).body.enquiry;
+  const booked = await book(ops, { type: 'consultation', designerId: String(d1.user._id), enquiryId: e.id, date: D, time: '11:00' });
+  ok(booked, 201);
+  const a = booked.body.appointment;
+  expect(a.enquiry.phone).toBeTruthy();
+  const forDesigner = [
+    await d1.agent.get(`/v1/appointments/${a.id}`),
+    await d1.agent.get('/v1/appointments/day').query({ date: D }),
+    await d1.agent.get('/v1/appointments'),
+  ];
+  for (const r of forDesigner) {
+    ok(r);
+    expect(JSON.stringify(r.body)).not.toContain('9845012345');
+    expect(JSON.stringify(r.body)).not.toContain('98450 12345');
+    expect(keysOf(r.body).has('phone')).toBe(false);
+  }
+  expect(forDesigner[0].body.appointment.enquiry).toEqual({ id: e.id, name: 'Priya Sharma' });
+  const desk = [await ops.agent.get(`/v1/appointments/${a.id}`), await ops.agent.get('/v1/appointments')];
+  expect(desk[0].body.appointment.enquiry.phone).toBeTruthy();
+  expect(desk[1].body.items[0].enquiry.phone).toBeTruthy();
+});

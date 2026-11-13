@@ -9,9 +9,10 @@ export const clientIdOf = (a, enquiries) =>
 
 /**
  * `ctx`: `names` (user id → name), `customers` (id → { name, phone }), `enquiries` (id → { name,
- * phone, convertedCustomerId }), `garments` (id → { garmentNo, description }).
+ * phone, convertedCustomerId }), `garments` (id → { garmentNo, description }). An enquiry's phone
+ * is shown only with `showEnquiryPhone` (front desk); designers never see it.
  */
-export function toAppointmentJson(a, { names, customers, enquiries, garments }) {
+export function toAppointmentJson(a, { names, customers, enquiries, garments, showEnquiryPhone = false }) {
   const clientId = clientIdOf(a, enquiries);
   const customer = clientId ? customers.get(String(clientId)) : null;
   const enquiry = a.enquiryId ? enquiries.get(String(a.enquiryId)) : null;
@@ -26,7 +27,13 @@ export function toAppointmentJson(a, { names, customers, enquiries, garments }) 
     status: a.status,
     designer: named(a.designerId, names),
     customer: clientId ? { id: String(clientId), name: customer?.name ?? null, phone: customer?.phone ?? null } : null,
-    enquiry: a.enquiryId ? { id: String(a.enquiryId), name: enquiry?.name ?? null, phone: enquiry?.phone ?? null } : null,
+    enquiry: a.enquiryId
+      ? {
+          id: String(a.enquiryId),
+          name: enquiry?.name ?? null,
+          ...(showEnquiryPhone ? { phone: enquiry?.phone ?? null } : {}),
+        }
+      : null,
     garments: (a.garmentIds ?? []).map((id) => {
       const g = garments.get(String(id));
       return { id: String(id), garmentNo: g?.garmentNo ?? null, description: g?.description ?? null };

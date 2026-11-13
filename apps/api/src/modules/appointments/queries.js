@@ -20,7 +20,7 @@ const WRITE = 'appointments.write';
 
 /** Users without appointments.write see only appointments where they are the designer. */
 export const appointmentScope = (user) => (user?.permissions?.has(WRITE) ? {} : { designerId: user.id });
-const seesAll = (user) => Boolean(user?.permissions?.has(WRITE));
+export const seesAll = (user) => Boolean(user?.permissions?.has(WRITE));
 
 /** Everything toAppointmentJson needs for these appointments, in batched reads. */
 export async function appointmentJsonContext(branchId, appointments, session) {
@@ -33,9 +33,9 @@ export async function appointmentJsonContext(branchId, appointments, session) {
   return { names, customers, enquiries, garments: new Map(garmentRows.map((g) => [g.id, g])) };
 }
 
-/** Appointments as the API answers them. */
-export async function appointmentsJson(branchId, appointments) {
-  const ctx = await appointmentJsonContext(branchId, appointments);
+/** Appointments as the API answers them; `showEnquiryPhone` is for front desk only. */
+export async function appointmentsJson(branchId, appointments, { showEnquiryPhone = false } = {}) {
+  const ctx = { ...(await appointmentJsonContext(branchId, appointments)), showEnquiryPhone };
   return appointments.map((a) => toAppointmentJson(a, ctx));
 }
 
@@ -66,7 +66,7 @@ export async function appointmentsForDay(branchId, user, { date, designerId }) {
   for (const id of [...(only ? [only] : []), ...appointments.map((a) => String(a.designerId))]) {
     if (!columns.has(id)) columns.set(id, extra.get(id) ?? null);
   }
-  const json = await appointmentsJson(branchId, appointments);
+  const json = await appointmentsJson(branchId, appointments, { showEnquiryPhone: seesAll(user) });
   const designers = [...columns.entries()]
     .map(([id, name]) => ({ id, name, appointments: json.filter((a) => a.designer.id === id) }))
     .sort((a, b) => String(a.name).localeCompare(String(b.name)) || a.id.localeCompare(b.id));

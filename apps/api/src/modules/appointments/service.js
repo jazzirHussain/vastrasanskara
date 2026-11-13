@@ -26,6 +26,7 @@ export {
   dayFilter,
   listAppointments,
   reminderFilter,
+  seesAll,
 } from './queries.js';
 
 const fieldError = (path, message) => validationError([{ path, message }]);
