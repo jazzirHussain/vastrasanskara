@@ -4,6 +4,10 @@ import { useTestDb } from './helpers/db.js';
 import { buildTestApp } from './helpers/app.js';
 import { frontOfficeHelpers } from './helpers/frontOffice.js';
 import { Outbox } from '../src/core/notify/models.js';
+import express from 'express';
+import request from 'supertest';
+import { errorHandler } from '../src/core/errors.js';
+import { ordersRouter } from '../src/modules/orders/routes.js';
 import { enquiriesRouter } from '../src/modules/enquiries/routes.js';
 import { appointmentsRouter } from '../src/modules/appointments/routes.js';
 import { enquiryConversionBySource } from '../src/modules/enquiries/service.js';
@@ -208,4 +212,38 @@ test("designers never see an enquiry's phone; front desk does", async () => {
   const desk = [await ops.agent.get(`/v1/appointments/${a.id}`), await ops.agent.get('/v1/appointments')];
   expect(desk[0].body.appointment.enquiry.phone).toBeTruthy();
   expect(desk[1].body.items[0].enquiry.phone).toBeTruthy();
+});
+
+// A user who holds only some permissions (no role does) reaches each route; a refusal is 403 before
+// any work, so no database is needed.
+async function asPermissions(permissions, router, method, path, body = {}) {
+  const app = express();
+  app.use(express.json());
+  app.use((req, res, next) => {
+    req.user = { id: ID, branchId: ID, permissions: new Set(permissions) };
+    next();
+  });
+  app.use('/v1', router);
+  app.use(errorHandler);
+  return request(app)[method](`/v1${path}`).send(body);
+}
+
+test('converting an enquiry also needs customers.write', async () => {
+  const path = `/${ID}/convert`;
+  const r = await asPermissions([ENQ], enquiriesRouter(), 'post', path, { version: 0 });
+  expect([r.status, r.body.error?.code]).toEqual([403, 'FORBIDDEN']);
+  const customersOnly = await asPermissions(['customers.write'], enquiriesRouter(), 'post', path, { version: 0 });
+  expect(customersOnly.status).toBe(403);
+  expect(can(['operations'], 'customers.write')).toBe(true);
+});
+
+test('an order for an enquiry also needs enquiries.write', async () => {
+  const withEnquiry = { enquiryId: ID };
+  const refused = await asPermissions(['orders.write'], ordersRouter(), 'post', '/', withEnquiry);
+  expect([refused.status, refused.body.error?.code]).toEqual([403, 'FORBIDDEN']);
+  // Without an enquiry, orders.write alone gets past the permission check (to validation).
+  const plain = await asPermissions(['orders.write'], ordersRouter(), 'post', '/', {});
+  expect(plain.status).not.toBe(403);
+  const both = await asPermissions(['orders.write', ENQ], ordersRouter(), 'post', '/', withEnquiry);
+  expect(both.status).not.toBe(403);
 });

@@ -100,7 +100,8 @@ export function enquiriesRouter() {
   write('/:id/lost', 'post', lostSchema, markLost);
   write('/:id/reopen', 'post', reopenSchema, reopenEnquiry);
 
-  router.post('/:id/convert', requirePermission(WRITE), validate({ body: versioned(convertSchema) }), async (req, res) => {
+  // It may create a customer, so it needs the customer permission too.
+  router.post('/:id/convert', requirePermission(WRITE, 'customers.write'), validate({ body: versioned(convertSchema) }), async (req, res) => {
     const { enquiry, customer, matched } = await convertEnquiry(req.user.branchId, req.params.id, req.body, actorFrom(req));
     res.json({ enquiry: await jsonOf(enquiry), customer: toCustomerJson(customer), matched });
   });
