@@ -174,3 +174,24 @@ test('a converted enquiry frees the phone for a new enquiry', async () => {
     openEnquiry: { id: again.body.enquiry.id, name: 'Priya Sharma', status: 'new' },
   });
 });
+
+test('converting when the phone is saved as a customer at the same moment finds that customer', async () => {
+  const { ops, customer } = await world();
+  const e = (await addEnquiry(ops, { name: 'Asha', phone: '98765 43210' })).body.enquiry;
+  // The first reads of the phone miss (the customer was committed just after), so the insert hits
+  // the unique index; the retry finds the customer.
+  const real = Customer.findOne.bind(Customer);
+  let misses = 2;
+  vi.spyOn(Customer, 'findOne').mockImplementation((filter, ...rest) => {
+    if (filter?.phone && misses > 0) {
+      misses -= 1;
+      return { session: () => ({ lean: async () => null }) };
+    }
+    return real(filter, ...rest);
+  });
+  const r = await convert(ops, e);
+  ok(r);
+  expect(r.body.matched).toBe(true);
+  expect(r.body.customer.id).toBe(customer.id);
+  expect(await Customer.countDocuments({ phone: customer.phone })).toBe(1);
+});

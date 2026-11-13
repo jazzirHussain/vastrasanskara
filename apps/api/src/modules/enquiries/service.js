@@ -180,7 +180,18 @@ async function customerOfBranch(branchId, id, session) {
  * made from the enquiry's name, phone and source (no consent: that is asked when the order is
  * taken). The enquiry stays open until an order is saved for it (markEnquiryConverted).
  */
-export function convertEnquiry(branchId, id, { version, patch: { customerId } }, actor) {
+export async function convertEnquiry(branchId, id, input, actor) {
+  try {
+    return await convertOnce(branchId, id, input, actor);
+  } catch (err) {
+    // Another save of the same phone won while this one ran. A failed write aborts the whole
+    // transaction, so it is run again from the start, where the customer is now found.
+    if (err?.code !== 11000 && err?.code !== 'PHONE_TAKEN') throw err;
+    return convertOnce(branchId, id, input, actor);
+  }
+}
+
+function convertOnce(branchId, id, { version, patch: { customerId } }, actor) {
   return withTransaction(async (session) => {
     let customer = null;
     let matched = false;
