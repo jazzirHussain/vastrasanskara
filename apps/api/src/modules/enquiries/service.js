@@ -133,14 +133,21 @@ export function logCall(branchId, id, { version, patch: { note, followUpDate } }
 }
 
 /** "Not interested": closes the enquiry with a reason. */
-export function markLost(branchId, id, { version, patch: { reason } }, actor) {
-  return changeEnquiry(branchId, id, version, actor, (e) => {
-    e.status = next(e.status, 'lost');
-    e.isOpen = false;
-    e.lostReason = reason;
-    e.followUpDate = null;
-    addLog(e, { kind: 'status', text: `Not interested: ${reason}` }, actor);
-  });
+export function markLost(branchId, id, { version, patch: { reason } }, actor, session) {
+  return changeEnquiry(
+    branchId,
+    id,
+    version,
+    actor,
+    (e) => {
+      e.status = next(e.status, 'lost');
+      e.isOpen = false;
+      e.lostReason = reason;
+      e.followUpDate = null;
+      addLog(e, { kind: 'status', text: `Not interested: ${reason}` }, actor);
+    },
+    session,
+  );
 }
 
 /** Opens a lost enquiry again, due a call today, unless the phone has another open enquiry. */
@@ -245,6 +252,29 @@ export function noteAppointmentBooked(branchId, enquiryId, { when }, actor, sess
     (e) => {
       e.status = next(e.status, 'appointment');
       addLog(e, { kind: 'appointment', text: `Appointment booked for ${when}` }, actor);
+    },
+    session,
+  );
+}
+
+/**
+ * Called by appointments inside the cancelling transaction: an enquiry still at appointment_booked
+ * whose last booked appointment was cancelled (`hasOtherBooked` false) goes back to contacted. An
+ * enquiry in any other state is left alone.
+ */
+export async function noteAppointmentCancelled(branchId, enquiryId, { hasOtherBooked }, actor, session) {
+  if (!session) throw new Error('noteAppointmentCancelled must run in a transaction');
+  if (hasOtherBooked) return null;
+  const current = await Enquiry.findOne({ _id: enquiryId, branchId }, { status: 1 }).session(session).lean();
+  if (current?.status !== 'appointment_booked') return null;
+  return changeEnquiry(
+    branchId,
+    enquiryId,
+    undefined,
+    actor,
+    (e) => {
+      e.status = 'contacted';
+      addLog(e, { kind: 'appointment', text: 'Appointment cancelled' }, actor);
     },
     session,
   );

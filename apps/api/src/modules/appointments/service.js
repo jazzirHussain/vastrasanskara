@@ -8,7 +8,7 @@ import { clock } from '../../clock.js';
 import { withTransaction } from '../../core/db.js';
 import { businessRule, conflict, notFound, validationError } from '../../core/errors.js';
 import { getCustomer } from '../customers/service.js';
-import { getEnquiry, noteAppointmentBooked } from '../enquiries/service.js';
+import { getEnquiry, markLost, noteAppointmentBooked, noteAppointmentCancelled } from '../enquiries/service.js';
 import { getGarmentsForAppointment } from '../orders/service.js';
 import { readSettings } from '../settings/service.js';
 import { isActiveDesigner } from '../users/service.js';
@@ -215,17 +215,52 @@ export async function moveAppointment(branchId, id, { version, patch }, actor) {
   });
 }
 
+// Cancels a booked appointment inside `session`: withdraws its waiting reminders, tells the client
+// and designer, and lets its enquiry fall back to contacted when this was its last booking.
+async function cancelBooked(appointment, reason, actor, session) {
+  appointment.set({ status: 'cancelled', cancelReason: reason || null, statusAt: clock.now(), statusBy: actor.userId });
+  appointment.updatedBy = actor.userId;
+  appointment.increment();
+  await appointment.save({ session });
+  await withdrawAppointmentReminders(appointment, session);
+  await emitAppointmentEvent('appointment.cancelled', appointment.toObject(), { refId: String(appointment._id) }, session);
+  if (appointment.enquiryId) {
+    const hasOtherBooked = Boolean(
+      await Appointment.exists({
+        branchId: appointment.branchId,
+        enquiryId: appointment.enquiryId,
+        status: 'booked',
+        _id: { $ne: appointment._id },
+      }).session(session),
+    );
+    await noteAppointmentCancelled(appointment.branchId, appointment.enquiryId, { hasOtherBooked }, actor, session);
+  }
+  return appointment.toObject();
+}
+
 /** Cancels a booked appointment (reason optional); its time is free again. */
 export function cancelAppointment(branchId, id, { version, patch: { reason } }, actor) {
   return withTransaction(async (session) => {
     const appointment = await loadForChange(branchId, id, version, session);
-    appointment.set({ status: 'cancelled', cancelReason: reason || null, statusAt: clock.now(), statusBy: actor.userId });
-    appointment.updatedBy = actor.userId;
-    appointment.increment();
-    await appointment.save({ session });
-    await withdrawAppointmentReminders(appointment, session);
-    await emitAppointmentEvent('appointment.cancelled', appointment.toObject(), { refId: String(appointment._id) }, session);
-    return appointment.toObject();
+    return cancelBooked(appointment, reason, actor, session);
+  });
+}
+
+/**
+ * Marks an enquiry lost and cancels its future booked appointments (reminders withdrawn), in one
+ * transaction. Appointments that are past are left for staff to mark.
+ */
+export function markEnquiryLost(branchId, id, input, actor) {
+  return withTransaction(async (session) => {
+    const enquiry = await markLost(branchId, id, input, actor, session);
+    const future = await Appointment.find({
+      branchId,
+      enquiryId: enquiry._id,
+      status: 'booked',
+      start: { $gt: clock.now() },
+    }).session(session);
+    for (const appointment of future) await cancelBooked(appointment, 'Enquiry marked lost', actor, session);
+    return enquiry;
   });
 }
 

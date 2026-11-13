@@ -15,6 +15,7 @@ import { actorFrom, requirePermission } from '../../core/auth/middleware.js';
 import { idempotent } from '../../core/idempotency.js';
 import { validate, versioned } from '../../core/validate.js';
 import { logger } from '../../logger.js';
+import { markEnquiryLost } from '../appointments/service.js';
 import { toCustomerJson } from '../customers/json.js';
 import { getCustomer } from '../customers/service.js';
 import { getOrderNumbers } from '../orders/service.js';
@@ -28,7 +29,6 @@ import {
   getEnquiry,
   listEnquiries,
   logCall,
-  markLost,
   reopenEnquiry,
   updateEnquiry,
 } from './service.js';
@@ -97,7 +97,7 @@ export function enquiriesRouter() {
 
   write('/:id', 'patch', enquiryPatchSchema, updateEnquiry);
   write('/:id/call', 'post', logCallSchema, logCall);
-  write('/:id/lost', 'post', lostSchema, markLost);
+  write('/:id/lost', 'post', lostSchema, markEnquiryLost);
   write('/:id/reopen', 'post', reopenSchema, reopenEnquiry);
 
   // It may create a customer, so it needs the customer permission too.
