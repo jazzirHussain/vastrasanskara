@@ -7,3 +7,4 @@ import './core/backup/jobs.js';
 import './modules/production/jobs.js';
 import './modules/billing/jobs.js';
 import './modules/appointments/jobs.js';
+import './modules/dashboard/jobs.js';

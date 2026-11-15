@@ -1,17 +1,21 @@
 import { test, expect, vi, afterEach, beforeEach } from 'vitest';
-import { addDaysYmd, isGarmentLate, permissionsFor } from '@vs/shared';
+import { addDaysYmd, atIstTime, isGarmentLate, permissionsFor } from '@vs/shared';
+import { itemBody } from './helpers/stock.js';
+import { clock } from '../src/clock.js';
+import { Enquiry } from '../src/modules/enquiries/model.js';
+import { orderProfits } from '../src/modules/costing/service.js';
 import { useTestDb } from './helpers/db.js';
 import { buildTestApp } from './helpers/app.js';
 import { dashboardHelpers } from './helpers/dashboard.js';
 import { Garment, Order } from '../src/modules/orders/model.js';
 import { clearDashboardCache } from '../src/modules/dashboard/cache.js';
-import { metricDef } from '../src/modules/dashboard/metrics/index.js';
+import { metricDef, metricsFor } from '../src/modules/dashboard/metrics/index.js';
 import { buildContext } from '../src/modules/dashboard/filters.js';
 import { logger } from '../src/logger.js';
 
 useTestDb();
 const app = buildTestApp();
-const { dashboardWorld } = dashboardHelpers(app);
+const { dashboardWorld, pay, act } = dashboardHelpers(app);
 
 beforeEach(() => clearDashboardCache());
 afterEach(() => vi.restoreAllMocks());
@@ -176,7 +180,8 @@ test('filters narrow order tiles and are reported on tiles they do not touch', a
   expect(metric(byD2, 'key_numbers', 'on_time')).toMatchObject({ count: 1, onTime: 0 });
   expect(metric(byD2, 'attention', 'fittings_today')).toEqual({ count: 0 });
   expect(byD2.tiles.attention.notFilteredBy).toEqual(['designer']);
-  expect(byD2.tiles.key_numbers.notFilteredBy).toEqual([]);
+  // Billed, collected and the other money key numbers take only the customer type filter.
+  expect(byD2.tiles.key_numbers.notFilteredBy).toEqual(['designer']);
   expect(byD2.filters).toMatchObject({ preset: 'month', designerId: String(w.d2.user._id) });
 
   const business = await home(w.admin, { customerType: 'business' });
@@ -226,4 +231,209 @@ test('a failing tile shows unavailable and the rest still load', async () => {
   // A failure is not cached.
   vi.mocked(metricDef('late_garments').figure).mockRestore();
   expect((await home(w.admin)).tiles.attention.metrics.late_garments).toMatchObject({ count: expect.any(Number) });
+});
+
+// --- Task 6: money, expenses, stock, enquiries, calendar and profit -------------------------------
+
+const ok = (r, status = 201) => expect(r.status, JSON.stringify(r.body)).toBe(status);
+let keys6 = 0;
+const lastThirty = (w) => ({ preset: 'custom', from: w.ago(30), to: w.TODAY });
+
+test('money tiles show billed, collected, owed, overdue and advances with credit notes and refunds as sub-lines', async () => {
+  const w = await dashboardWorld();
+  const note = await w.admin.agent
+    .post(`/v1/billing/invoices/${w.bills.partBill.id}/credit-notes`)
+    .set('Idempotency-Key', `d6c${++keys6}`)
+    .send({ reason: 'Price reduced', lines: [{ key: w.bills.partBill.lines[0].key, taxable: 1000 }] });
+  ok(note);
+  ok(await pay(w.ops, { customerId: w.customerId, orderId: w.orders.atRisk.id, amount: 5000, mode: 'upi' }));
+  ok(await w.admin.agent.post('/v1/billing/refunds').set('Idempotency-Key', `d6r${++keys6}`)
+    .send({ customerId: w.customerId, orderId: w.orders.atRisk.id, amount: 2000, mode: 'cash', reason: 'Changed order' }));
+  const noteTotal = note.body.creditNote.totals.total;
+  const billed = w.bills.overdueBill.totals.total + w.bills.partBill.totals.total;
+
+  const body = await home(w.admin, lastThirty(w));
+  expect(metric(body, 'key_numbers', 'billed')).toMatchObject({
+    amount: billed, count: 2, credited: noteTotal, change: { previous: 0, diff: billed, direction: 'up' },
+  });
+  expect(metric(body, 'key_numbers', 'collected')).toMatchObject({ amount: 15000, count: 2, refunded: 2000 });
+  const owed = billed - 10000 - noteTotal;
+  expect(metric(body, 'key_numbers', 'outstanding')).toEqual({ amount: owed, count: 2 });
+  expect(metric(body, 'key_numbers', 'overdue_amount')).toEqual({ amount: w.bills.overdueBill.totals.total, count: 1 });
+  expect(metric(body, 'key_numbers', 'advances_held')).toEqual({ amount: 3000, count: 1 });
+
+  const ageing = metric(body, 'money', 'receivables_ageing');
+  expect(ageing.amount).toBe(owed);
+  expect(ageing.breakdown.map((b) => b.key)).toEqual(['not_due', 'd0_30', 'd31_60', 'd61_90', 'd90_plus']);
+  expect(ageing.breakdown.reduce((s, b) => s + b.amount, 0)).toBe(owed);
+  expect(ageing.top).toEqual([{ id: w.customerId, name: 'Asha Rao', balance: owed, oldestDays: 10 }]);
+
+  const ctx = await buildContext(userOf(w.admin), lastThirty(w), { today: w.TODAY });
+  const sum = (rows) => rows.reduce((n, r) => n + r.amount, 0);
+  expect(sum(await allRows('billed', ctx))).toBe(billed);
+  expect(sum(await allRows('advances_held', ctx))).toBe(3000);
+  expect(sum(await allRows('receivables_ageing', ctx, { key: 'd0_30' }))).toBe(ageing.breakdown.find((b) => b.key === 'd0_30').amount);
+
+  const business = await home(w.admin, { ...lastThirty(w), customerType: 'business' });
+  expect(metric(business, 'key_numbers', 'billed')).toMatchObject({ amount: 0, count: 0 });
+  expect(metric(business, 'key_numbers', 'advances_held')).toEqual({ amount: 0, count: 0 });
+  expect(metric(business, 'money', 'month_money').breakdown.every((m) => m.billed === 0)).toBe(true);
+
+  expect(metric(await home(w.ops, lastThirty(w)), 'key_numbers', 'billed')).toMatchObject({ amount: billed });
+  const designer = await home(w.d1, lastThirty(w));
+  expect(metric(designer, 'key_numbers', 'billed')).toBeUndefined();
+  expect(designer.tiles.money).toBeUndefined();
+});
+
+test('billed against collected by month has every month, even empty ones', async () => {
+  const w = await dashboardWorld();
+  const months = metric(await home(w.admin), 'money', 'month_money');
+  expect(months.breakdown).toHaveLength(6);
+  expect(months.breakdown.at(-1).key).toBe(w.TODAY.slice(0, 7));
+  for (let i = 1; i < 6; i += 1) {
+    const [y, m] = months.breakdown[i - 1].key.split('-').map(Number);
+    expect(months.breakdown[i].key).toBe(m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`);
+  }
+  expect(months.breakdown.reduce((s, b) => s + b.billed, 0)).toBe(w.bills.overdueBill.totals.total + w.bills.partBill.totals.total);
+  expect(months.breakdown.reduce((s, b) => s + b.collected, 0)).toBe(10000);
+  expect(months.breakdown.filter((b) => b.billed === 0).length).toBeGreaterThanOrEqual(4);
+  expect(months.breakdown[0]).toEqual({ key: months.breakdown[0].key, label: expect.any(String), billed: 0, collected: 0 });
+
+  const fy = metric(await home(w.admin, { preset: 'fy' }), 'money', 'month_money');
+  const year = Number(w.TODAY.slice(0, 4));
+  const fyStart = Number(w.TODAY.slice(5, 7)) >= 4 ? `${year}-04` : `${year - 1}-04`;
+  expect(fy.breakdown[0].key).toBe(fyStart);
+  expect(fy.breakdown.at(-1).key).toBe(w.TODAY.slice(0, 7));
+});
+
+test('expenses this month by category with labels', async () => {
+  const w = await dashboardWorld();
+  const add = async (body) =>
+    ok(await w.admin.agent.post('/v1/expenses').set('Idempotency-Key', `d6e${++keys6}`)
+      .send({ date: w.TODAY, payee: { name: 'Landlord' }, mode: 'cash', ...body }));
+  await add({ category: 'rent', total: 118000 });
+  await add({ category: 'electricity', total: 5000 });
+  await add({ category: 'electricity', total: 2000 });
+  expect(metric(await home(w.admin, { preset: 'today' }), 'expenses', 'expense_categories')).toMatchObject({
+    amount: 125000,
+    count: 3,
+    breakdown: [
+      { key: 'rent', label: 'Rent', amount: 118000, count: 1 },
+      { key: 'electricity', label: 'Electricity', amount: 7000, count: 2 },
+    ],
+  });
+  const ctx = await buildContext(userOf(w.admin), { preset: 'today' }, { today: w.TODAY });
+  expect((await allRows('expense_categories', ctx, { key: 'electricity' })).map((r) => r.amount).sort()).toEqual([2000, 5000]);
+  expect((await home(w.d1)).tiles.expenses).toBeUndefined();
+});
+
+/** Silk bought for ₹5,000 (10 m) with a purchase expense; 4 m used on a garment, 3 m set aside on another. */
+async function stockUse(w) {
+  const silk = await w.admin.agent.post('/v1/stock/items').set('Idempotency-Key', `d6s${++keys6}`)
+    .send({ ...itemBody({ name: 'Silk' }), sellingPrice: 80000 });
+  ok(silk);
+  const id = silk.body.item.id;
+  ok(await w.ops.agent.post(`/v1/stock/items/${id}/receive`).set('Idempotency-Key', `d6s${++keys6}`)
+    .send({ quantity: 10000, total: 500000, mode: 'cash', payee: { name: 'Bengaluru Silks' } }));
+  const take = async (quantity) => {
+    const r = await w.ops.agent.post('/v1/orders').set('Idempotency-Key', `d6o${++keys6}`).send({
+      customerId: w.customerId, designerId: String(w.d1.user._id), pickupDate: addDaysYmd(w.TODAY, 40),
+      garments: [{ type: 'blouse', description: 'Silk blouse', agreedPrice: 100000, quantity: 1, materials: [{ stockItemId: id, quantity }] }],
+    });
+    ok(r);
+    return r.body;
+  };
+  const used = await take(4000);
+  await act(w.d1, used.garments[0], { action: 'complete' });
+  await take(3000);
+  return { silkId: id };
+}
+
+test('stock tile shows low items, money reserved for orders and profit per item', async () => {
+  const w = await dashboardWorld();
+  const { silkId } = await stockUse(w);
+  const body = await home(w.admin);
+  expect(metric(body, 'stock', 'stock_low')).toEqual({ count: 1, truncated: false });
+  expect(metric(body, 'stock', 'stock_reserved')).toMatchObject({ amount: 150000 });
+  expect(metric(body, 'stock', 'stock_item_profit')).toMatchObject({
+    amount: 120000,
+    top: [{ key: silkId, label: 'Silk', cost: 200000, sales: 320000, profit: 120000, noSellingPrice: false }],
+  });
+  const ctx = await buildContext(userOf(w.admin), { preset: 'month' }, { today: w.TODAY });
+  expect((await allRows('stock_reserved', ctx)).map((r) => r.amount)).toEqual([150000]);
+  // Stock without money: the low list only, as M6's own routes hide stock values.
+  const stockOnly = { id: String(w.ops.user._id), branchId: w.branchId, permissions: new Set(['stock.view']) };
+  expect(metricsFor(stockOnly).map((d) => d.id).filter((id) => id.startsWith('stock'))).toEqual(['stock_low']);
+});
+
+test('enquiries by source with conversion', async () => {
+  const w = await dashboardWorld();
+  const add = async (name, phone, source) => {
+    const r = await w.ops.agent.post('/v1/enquiries').set('Idempotency-Key', `d6q${++keys6}`).send({ name, phone, source });
+    ok(r);
+    return r.body.enquiry;
+  };
+  const a = await add('Insta One', '9845000201', 'instagram');
+  await add('Insta Two', '9845000202', 'instagram');
+  await Enquiry.updateOne({ _id: a.id }, { status: 'converted', isOpen: false });
+  const total = await Enquiry.countDocuments();
+  const figure = metric(await home(w.ops, { preset: 'today' }), 'enquiries', 'enquiry_sources');
+  expect(figure).toMatchObject({ count: total, converted: 1, conversionRate: Math.round(10000 / total) });
+  expect(figure.breakdown.find((b) => b.key === 'instagram')).toEqual({ key: 'instagram', label: 'Instagram', count: 2, converted: 1 });
+  const ctx = await buildContext(userOf(w.ops), { preset: 'today' }, { today: w.TODAY });
+  expect((await allRows('enquiry_sources', ctx, { key: 'instagram' })).map((r) => r.title).sort()).toEqual(['Insta One', 'Insta Two']);
+  expect((await home(w.d1)).tiles.enquiries).toBeUndefined();
+});
+
+test('today\'s calendar groups appointments by designer', async () => {
+  const w = await dashboardWorld();
+  vi.spyOn(clock, 'now').mockReturnValue(new Date(atIstTime(w.TODAY, '09:00')));
+  ok(await w.ops.agent.post('/v1/appointments').set('Idempotency-Key', `d6a${++keys6}`).send({
+    type: 'consultation', designerId: String(w.d2.user._id), customerId: w.biz, date: w.TODAY, time: '12:00',
+  }));
+  vi.restoreAllMocks();
+  expect(metric(await home(w.admin), 'calendar', 'appointments_today')).toEqual({
+    count: 2,
+    breakdown: [
+      { key: String(w.d1.user._id), label: 'Meera', count: 1 },
+      { key: String(w.d2.user._id), label: 'Nila', count: 1 },
+    ],
+  });
+  expect(metric(await home(w.d1), 'calendar', 'appointments_today')).toEqual({
+    count: 1, breakdown: [{ key: String(w.d1.user._id), label: 'Meera', count: 1 }],
+  });
+  const ctx = await buildContext(userOf(w.admin), { preset: 'month' }, { today: w.TODAY });
+  expect((await allRows('appointments_today', ctx, { key: String(w.d2.user._id) })).map((r) => r.title)).toEqual(['Sri Silks']);
+});
+
+test('profit is net taxable revenue less materials used and running costs, not stock purchases', async () => {
+  const w = await dashboardWorld();
+  await stockUse(w);
+  ok(await w.admin.agent.post('/v1/expenses').set('Idempotency-Key', `d6e${++keys6}`)
+    .send({ date: w.TODAY, category: 'rent', payee: { name: 'Landlord' }, mode: 'cash', total: 100000 }));
+  const revenue = w.bills.overdueBill.totals.taxable + w.bills.partBill.totals.taxable;
+  expect(metric(await home(w.admin, lastThirty(w)), 'profit', 'profit')).toMatchObject({
+    revenue, material: 200000, expenses: 100000, profit: revenue - 300000, amount: revenue - 300000,
+  });
+});
+
+test('per-order profit lists the lowest and highest of the latest invoiced orders', async () => {
+  const w = await dashboardWorld();
+  const ids = [w.orders.overdueOrder.id, w.orders.paidPart.id];
+  const profits = await orderProfits(w.branchId, ids);
+  const sorted = ids.map((id) => ({ id, profit: profits.get(id).profit })).sort((a, b) => a.profit - b.profit || a.id.localeCompare(b.id));
+  const figure = metric(await home(w.admin, lastThirty(w)), 'profit', 'order_profits');
+  expect(figure.count).toBe(2);
+  expect(figure.lowest.map((o) => o.orderId)).toEqual(sorted.map((o) => o.id));
+  expect(figure.highest.map((o) => o.orderId)).toEqual([...sorted].reverse().map((o) => o.id));
+  expect(figure.lowest[0]).toEqual({
+    orderId: sorted[0].id, orderNo: expect.any(String), revenue: profits.get(sorted[0].id).revenue, profit: sorted[0].profit,
+  });
+});
+
+test('profit is for admins only', async () => {
+  const w = await dashboardWorld();
+  expect((await home(w.admin)).tiles.profit).toBeDefined();
+  expect((await home(w.ops)).tiles.profit).toBeUndefined();
+  expect((await home(w.d1)).tiles.profit).toBeUndefined();
 });

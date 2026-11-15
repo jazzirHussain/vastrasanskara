@@ -1,7 +1,7 @@
 // The admin dashboard (Home): every tile the user may see, each figure cached for a minute per
 // scope, periodic figures compared with the period before. A tile whose figure fails shows as
 // unavailable; the others still load.
-import { DASHBOARD_TILES, METRICS, changeOf } from '@vs/shared/dashboard.js';
+import { DASHBOARD_TILES, METRICS, changeOf, comparisonRange } from '@vs/shared/dashboard.js';
 import { istDate } from '@vs/shared/fy.js';
 import { clock } from '../../clock.js';
 import { logger } from '../../logger.js';
@@ -12,6 +12,12 @@ import { metricsFor } from './metrics/index.js';
 import './metrics/attention.js';
 import './metrics/keyNumbers.js';
 import './metrics/production.js';
+import './metrics/money.js';
+import './metrics/front.js';
+import './metrics/stock.js';
+import './metrics/expenses.js';
+import './metrics/profit.js';
+import { SNAPSHOT_FIELDS, snapshotNear } from './snapshots.js';
 
 const FILTER_KEYS = [
   ['designer', 'designerId'],
@@ -27,13 +33,26 @@ function figureOf(def, ctx) {
     `${ctx.scopeKey}|${def.id}`,
     async () => {
       const figure = await def.figure(ctx);
-      if (!METRICS[def.id].periodic) return figure;
+      if (!METRICS[def.id].periodic) return withSnapshotChange(def.id, figure, ctx);
       const before = await def.figure(ctx.atRange(ctx.previous));
       const now = primary(figure);
       return { ...figure, change: now === null ? null : changeOf(now, primary(before)) };
     },
     { fresh: ctx.fresh },
   );
+}
+
+/** Unfiltered and whole-branch: only then is a point-in-time figure compared with a month ago (Decision 4). */
+const wholeBranch = (ctx) => ctx.user.permissions.has('orders.read.all') && !ctx.designerId && !ctx.priority && !ctx.customerType;
+
+/** A point-in-time figure with `change` against the snapshot nearest a month ago, when there is one. */
+async function withSnapshotChange(id, figure, ctx) {
+  const field = SNAPSHOT_FIELDS[id];
+  if (!field || !wholeBranch(ctx)) return figure;
+  const monthAgo = comparisonRange({ preset: 'month', from: ctx.today, to: ctx.today }).to;
+  const snap = await ctx.memo('snapshot', () => snapshotNear(ctx.branchId, monthAgo));
+  if (!snap || snap[field] === undefined) return figure;
+  return { ...figure, change: changeOf(primary(figure), snap[field]) };
 }
 
 /** { asOf, range, previous, filters, tiles: { [tile]: { metrics, notFilteredBy } | { error: 'UNAVAILABLE' } } }. */

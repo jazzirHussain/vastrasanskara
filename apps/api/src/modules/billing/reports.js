@@ -39,8 +39,8 @@ export function periodMatch(branchId, { from, to, customerFilter, types = MONEY_
 }
 
 /** Bills still owed (`receivables`). */
-export function receivablesMatch(branchId, { customerFilter } = {}, today = todayIst()) {
-  return { ...receivablesFilter(branchId, {}, today), ...customerMatch(customerFilter) };
+export function receivablesMatch(branchId, { customerFilter, bucket } = {}, today = todayIst()) {
+  return { ...receivablesFilter(branchId, { bucket }, today), ...customerMatch(customerFilter) };
 }
 
 /** Every issued receipt of the branch (`register`). */
@@ -123,9 +123,9 @@ function monthsBetween(from, to) {
 }
 
 /** Gross billed and collected per month in [from, to]; months with nothing show 0. */
-export async function monthlyMoney(branchId, { from, to }) {
+export async function monthlyMoney(branchId, { from, to, customerFilter }) {
   const rows = await BillingDocument.aggregate([
-    { $match: periodMatch(branchId, { from, to, types: ['invoice', 'receipt'] }) },
+    { $match: periodMatch(branchId, { from, to, customerFilter, types: ['invoice', 'receipt'] }) },
     { $group: { _id: { month: '$month', type: '$type' }, total: { $sum: { $ifNull: ['$totals.total', '$amount'] } } } },
   ]);
   const total = (month, type) => rows.find((r) => r._id.month === month && r._id.type === type)?.total ?? 0;
@@ -201,7 +201,7 @@ export async function receivablesAgeing(branchId, { customerFilter, top = 5 } = 
 // --- Advances held --------------------------------------------------------------------------------
 
 /** [{ customerId, received, allocated, held }] for customers holding money: Σ issued receipts − Σ allocations. */
-async function advancesPerCustomer(branchId) {
+async function advancesPerCustomer(branchId, customerFilter) {
   const [received, allocated] = await Promise.all([
     BillingDocument.aggregate([{ $match: receiptsHeldMatch(branchId) }, { $group: { _id: '$customerId', total: { $sum: '$amount' } } }]),
     Allocation.aggregate([{ $match: allocationsMatch(branchId) }, { $group: { _id: '$customerId', total: { $sum: '$amount' } } }]),
@@ -212,19 +212,25 @@ async function advancesPerCustomer(branchId) {
       const a = used.get(String(r._id)) ?? 0;
       return { customerId: String(r._id), received: r.total, allocated: a, held: r.total - a };
     })
-    .filter((r) => r.held > 0);
+    .filter((r) => r.held > 0 && keepsCustomer(customerFilter, r.customerId));
+}
+
+function keepsCustomer(customerFilter, customerId) {
+  if (customerFilter?.in) return customerFilter.in.some((id) => String(id) === customerId);
+  if (customerFilter?.notIn) return !customerFilter.notIn.some((id) => String(id) === customerId);
+  return true;
 }
 
 /** Money held for customers (advances not yet used on bills or refunded), and how many customers hold some. */
-export async function advancesHeld(branchId) {
-  const rows = await advancesPerCustomer(branchId);
+export async function advancesHeld(branchId, { customerFilter } = {}) {
+  const rows = await advancesPerCustomer(branchId, customerFilter);
   return { advancesHeld: rows.reduce((s, r) => s + r.held, 0), customers: rows.length };
 }
 
 /** One page of the customers holding money, largest first. */
-export async function advancesByCustomer(branchId, { cursor, limit = 25 } = {}) {
+export async function advancesByCustomer(branchId, { cursor, limit = 25, customerFilter } = {}) {
   const size = Math.min(Math.max(1, Number(limit) || 25), 100);
-  let rows = (await advancesPerCustomer(branchId)).sort((a, b) => b.held - a.held || a.customerId.localeCompare(b.customerId));
+  let rows = (await advancesPerCustomer(branchId, customerFilter)).sort((a, b) => b.held - a.held || a.customerId.localeCompare(b.customerId));
   if (cursor) {
     const { v, id } = decodeCursor(cursor);
     const at = String(id);
@@ -560,9 +566,9 @@ const MONEY_ROW_METRICS = ['billed', 'collected', 'overdue_bills', 'outstanding'
 /**
  * One page of the documents behind a money figure, with the same filter as the figure:
  * `billed` (bills by date), `collected` (receipts by date), `outstanding` and `overdue_bills`
- * (bills owed, oldest due first). Rows: { id, type, number, date, customer, amount }.
+ * (bills owed, oldest due first; `bucket` narrows them to one ageing bucket). Rows: { id, type, number, date, customer, amount }.
  */
-export async function moneyRows(branchId, metric, { from, to, customerFilter, cursor, limit } = {}) {
+export async function moneyRows(branchId, metric, { from, to, customerFilter, bucket, cursor, limit } = {}) {
   if (!MONEY_ROW_METRICS.includes(metric)) throw new RangeError(`No money rows for ${metric}`);
   const today = todayIst();
   let page;
@@ -572,7 +578,7 @@ export async function moneyRows(branchId, metric, { from, to, customerFilter, cu
     page = await paginate(BillingDocument, periodMatch(branchId, { from, to, customerFilter, types: [type] }), { sort: ['date', -1], cursor, limit });
     amountOf = (d) => (type === 'invoice' ? d.totals.total : d.amount);
   } else {
-    const filter = receivablesMatch(branchId, { customerFilter }, today);
+    const filter = receivablesMatch(branchId, { customerFilter, bucket }, today);
     if (metric === 'overdue_bills') filter.dueDate = { $lt: today };
     page = await paginate(Invoice, filter, { sort: ['dueDate', 1], cursor, limit });
     amountOf = (d) => d.settlement.balance;

@@ -524,6 +524,7 @@ export {
   listOrdersPlaced,
   onHoldOrders,
   orderCounts,
+  orderNumbersMatching,
   ordersByStatusMatch,
   ordersPlacedMatch,
 } from './reports.js';

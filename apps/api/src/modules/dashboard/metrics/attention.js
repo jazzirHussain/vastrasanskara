@@ -158,8 +158,8 @@ registerMetric({
 export const ageingOf = (ctx) => ctx.memo('ageing', () => receivablesAgeing(ctx.branchId, { customerFilter: ctx.customerFilter }));
 
 /** Task 3 money rows as drill-down rows. */
-export async function billRows(ctx, metric, { cursor, limit } = {}) {
-  const page = await moneyRows(ctx.branchId, metric, { ...ctx.range, customerFilter: ctx.customerFilter, cursor, limit });
+export async function billRows(ctx, metric, { cursor, limit } = {}, { bucket } = {}) {
+  const page = await moneyRows(ctx.branchId, metric, { ...ctx.range, customerFilter: ctx.customerFilter, bucket, cursor, limit });
   return {
     items: page.items.map((r) => ({
       id: r.id,

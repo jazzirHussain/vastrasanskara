@@ -81,6 +81,13 @@ export function onHoldOrders(branchId, user, filters = {}, page = {}) {
   return listOrdersByStatus(branchId, user, 'on_hold', filters, page);
 }
 
+/** Of the given orders, those that pass the scope and filters: Map orderId → orderNo. */
+export async function orderNumbersMatching(branchId, user, orderIds, filters = {}) {
+  if (!orderIds.length) return new Map();
+  const orders = await Order.find({ ...orderFilter(branchId, user, filters), _id: { $in: orderIds.map(oid) } }, { orderNo: 1 }).lean();
+  return new Map(orders.map((o) => [String(o._id), o.orderNo]));
+}
+
 /** Garments that became ready in [from, to] and are still ready or picked up (`ready`; exported for the index test). */
 export function garmentsReadyFilter(branchId, { from, to }) {
   return { branchId: oid(branchId), readyDate: { $type: 'string', $gte: from, $lte: to }, status: { $in: ['ready', 'picked_up'] } };
