@@ -51,6 +51,39 @@ export function listMovements(branchId, itemId, { cursor, limit } = {}) {
   return paginate(StockMovement, movementFilter(branchId, itemId), { sort: ['at', -1], limit, cursor });
 }
 
+/** Movements of every item on IST days [from, to] (`by_date`; exported for the index test). */
+export const movementsByDateFilter = (branchId, { from, to }) => ({ branchId: oid(branchId), date: { $gte: from, $lte: to } });
+
+/**
+ * One page of the branch's movements on IST days [from, to], newest date first, across items.
+ * Item names come from this module's StockItem and garment numbers from its own materials records.
+ */
+export async function listMovementsByDate(branchId, { from, to, cursor, limit } = {}) {
+  const page = await paginate(StockMovement, movementsByDateFilter(branchId, { from, to }), { sort: ['date', -1], limit, cursor });
+  const itemIds = [...new Set(page.items.map((m) => String(m.stockItemId)))];
+  const [items, garmentNos] = await Promise.all([
+    StockItem.find({ _id: { $in: itemIds.map(oid) } }, { name: 1, usageUnit: 1 }).lean(),
+    garmentNumbers(page.items.map((m) => m.garmentId)),
+  ]);
+  const itemById = new Map(items.map((i) => [String(i._id), i]));
+  return {
+    items: page.items.map((m) => {
+      const item = itemById.get(String(m.stockItemId));
+      return {
+        id: String(m._id),
+        date: m.date,
+        type: m.type,
+        item: { id: String(m.stockItemId), name: item?.name ?? '', usageUnit: item?.usageUnit ?? null },
+        quantity: m.quantity,
+        valueChange: m.valueChange,
+        reference: { garmentNo: m.garmentId ? (garmentNos.get(String(m.garmentId)) ?? null) : null },
+        reason: m.reason ?? '',
+      };
+    }),
+    nextCursor: page.nextCursor,
+  };
+}
+
 /** The find filter of lowStockItems (exported for the index test). */
 export const lowStockFilter = (branchId) => ({ branchId: oid(branchId), low: true, active: true });
 

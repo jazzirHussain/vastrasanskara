@@ -58,6 +58,9 @@ export const ENQUIRY_VIEWS = Object.freeze(['follow_ups', 'open', 'new', 'appoin
 export const enquiryListQuery = z.strictObject({
   view: z.enum(ENQUIRY_VIEWS).default('open'),
   q: z.string().trim().max(50).optional(),
+  source: z.enum(CUSTOMER_SOURCES).optional(),
+  from: ymd.optional(),
+  to: ymd.optional(),
   cursor: cursor.optional(),
   limit: limit.optional(),
 });
