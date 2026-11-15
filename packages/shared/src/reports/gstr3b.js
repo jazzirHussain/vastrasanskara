@@ -1,5 +1,5 @@
 // GSTR-3B summary and the ITC set-off (Decision 15). Pure; all values are integer paise.
-import { gstPlace } from './gstr1.js';
+import { gstPlace, reversalParts } from './gstr1.js';
 
 const HEADS = ['igst', 'cgst', 'sgst'];
 
@@ -77,8 +77,8 @@ export function gstr3bSummary({ docs, itc }) {
       }
     } else if (d.type === 'receipt_voucher') {
       for (const l of d.lines) add(l, 1);
-    } else if (d.type === 'refund' && d.rvReversal) {
-      add(d.rvReversal, -1);
+    } else if (d.type === 'refund') {
+      for (const r of reversalParts(d)) add(r, -1);
     }
   }
 

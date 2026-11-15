@@ -132,3 +132,14 @@ test('a month where credit notes exceed sales owes nothing and goes negative now
   expect(out.cash).toEqual(zero);
   expect(out.carriedForward).toEqual({ igst: 300, cgst: 0, sgst: 0 });
 });
+
+test('a refund drawn on a two-rate voucher reduces outward tax by every part', () => {
+  const parts = [
+    { stateCode: '29', gstRateBp: 500, taxable: 30000, cgst: 750, sgst: 750, igst: 0 },
+    { stateCode: '29', gstRateBp: 0, taxable: 5000, cgst: 0, sgst: 0, igst: 0 },
+  ];
+  const r = refund({ amount: 36500, rvReversal: { taxable: 35000, cgst: 750, sgst: 750, igst: 0, gstRateBp: null, stateCode: null } });
+  const out = gstr3bSummary({ docs: [{ ...r, rvReversalParts: parts }], itc: NO_ITC });
+  expect(out.outward).toEqual({ taxable: -30000, igst: 0, cgst: -750, sgst: -750 });
+  expect(out.nilRated).toEqual({ taxable: -5000 });
+});

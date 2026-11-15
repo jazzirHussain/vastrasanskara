@@ -138,6 +138,12 @@ export function gstPlace(stateCode) {
 }
 
 const percent = (rateBp) => rateBp / 100;
+
+/** The voucher tax a refund gives back, one part per state × rate (a multi-rate voucher has several). */
+export function reversalParts(refundView) {
+  if (refundView.rvReversalParts?.length) return refundView.rvReversalParts;
+  return refundView.rvReversal ? [refundView.rvReversal] : [];
+}
 const byNumber = (a, b) => a.localeCompare(b, 'en', { numeric: true });
 const byDateNumber = (a, b) => (a.date === b.date ? byNumber(a.number, b.number) : a.date < b.date ? -1 : 1);
 
@@ -288,9 +294,8 @@ export function gstr1Sheets({ docs, series = [], b2clThreshold, month }) {
       for (const l of d.lines) hsn.add(l, -1);
     } else if (d.type === 'receipt_voucher') {
       for (const l of d.lines) at.add(d.placeOfSupply.stateCode, l.gstRateBp, l.taxable);
-    } else if (d.type === 'refund' && d.rvReversal) {
-      const r = d.rvReversal;
-      atadj.add(r.stateCode, r.gstRateBp, r.taxable);
+    } else if (d.type === 'refund') {
+      for (const r of reversalParts(d)) atadj.add(r.stateCode, r.gstRateBp, r.taxable);
     }
   }
 

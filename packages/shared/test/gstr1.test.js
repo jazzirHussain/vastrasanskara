@@ -283,3 +283,16 @@ test('rows are in a fixed order whatever order the documents come in', () => {
   const c = invoice({ number: 'INV-0', date: '2026-10-07', gstin: '29ABCDE1234F1Z5' });
   expect(rows(build([c, a, b]), 'b2b').map((r) => r.invoiceNumber)).toEqual(['INV-1', 'INV-2', 'INV-0']);
 });
+
+test('a refund drawn on a two-rate voucher reverses each rate in ATADJ', () => {
+  const parts = [
+    { stateCode: '29', gstRateBp: 500, taxable: 30000, cgst: 750, sgst: 750, igst: 0 },
+    { stateCode: '29', gstRateBp: 1800, taxable: 10000, cgst: 900, sgst: 900, igst: 0 },
+  ];
+  const r = refund({ amount: 43300, rvReversal: { taxable: 40000, cgst: 1650, sgst: 1650, igst: 0, gstRateBp: null, stateCode: null } });
+  const out = build([{ ...r, rvReversalParts: parts }]);
+  expect(rows(out, 'atadj')).toEqual([
+    { placeOfSupply: '29-Karnataka', applicablePercent: '', rate: 5, grossAdvanceAdjusted: 30000, cessAmount: 0 },
+    { placeOfSupply: '29-Karnataka', applicablePercent: '', rate: 18, grossAdvanceAdjusted: 10000, cessAmount: 0 },
+  ]);
+});
