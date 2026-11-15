@@ -4,11 +4,12 @@
 import { DASHBOARD_TILES, METRICS, changeOf, comparisonRange } from '@vs/shared/dashboard.js';
 import { istDate } from '@vs/shared/fy.js';
 import { clock } from '../../clock.js';
+import { notFound } from '../../core/errors.js';
 import { logger } from '../../logger.js';
 import { cached } from './cache.js';
 import { buildContext } from './filters.js';
 import { stripMoney } from './json.js';
-import { metricsFor } from './metrics/index.js';
+import { metricDef, metricsFor } from './metrics/index.js';
 import './metrics/attention.js';
 import './metrics/keyNumbers.js';
 import './metrics/production.js';
@@ -89,5 +90,29 @@ export async function dashboardFor(user, query) {
     filters: Object.fromEntries(Object.entries({ preset: ctx.preset, designerId: ctx.designerId, priority: ctx.priority, customerType: ctx.customerType }).filter(([, v]) => v)),
     tiles,
   };
+  return ctx.money ? body : stripMoney(body);
+}
+
+const COLUMNS = [
+  { key: 'title', label: 'Record' },
+  { key: 'subtitle', label: 'Details' },
+  { key: 'date', label: 'Date' },
+];
+
+/**
+ * The records behind one dashboard number, a page at a time, with the same filters as the figure:
+ * { metric: { id, label, count?, amount? }, items, nextCursor, columns }. An unknown metric, or one
+ * the user may not see, is not found (so its existence is not revealed).
+ */
+export async function metricRows(user, metricId, query) {
+  const def = Object.hasOwn(METRICS, metricId) ? metricDef(metricId) : undefined;
+  if (!def || !metricsFor(user).includes(def)) throw notFound();
+  const ctx = await buildContext(user, query, { today: istDate(clock.now()) });
+  const [figure, page] = await Promise.all([figureOf(def, ctx), def.rows(ctx, { cursor: query.cursor, limit: query.limit, key: query.key })]);
+  const metric = { id: def.id, label: METRICS[def.id].label };
+  if (figure.count !== undefined) metric.count = figure.count;
+  if (figure.amount !== undefined) metric.amount = figure.amount;
+  const money = ctx.money && METRICS[def.id].money;
+  const body = { metric, items: page.items, nextCursor: page.nextCursor, columns: money ? [...COLUMNS, { key: 'amount', label: 'Amount' }] : COLUMNS };
   return ctx.money ? body : stripMoney(body);
 }

@@ -32,5 +32,7 @@ export const metricRowsQuery = z
     ...shape,
     cursor: z.string().max(500).optional(),
     limit: z.coerce.number().int().min(1).max(100).optional(),
+    // One bar of a breakdown: a stage, category, source, designer or vendor id, month or bucket.
+    key: z.string().trim().min(1).max(100).optional(),
   })
   .superRefine(checkRange);
