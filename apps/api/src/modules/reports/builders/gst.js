@@ -3,6 +3,9 @@
 import { gstr1Sheets } from '@vs/shared/reports/gstr1.js';
 import { gstr3bSummary } from '@vs/shared/reports/gstr3b.js';
 import { monthName } from '@vs/shared/reports/catalog.js';
+import {
+  REGISTER_COLUMNS, creditNoteRows, salesRegisterRows, voucherRows,
+} from '@vs/shared/reports/registers.js';
 import { addDaysYmd } from '@vs/shared/fy.js';
 import { billingDocumentsInRange, documentSeries } from '../../billing/service.js';
 import { getBranch } from '../../branches/service.js';
@@ -73,4 +76,34 @@ registerBuilder('gstr3b', async (branchId, { month }, { maxRows }) => {
   ]);
   const rows = gstr3bRows(gstr3bSummary({ docs, itc }), { gstin: branch.gstin, month });
   return { files: [{ sheets: [{ name: 'GSTR-3B summary', columns: GSTR3B_COLUMNS, rows }] }] };
+});
+
+/**
+ * The monthly GST pack (Decision 16): the GSTR-1 workbook, and a second workbook "GST summary and
+ * registers" with the GSTR-3B summary and the month's sales, credit note, receipt voucher and refund registers.
+ */
+registerBuilder('gst_pack', async (branchId, { month }, { maxRows }) => {
+  const [{ docs, series }, settings, itc, branch] = await Promise.all([
+    gstMonthDocs(branchId, month, { maxRows }),
+    readSettings(branchId),
+    inputTaxSummary(branchId, monthRange(month)),
+    getBranch(branchId),
+  ]);
+  const { sheets: gstr1 } = gstr1Sheets({ docs, series, b2clThreshold: settings.b2clThreshold, month });
+  const summary = gstr3bRows(gstr3bSummary({ docs, itc }), { gstin: branch.gstin, month });
+  return {
+    files: [
+      { sheets: gstr1 },
+      {
+        filename: `GST summary and registers ${monthName(month)}.xlsx`,
+        sheets: [
+          { name: 'GSTR-3B summary', columns: GSTR3B_COLUMNS, rows: summary },
+          { name: 'Sales register', columns: REGISTER_COLUMNS.sales, rows: salesRegisterRows(docs) },
+          { name: 'Credit notes', columns: REGISTER_COLUMNS.creditNotes, rows: creditNoteRows(docs) },
+          { name: 'Receipt vouchers', columns: REGISTER_COLUMNS.receiptVouchers, rows: voucherRows(docs, 'receipt_voucher') },
+          { name: 'Refunds', columns: REGISTER_COLUMNS.refunds, rows: voucherRows(docs, 'refund') },
+        ],
+      },
+    ],
+  };
 });
