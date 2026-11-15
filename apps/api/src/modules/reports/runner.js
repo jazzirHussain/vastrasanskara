@@ -11,6 +11,7 @@ import { getBuilder } from './builders/index.js';
 import { ReportRun } from './model.js';
 import { CONTENT_TYPES, REPORT_MAX_ROWS, ReportError, checkRowLimit, toCsvBuffer, toXlsx } from './writers.js';
 import './builders/registers.js';
+import './builders/gst.js';
 
 export const STUCK_AFTER_MS = 30 * 60_000;
 export const MAX_ATTEMPTS = 2;
