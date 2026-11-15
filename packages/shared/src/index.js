@@ -27,5 +27,8 @@ export * from './schemas/frontOffice.js';
 export * from './dashboard.js';
 export * from './reports/catalog.js';
 export * from './reports/csv.js';
+export * from './reports/gstr1.js';
+export * from './reports/gstr3b.js';
+export * from './reports/registers.js';
 export * from './schemas/dashboard.js';
 export * from './schemas/reports.js';
