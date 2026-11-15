@@ -68,12 +68,13 @@ export function useDashboard(filters) {
 }
 
 /** The records behind one number, a page at a time (`key` picks one bar of a breakdown). */
-export function useMetricRows(metric, filters, key) {
+export function useMetricRows(metric, filters, key, { enabled = true } = {}) {
   return useInfiniteQuery({
     queryKey: ['dashboard', 'rows', metric, filters, key ?? null],
     queryFn: ({ pageParam }) => apiFetch(`/v1/dashboard/metrics/${metric}/rows`, { query: clean({ ...filters, key, cursor: pageParam }) }),
     initialPageParam: undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
-    enabled: filtersReady(filters),
+    enabled: enabled && filtersReady(filters),
+    retry: false,
   });
 }

@@ -22,6 +22,8 @@ import { NewEnquiryPage } from './features/enquiries/NewEnquiryPage.jsx';
 import { AppointmentsPage } from './features/appointments/AppointmentsPage.jsx';
 import { BookAppointmentPage } from './features/appointments/BookAppointmentPage.jsx';
 import { HomePage } from './features/home/HomePage.jsx';
+import { MetricPage } from './features/dashboard/MetricPage.jsx';
+import { ReportsPage } from './features/reports/ReportsPage.jsx';
 import { NewOrderPage } from './features/orders/NewOrderPage.jsx';
 import { OrderPage } from './features/orders/OrderPage.jsx';
 import { OrdersPage } from './features/orders/OrdersPage.jsx';
@@ -42,6 +44,10 @@ export default function App() {
         <Route element={<RequireAuth />}>
           <Route element={<AppLayout />}>
             <Route index element={<HomePage />} />
+            <Route path="/home/:metric" element={<MetricPage />} />
+            <Route element={<RequirePermission permission="reports.export" />}>
+              <Route path="/reports" element={<ReportsPage />} />
+            </Route>
             <Route element={<RequirePermission permission="customers.read" />}>
               <Route path="/customers" element={<CustomersPage />} />
               <Route path="/customers/:id" element={<CustomerPage />} />

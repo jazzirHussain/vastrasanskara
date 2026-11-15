@@ -61,3 +61,11 @@ describe('appointment error messages', () => {
     }
   });
 });
+
+describe('report and dashboard error messages', () => {
+  test('every report and dashboard error code has a plain message', () => {
+    for (const code of ['REPORT_NOT_READY', 'REPORT_TOO_LARGE', 'REPORT_FAILED', 'RANGE_TOO_LONG', 'FILTER_TOO_BROAD']) {
+      expect(errorMessages[code], code).toMatch(/^[A-Z].*[.]$/);
+    }
+  });
+});
