@@ -516,11 +516,14 @@ export async function listCostingGarments(branchId, ids, session) {
 export {
   activeOrderCount,
   activeOrdersMatch,
+  countOrdersByStatus,
   garmentsReadyBetween,
   garmentsReadyFilter,
   iterateGarmentsReady,
+  listOrdersByStatus,
   listOrdersPlaced,
   onHoldOrders,
   orderCounts,
+  ordersByStatusMatch,
   ordersPlacedMatch,
 } from './reports.js';

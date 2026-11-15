@@ -34,9 +34,14 @@ export function ordersPlacedMatch(branchId, user, { from, to, ...filters }) {
   return { ...orderFilter(branchId, user, filters), orderDate: { $gte: from, $lte: to } };
 }
 
+/** Orders with `status` (`branchId, status, pickupDate`; exported for the index test). */
+export function ordersByStatusMatch(branchId, user, status, filters = {}) {
+  return { ...orderFilter(branchId, user, filters), status };
+}
+
 /** Active orders (`branchId, status, pickupDate`; exported for the index test). */
 export function activeOrdersMatch(branchId, user, filters = {}) {
-  return { ...orderFilter(branchId, user, filters), status: 'active' };
+  return ordersByStatusMatch(branchId, user, 'active', filters);
 }
 
 /** How many orders were placed in [from, to], and how many of them were normal or rush. */
@@ -55,15 +60,25 @@ export async function listOrdersPlaced(branchId, user, { from, to, cursor, limit
   return { items: await orderListItems(branchId, page.items), nextCursor: page.nextCursor };
 }
 
+/** How many orders have `status` now. */
+export function countOrdersByStatus(branchId, user, status, filters = {}) {
+  return Order.countDocuments(ordersByStatusMatch(branchId, user, status, filters));
+}
+
+/** One page of the orders with `status`, soonest pickup first, as listOrders rows. */
+export async function listOrdersByStatus(branchId, user, status, filters = {}, { cursor, limit } = {}) {
+  const page = await paginate(Order, ordersByStatusMatch(branchId, user, status, filters), { sort: ['pickupDate', 1], cursor, limit });
+  return { items: await orderListItems(branchId, page.items), nextCursor: page.nextCursor };
+}
+
 /** How many orders are active now. */
 export function activeOrderCount(branchId, user, filters = {}) {
-  return Order.countDocuments(activeOrdersMatch(branchId, user, filters));
+  return countOrdersByStatus(branchId, user, 'active', filters);
 }
 
 /** One page of the orders on hold, soonest pickup first, as listOrders rows. */
-export async function onHoldOrders(branchId, user, filters = {}, { cursor, limit } = {}) {
-  const page = await paginate(Order, { ...orderFilter(branchId, user, filters), status: 'on_hold' }, { sort: ['pickupDate', 1], cursor, limit });
-  return { items: await orderListItems(branchId, page.items), nextCursor: page.nextCursor };
+export function onHoldOrders(branchId, user, filters = {}, page = {}) {
+  return listOrdersByStatus(branchId, user, 'on_hold', filters, page);
 }
 
 /** Garments that became ready in [from, to] and are still ready or picked up (`ready`; exported for the index test). */

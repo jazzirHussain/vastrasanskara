@@ -180,6 +180,8 @@ test('ageing buckets and the top customers match the money owed list', async () 
 
   const ageing = await receivablesAgeing(branchId, {});
   expect(ageing).toMatchObject({ count: totals.count, outstanding: totals.balance, overdueAmount: totals.overdue });
+  expect(ageing.overdueCount).toBe(owed.filter((i) => i.daysOverdue > 0).length);
+  expect(ageing.overdueCount).toBe(4);
   expect(ageing.buckets).toEqual({
     not_due: bucket('not_due'), d0_30: bucket('d0_30'), d31_60: bucket('d31_60'), d61_90: bucket('d61_90'), d90_plus: bucket('d90_plus'),
   });

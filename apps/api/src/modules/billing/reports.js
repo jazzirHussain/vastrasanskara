@@ -134,7 +134,7 @@ export async function monthlyMoney(branchId, { from, to }) {
 
 // --- Money owed -----------------------------------------------------------------------------------
 
-/** Totals, ageing buckets (as `ageingBucket` draws them) and the customers owing most; one `$facet`. */
+/** Totals (with how many bills are overdue), ageing buckets (as `ageingBucket` draws them) and the customers owing most; one `$facet`. */
 export async function receivablesAgeing(branchId, { customerFilter, top = 5 } = {}) {
   const today = todayIst();
   const ago = (n) => addDaysYmd(today, -n);
@@ -149,6 +149,7 @@ export async function receivablesAgeing(branchId, { customerFilter, top = 5 } = 
               count: { $sum: 1 },
               outstanding: { $sum: '$settlement.balance' },
               overdue: { $sum: { $cond: [{ $lt: ['$dueDate', today] }, '$settlement.balance', 0] } },
+              overdueCount: { $sum: { $cond: [{ $lt: ['$dueDate', today] }, 1, 0] } },
             },
           },
         ],
@@ -186,6 +187,7 @@ export async function receivablesAgeing(branchId, { customerFilter, top = 5 } = 
     count: t?.count ?? 0,
     outstanding: t?.outstanding ?? 0,
     overdueAmount: t?.overdue ?? 0,
+    overdueCount: t?.overdueCount ?? 0,
     buckets,
     topCustomers: facets.customers.map((c) => ({
       id: String(c._id),
