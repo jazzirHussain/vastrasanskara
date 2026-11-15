@@ -1,0 +1,64 @@
+/* Chart colours (Decision 9). Validated with the dataviz validate_palette.js: light against the
+   card surface #ffffff, dark against #1a1a19 — both PASS (worst adjacent CVD ΔE 24.7 / 26.8). */
+:root {
+  --vs-chart-1: #2a78d6;
+  --vs-chart-2: #eb6834;
+  --vs-chart-grid: #e6e7ef;
+  --vs-chart-axis: #5c607a;
+  --vs-chart-track: #f0f1f6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-mantine-color-scheme='light']) {
+    --vs-chart-1: #3987e5;
+    --vs-chart-2: #d95926;
+    --vs-chart-grid: #34343a;
+    --vs-chart-axis: #b4b6c4;
+    --vs-chart-track: #26262b;
+  }
+}
+
+:root[data-mantine-color-scheme='dark'] {
+  --vs-chart-1: #3987e5;
+  --vs-chart-2: #d95926;
+  --vs-chart-grid: #34343a;
+  --vs-chart-axis: #b4b6c4;
+  --vs-chart-track: #26262b;
+}
+
+.vs-chart-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: baseline;
+}
+
+.vs-hbar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.vs-hbar-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--vs-chart-track);
+  overflow: hidden;
+}
+
+.vs-hbar-fill {
+  height: 8px;
+  border-radius: 0 4px 4px 0;
+  background: var(--vs-chart-1);
+}

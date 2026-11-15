@@ -9,6 +9,8 @@ export const errorMessages = {
   SESSION_EXPIRED: 'Your session has expired. Please log in again.',
   NOT_AUTHENTICATED: 'Please log in.',
   FORBIDDEN: 'You do not have access to this.',
+  RANGE_TOO_LONG: 'That period is too long for Home. Use Reports for longer periods.',
+  FILTER_TOO_BROAD: 'Too many customers match this filter. Try another one.',
   CONFLICT: 'Someone else changed this. Reload and try again.',
   PERIOD_LOCKED: 'This month is locked for filing and cannot be changed.',
   FILE_TYPE_NOT_ALLOWED: 'Only JPG, PNG, WebP, HEIC or PDF files can be uploaded.',

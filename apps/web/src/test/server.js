@@ -38,6 +38,16 @@ export const server = setupServer(
   http.get('/v1/settings', () => HttpResponse.json(defaultSettings)),
   http.get('/v1/branch', () => HttpResponse.json(defaultBranch)),
   http.get('/v1/orders', () => HttpResponse.json({ items: [], nextCursor: null })),
+  // Home: an empty dashboard (nothing to attend to, no tiles).
+  http.get('/v1/dashboard', () =>
+    HttpResponse.json({
+      asOf: new Date().toISOString(),
+      range: { from: '2026-11-01', to: '2026-11-15' },
+      previous: { from: '2026-10-01', to: '2026-10-15' },
+      filters: { preset: 'month' },
+      tiles: {},
+    }),
+  ),
   http.get('/v1/enquiries', () => HttpResponse.json({ items: [], nextCursor: null })),
   http.get('/v1/enquiries/follow-ups/count', () => HttpResponse.json({ count: 0, overdue: 0 })),
   http.get('/v1/appointments', () => HttpResponse.json({ items: [], nextCursor: null })),
