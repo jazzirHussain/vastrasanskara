@@ -5,6 +5,7 @@ import mongoose from 'mongoose';
 import { isOnTime } from '@vs/shared/dashboard.js';
 import { paginate } from '../../core/pagination.js';
 import { Garment, Order } from './model.js';
+import { getCustomerNames } from '../customers/service.js';
 import { orderListItems, orderScope } from './service.js';
 
 const { ObjectId } = mongoose.Types;
@@ -86,6 +87,14 @@ export async function orderNumbersMatching(branchId, user, orderIds, filters = {
   if (!orderIds.length) return new Map();
   const orders = await Order.find({ ...orderFilter(branchId, user, filters), _id: { $in: orderIds.map(oid) } }, { orderNo: 1 }).lean();
   return new Map(orders.map((o) => [String(o._id), o.orderNo]));
+}
+
+/** Order number and customer name of each order id (reports; no user scope: callers hold reports.export). */
+export async function orderLabels(branchId, orderIds) {
+  if (!orderIds.length) return new Map();
+  const orders = await Order.find({ branchId: oid(branchId), _id: { $in: orderIds.map(oid) } }, { orderNo: 1, customerId: 1 }).lean();
+  const names = await getCustomerNames(branchId, orders.map((o) => o.customerId));
+  return new Map(orders.map((o) => [String(o._id), { orderNo: o.orderNo, customerName: names.get(String(o.customerId)) ?? '' }]));
 }
 
 /** Garments that became ready in [from, to] and are still ready or picked up (`ready`; exported for the index test). */

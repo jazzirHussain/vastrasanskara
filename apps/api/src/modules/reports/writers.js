@@ -3,6 +3,7 @@
 import { PassThrough } from 'node:stream';
 import ExcelJS from 'exceljs';
 import { safeCell, toCsv } from '@vs/shared/reports/csv.js';
+import { renderPdf } from '../../core/pdf/render.js';
 
 export const REPORT_MAX_ROWS = 200_000;
 export const MONEY_FORMAT = '#,##0.00';
@@ -67,4 +68,9 @@ export async function toXlsx(sheets, { created = new Date() } = {}) {
 /** A one-sheet report as a CSV file. */
 export function toCsvBuffer(sheet) {
   return Buffer.from(toCsv(sheet.columns, sheet.rows), 'utf8');
+}
+
+/** A PDF report (a pdfmake document definition) as a Buffer. */
+export function toPdf(docDefinition) {
+  return renderPdf(docDefinition);
 }

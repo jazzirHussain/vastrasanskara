@@ -12,6 +12,8 @@ import { ReportRun } from './model.js';
 import { CONTENT_TYPES, REPORT_MAX_ROWS, ReportError, checkRowLimit, toCsvBuffer, toXlsx } from './writers.js';
 import './builders/registers.js';
 import './builders/gst.js';
+import './builders/ledgers.js';
+import './builders/business.js';
 
 export const STUCK_AFTER_MS = 30 * 60_000;
 export const MAX_ATTEMPTS = 2;
@@ -67,7 +69,7 @@ export async function buildRun(run, { storage, maxRows = REPORT_MAX_ROWS } = {})
     const build = getBuilder(run.kind);
     if (!build) throw new ReportError('REPORT_FAILED', FAILED_MESSAGE);
     const params = { ...run.params, customerId: run.params?.customerId ? String(run.params.customerId) : null };
-    const { files } = await build(String(run.branchId), params, { storage, maxRows });
+    const { files } = await build(String(run.branchId), params, { storage, maxRows, format: run.format });
     const sheets = files.flatMap((f) => f.sheets ?? []);
     const rows = sheets.reduce((n, s) => n + s.rows.length, 0);
     checkRowLimit(rows, maxRows);

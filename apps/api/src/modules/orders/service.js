@@ -524,6 +524,7 @@ export {
   listOrdersPlaced,
   onHoldOrders,
   orderCounts,
+  orderLabels,
   orderNumbersMatching,
   ordersByStatusMatch,
   ordersPlacedMatch,
