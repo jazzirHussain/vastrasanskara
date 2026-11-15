@@ -50,6 +50,12 @@ registerFilePurpose('billing_pdf', {
   canWrite: () => false,
   canRead: (user, key) => canReadBillingPdf(user, key),
 });
+// Report files are written by the reports builder only; reading one needs reports.export.
+registerFilePurpose('reports', {
+  allowedTypes: [],
+  canWrite: () => false,
+  canRead: (user) => user.permissions.has('reports.export'),
+});
 registerFilePurpose('expense_bill', {
   allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'],
   canWrite: (user) => user.permissions.has('expenses.write'),

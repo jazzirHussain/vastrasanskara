@@ -31,6 +31,7 @@ import { costingRouter } from './modules/costing/routes.js';
 import { enquiriesRouter } from './modules/enquiries/routes.js';
 import { appointmentsRouter } from './modules/appointments/routes.js';
 import { dashboardRouter } from './modules/dashboard/routes.js';
+import { reportsRouter } from './modules/reports/routes.js';
 
 /** Builds the Express app. `mount(app)` adds routers before the 404 handler. */
 export function createApp({ config, storage = createStorage(config), mount, logger = defaultLogger } = {}) {
@@ -83,6 +84,7 @@ export function createApp({ config, storage = createStorage(config), mount, logg
   app.use('/v1/enquiries', enquiriesRouter());
   app.use('/v1/appointments', appointmentsRouter());
   app.use('/v1/dashboard', dashboardRouter());
+  app.use('/v1/reports', reportsRouter(storage));
   app.use('/v1/admin/audit', integrityRouter());
   app.use('/v1/files', filesRouter(storage));
   app.use('/v1/notifications', notificationsRouter());

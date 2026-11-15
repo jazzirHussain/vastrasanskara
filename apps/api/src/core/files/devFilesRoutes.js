@@ -41,6 +41,7 @@ export function devFilesRouter(storage) {
     const head = await storage.headObject(key);
     if (!head) throw notFound();
     res.set('Content-Type', head.contentType);
+    if (head.contentDisposition) res.set('Content-Disposition', head.contentDisposition);
     (await storage.getObject(key)).pipe(res);
   });
 

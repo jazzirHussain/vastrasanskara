@@ -79,3 +79,11 @@ test('bill photos accept images and PDFs up to 10 MB for expenses.write', async 
   expect((await ops.get('/v1/files/url').query({ key: body.key })).status).toBe(200);
   expect((await designer.get('/v1/files/url').query({ key: body.key })).status).toBe(404);
 });
+
+test('nobody can upload a report file', async () => {
+  const admin = await loginAs(app, { roles: ['admin'] });
+  for (const contentType of ['application/pdf', 'image/png']) {
+    const r = await admin.agent.post('/v1/files/upload-url').send({ purpose: 'reports', contentType, size: 100 });
+    expect([r.status, r.body.error?.code], contentType).toEqual([400, 'FILE_TYPE_NOT_ALLOWED']);
+  }
+});
