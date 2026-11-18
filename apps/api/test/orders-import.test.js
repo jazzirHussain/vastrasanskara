@@ -81,6 +81,19 @@ test('the same old order number is never brought in twice', async () => {
   expect(await Order.countDocuments()).toBe(1);
 });
 
+test('an old order number written differently in a later file is the same order', async () => {
+  const { admin, line, branchId } = await world();
+  await add(admin, await check(admin, 'orders', await xlsx([HEAD, line({ ref: 'AB-12  Rush' })])));
+  const again = await check(admin, 'orders', await xlsx([HEAD, line({ ref: ' ab-12 rush ' })]));
+  expect(again.counts).toMatchObject({ ready: 0, exists: 1 });
+  const order = await Order.findOne().lean();
+  const actor = { userId: admin.user._id, ip: null, userAgent: 'test' };
+  const input = { legacyRef: 'ab-12 RUSH', customerId: String(order.customerId), designerId: String(order.designerId), pickupDate: addDaysYmd(today(), 5), garments: [{ type: 'blouse', description: 'x', agreedPrice: 100, quantity: 1, stage: 'tailors' }] };
+  await expect(importOrder(branchId, input, actor)).rejects.toMatchObject({ status: 409, code: 'ORDER_EXISTS' });
+  expect(await Order.countDocuments()).toBe(1);
+  expect(order.legacyRef).toBe('AB-12 Rush');
+});
+
 test('rows of one order must agree', async () => {
   const { admin, line } = await world();
   const run = await check(admin, 'orders', await xlsx([HEAD, line(), line({ phone: '9123456789' }), line({ ref: '99' })]));

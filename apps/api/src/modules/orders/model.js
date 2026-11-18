@@ -10,6 +10,8 @@ const orderSchema = new mongoose.Schema({
   orderNo: { type: String, required: true },
   // The number in the old paper book, for orders brought in from earlier records ("Old no.").
   legacyRef: { type: String, default: null },
+  // legacyRef as matched: trimmed, lower case, single spaces ('AB-12' and ' ab-12' are one order).
+  legacyRefKey: { type: String, default: null },
   customerId: { type: ObjectId, ref: 'Customer', required: true },
   designerId: { type: ObjectId, ref: 'User', required: true },
   priority: { type: String, enum: ['normal', 'rush'], default: 'normal' },
@@ -52,7 +54,7 @@ orderSchema.index({ branchId: 1, status: 1, pickupDate: 1 });
 orderSchema.index({ branchId: 1, designerId: 1, pickupDate: 1 });
 orderSchema.index({ branchId: 1, customerId: 1 });
 orderSchema.index({ branchId: 1, orderDate: 1, _id: 1 }, { name: 'by_order_date' });
-orderSchema.index({ branchId: 1, legacyRef: 1 }, { name: 'legacy_ref', unique: true, partialFilterExpression: { legacyRef: { $type: 'string' } } });
+orderSchema.index({ branchId: 1, legacyRefKey: 1 }, { name: 'legacy_ref_key', unique: true, partialFilterExpression: { legacyRefKey: { $type: 'string' } } });
 
 export const Order = mongoose.models.Order ?? mongoose.model('Order', orderSchema);
 

@@ -14,9 +14,12 @@ import { allocateOrderNo, buildGarments, checkGarmentInputs, checkParties } from
 
 const orderExists = () => new AppError(409, 'ORDER_EXISTS', 'An order with this old number is already in the system');
 
-/** The branch's order brought in with this old number, or null. */
+/** How an old order number is matched: case and spacing do not make a different order. */
+export const legacyRefKey = (legacyRef) => String(legacyRef).trim().toLowerCase().replace(/s+/g, ' ');
+
+/** The branch's order brought in with this old number (however it is written), or null. */
 export function findOrderByLegacyRef(branchId, legacyRef, session) {
-  return Order.findOne({ branchId, legacyRef: String(legacyRef).trim() }).session(session ?? null).lean();
+  return Order.findOne({ branchId, legacyRefKey: legacyRefKey(legacyRef) }).session(session ?? null).lean();
 }
 
 /**
@@ -58,6 +61,7 @@ export async function importOrder(branchId, input, actor) {
             branchId,
             orderNo,
             legacyRef,
+            legacyRefKey: legacyRefKey(legacyRef),
             customerId: input.customerId,
             designerId: input.designerId,
             priority: input.priority ?? 'normal',
