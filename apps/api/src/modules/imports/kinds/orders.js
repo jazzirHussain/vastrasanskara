@@ -1,3 +1,5 @@
+import { istDate } from '@vs/shared/fy.js';
+import { clock } from '../../../clock.js';
 import { findCustomerByPhone } from '../../customers/service.js';
 import { findOrderByLegacyRef, importOrder } from '../../orders/service.js';
 import { listDesignerContacts } from '../../users/service.js';
@@ -29,6 +31,17 @@ registerImportKind('orders', {
       }
     } else {
       ctx.groups.set(groupKey, { rowNo, customerPhone: data.customerPhone, pickupDate: data.pickupDate });
+    }
+    // The date rules the order service applies when the order is added, named here by column.
+    const orderDate = data.orderDate ?? istDate(clock.now());
+    if (orderDate > istDate(clock.now())) {
+      return { status: 'error', label, errors: [{ column: 'Order date', message: 'The order date cannot be in the future.' }] };
+    }
+    if (data.pickupDate < orderDate) {
+      return { status: 'error', label, errors: [{ column: 'Pickup date', message: 'The pickup date cannot be before the order date.' }] };
+    }
+    if (data.garment.dueDate && data.garment.dueDate > data.pickupDate) {
+      return { status: 'error', label, errors: [{ column: 'Due date', message: 'A garment cannot be due after the pickup date.' }] };
     }
     if (!(await customerFor(ctx, data.customerPhone))) {
       const message = `No customer with phone ${tenDigits(data.customerPhone)} — bring in customers first.`;

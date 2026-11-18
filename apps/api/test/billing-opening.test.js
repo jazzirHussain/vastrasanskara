@@ -1,6 +1,7 @@
 import { test, expect, vi, afterEach } from 'vitest';
 import mongoose from 'mongoose';
 import { addDaysYmd, istDate } from '@vs/shared';
+import { monthName } from '@vs/shared/reports/catalog.js';
 import { useTestDb } from './helpers/db.js';
 import { buildTestApp } from './helpers/app.js';
 import { billingHelpers } from './helpers/billing.js';
@@ -113,8 +114,11 @@ test('opening balances respect month locks and are dated the cut-over day', asyn
   const lastMonthEnd = addDaysYmd(`${today().slice(0, 7)}-01`, -1);
   const locked = await admin.agent.post(`/v1/period-locks/${lastMonthEnd.slice(0, 7)}/lock`).send({ note: 'Filed' });
   expect(locked.status, JSON.stringify(locked.body)).toBe(200);
-  const done = await bringIn([['9876543210', 5000, '', '', '']], lastMonthEnd);
-  expect(done.counts.failed).toBe(1);
+  // The preview says so before anything is confirmed.
+  const run = await imports.check(admin, 'opening_balances', await xlsx([HEAD, ['9876543210', 5000, '', '', '']]), { asOf: lastMonthEnd });
+  expect(run.counts).toMatchObject({ ready: 0, error: 1 });
+  const [row] = await imports.rows(admin, run.id, 'error');
+  expect(row.errors).toEqual([{ column: null, message: `${monthName(lastMonthEnd.slice(0, 7))} is locked for filing. Choose a cut-over date in an open month, or unlock the month.` }]);
   await expect(recordOpeningBalance(branchId, { customerId, owed: 100, advance: 0, asOf: addDaysYmd(today(), 1), note: '' }, actor))
     .rejects.toMatchObject({ code: 'DATE_IN_FUTURE' });
   const ok = await recordOpeningBalance(branchId, { customerId, owed: 100, advance: 0, asOf: today(), note: '' }, actor);

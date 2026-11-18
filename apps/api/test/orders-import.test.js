@@ -111,10 +111,7 @@ test('a past pickup date is allowed and shows late', async () => {
   await add(admin, await check(admin, 'orders', await xlsx([HEAD, line({ orderDate: addDaysYmd(today(), -40), pickup: addDaysYmd(today(), -3) })])));
   const [summary] = (await admin.agent.get('/v1/orders')).body.items;
   expect(summary.late).toBe(true);
-  const future = await check(admin, 'orders', await xlsx([HEAD, line({ ref: '2', orderDate: addDaysYmd(today(), 2) })]));
-  const done = await add(admin, future);
-  expect(done.counts.failed).toBe(1);
-  expect((await rows(admin, future.id, 'failed'))[0].errors[0].message).toMatch(/order date cannot be in the future/i);
+  // A future order date is named in the preview: see "the preview names order dates that cannot be added".
 });
 
 test('picked-up garments are not open orders', async () => {
@@ -165,4 +162,18 @@ test('imported is never an allowed next action', async () => {
   const r = await operations.agent.post('/v1/production/actions').send({ stage: 'tailors', action: 'imported', garments: [{ id: String(garment._id), version: garment.__v }] });
   expect(r.status).toBeGreaterThanOrEqual(400);
   expect(await StageEvent.countDocuments()).toBe(1);
+});
+
+test('the preview names order dates that cannot be added', async () => {
+  const { admin, line, orderDate, pickup } = await world();
+  const run = await check(admin, 'orders', await xlsx([
+    HEAD,
+    line({ ref: 'F1', orderDate: addDaysYmd(today(), 2), pickup: addDaysYmd(today(), 20) }),
+    line({ ref: 'P1', orderDate, pickup: addDaysYmd(orderDate, -1) }),
+  ]));
+  expect(run.counts).toMatchObject({ ready: 0, error: 2 });
+  const errors = Object.fromEntries((await rows(admin, run.id, 'error')).map((r) => [r.label, r.errors]));
+  expect(errors['Old no. F1']).toEqual([{ column: 'Order date', message: 'The order date cannot be in the future.' }]);
+  expect(errors['Old no. P1']).toEqual([{ column: 'Pickup date', message: 'The pickup date cannot be before the order date.' }]);
+  expect(pickup > orderDate).toBe(true);
 });

@@ -1,6 +1,8 @@
 import { hasOpeningBalance, recordOpeningBalance } from '../../billing/service.js';
 import { findCustomerByPhone } from '../../customers/service.js';
+import { monthName } from '@vs/shared/reports/catalog.js';
 import { findOrderByLegacyRef } from '../../orders/service.js';
+import { isPeriodLocked } from '../../periods/service.js';
 import { registerImportKind } from './index.js';
 
 const tenDigits = (e164) => String(e164).replace(/^\+91/, '');
@@ -13,8 +15,13 @@ async function lookups(ctx, data) {
 
 // Opening balances as of the run's cut-over date, through the billing service (outside GST).
 registerImportKind('opening_balances', {
-  context: async (branchId, run) => ({ asOf: run.asOf }),
+  // A locked cut-over month refuses every row when added; the preview says so first.
+  context: async (branchId, run) => ({ asOf: run.asOf, locked: await isPeriodLocked(branchId, run.asOf.slice(0, 7)) }),
   async check({ data }, ctx) {
+    if (ctx.locked) {
+      const message = `${monthName(ctx.asOf.slice(0, 7))} is locked for filing. Choose a cut-over date in an open month, or unlock the month.`;
+      return { status: 'error', label: tenDigits(data.customerPhone), errors: [{ message }] };
+    }
     const { customer, order } = await lookups(ctx, data);
     const label = customer?.name ?? tenDigits(data.customerPhone);
     if (!customer) {
