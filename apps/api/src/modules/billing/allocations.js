@@ -1,7 +1,7 @@
 import { istDate } from '@vs/shared/fy.js';
 import { proportionalTax } from '@vs/shared/gst.js';
 import { clock } from '../../clock.js';
-import { Allocation, CreditNote, Invoice, Receipt, ReceiptVoucher, Refund } from './model.js';
+import { Allocation, BillingDocument, CreditNote, Invoice, Receipt, ReceiptVoucher, Refund } from './model.js';
 
 // Every function here runs inside the caller's transaction, after guardCustomerMoney, so the
 // sums it reads cannot change before the caller commits.
@@ -123,8 +123,9 @@ export function settlementOf(invoice, rows, notes) {
  */
 export async function recomputeSettlement(invoiceId, session) {
   requireTransaction(session, 'recomputeSettlement');
-  const invoice = await Invoice.findById(invoiceId).session(session);
-  if (!invoice) throw new Error(`Invoice ${invoiceId} not found`);
+  // A bill or an opening balance (both carry totals.total and settlement).
+  const invoice = await BillingDocument.findById(invoiceId).session(session);
+  if (!invoice || !['invoice', 'opening_balance'].includes(invoice.type)) throw new Error(`Invoice ${invoiceId} not found`);
   const rows = await Allocation.find({ invoiceId }, { amount: 1, reason: 1 }).session(session).lean();
   const notes = await CreditNote.find({ invoiceId, status: 'issued' }, { 'totals.total': 1 }).session(session).lean();
 

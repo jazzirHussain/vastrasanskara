@@ -30,6 +30,7 @@ import {
 } from './json.js';
 import {
   cancelInvoice,
+  cancelOpeningBalance,
   cancelReceipt,
   createBlankDraft,
   createDraftFromOrder,
@@ -223,6 +224,17 @@ export function billingRouter(storage) {
       const { branchId } = req.user;
       const receipt = await cancelReceipt(branchId, req.params.id, req.body, actorFrom(req));
       res.json({ receipt: await receiptJsonOf(branchId, receipt) });
+    },
+  );
+
+  // Cancels a customer's opening balance and opening advance together (admin), to bring them in again.
+  router.post(
+    '/opening-balances/:id/cancel',
+    requirePermission('billing.cancel'),
+    validate({ body: versioned(billingReasonSchema) }),
+    async (req, res) => {
+      const doc = await cancelOpeningBalance(req.user.branchId, req.params.id, req.body, actorFrom(req));
+      res.json({ openingBalance: { id: String(doc._id), status: doc.status, version: doc.__v } });
     },
   );
 

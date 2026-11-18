@@ -2,7 +2,7 @@
 // confirming, cancelling and continuing, and the worker's pass over waiting runs.
 import { createHash } from 'node:crypto';
 import mongoose from 'mongoose';
-import { IMPORT_KIND_KEYS, IMPORT_LIGHT_ROWS } from '@vs/shared';
+import { IMPORT_KIND_KEYS, IMPORT_LIGHT_ROWS, istDate } from '@vs/shared';
 import { clock } from '../../clock.js';
 import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
@@ -32,6 +32,9 @@ function workSoon(id, { storage }) {
  * Small files (up to 200 rows) are checked at once; larger ones by the worker within a minute.
  */
 export async function startImport(branchId, input, actor, { storage }) {
+  if (input.asOf && input.asOf > istDate(clock.now())) {
+    throw businessRule('DATE_IN_FUTURE', 'The cut-over date cannot be in the future');
+  }
   if (!input.fileKey.startsWith(`${branchId}/import_file/`)) {
     throw validationError([{ path: 'fileKey', message: 'Upload the file first' }]);
   }

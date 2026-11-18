@@ -19,6 +19,7 @@ import './kinds/workers.js';
 import './kinds/catalog.js';
 import './kinds/stock.js';
 import './kinds/orders.js';
+import './kinds/openingBalances.js';
 
 export const STALE_AFTER_MS = 10 * 60_000;
 export const MAX_ATTEMPTS = 3;

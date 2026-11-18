@@ -316,7 +316,7 @@ test('the billing indexes exist', async () => {
   await BillingDocument.init();
   const names = (await BillingDocument.collection.listIndexes().toArray()).map((i) => i.name);
   expect(names).toEqual(expect.arrayContaining([
-    'number_unique', 'ledger', 'register', 'receivables', 'order_docs', 'one_draft_per_order',
+    'number_unique', 'ledger', 'register', 'receivables_v2', 'order_docs', 'one_draft_per_order',
     'pdf_queue', 'billed_garments', 'billed_events', 'credit_notes', 'pdf_key',
   ]));
   await Allocation.init();

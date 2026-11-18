@@ -44,6 +44,7 @@ const ROUTES = [
   ['POST', '/v1/billing/payments', 'payments.record'],
   ['GET', '/v1/billing/payments/:id', MONEY],
   ['POST', '/v1/billing/payments/:id/cancel', 'billing.cancel'],
+  ['POST', '/v1/billing/opening-balances/:id/cancel', 'billing.cancel'],
   ['POST', '/v1/billing/refunds', 'billing.cancel'],
   ['GET', '/v1/billing/refunds/:id', MONEY],
   ['GET', '/v1/billing/receipt-vouchers/:id', MONEY],

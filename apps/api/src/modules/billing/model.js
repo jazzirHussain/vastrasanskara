@@ -86,9 +86,11 @@ billingDocumentSchema.index(
 );
 billingDocumentSchema.index({ branchId: 1, customerId: 1, date: 1, _id: 1 }, { name: 'ledger' });
 billingDocumentSchema.index({ branchId: 1, type: 1, status: 1, date: 1 }, { name: 'register' });
+// Money owed: bills and opening balances with a balance (the old `receivables` index, which
+// covered bills only, is dropped by migration 001).
 billingDocumentSchema.index(
   { branchId: 1, type: 1, status: 1, dueDate: 1 },
-  { name: 'receivables', partialFilterExpression: { type: 'invoice', 'settlement.balance': { $gt: 0 } } },
+  { name: 'receivables_v2', partialFilterExpression: { 'settlement.balance': { $gt: 0 } } },
 );
 // Bill and payment lists: newest first, issued and cancelled together or apart; drafts by last change.
 billingDocumentSchema.index({ branchId: 1, type: 1, status: 1, date: -1, _id: -1 }, { name: 'bills_by_date' });
@@ -244,7 +246,17 @@ export const CreditNote = discriminator('credit_note', {
 
 export const Receipt = discriminator('receipt', {
   amount: amountPaid,
-  mode: { type: String, enum: PAYMENT_MODES, required: true },
+  // An advance brought in from earlier records ("opening advance"): no mode, voucher or PDF, and
+  // never counted as money collected.
+  opening: { type: Boolean, default: false },
+  mode: {
+    type: String,
+    enum: [...PAYMENT_MODES, null],
+    default: null,
+    required() {
+      return !this.opening;
+    },
+  },
   reference: { type: String, default: '' },
   // When the money actually came in, as staff noted it (the document is dated the day it is made).
   receivedOn: { type: String, default: null },
@@ -270,6 +282,26 @@ export const Refund = discriminator('refund', {
     default: null,
   },
 });
+
+// What a customer owed before the cut-over date, brought in from earlier records. Never a GST
+// document: its own series (OB/<fy>/0001), no PDF, and payable like a bill. `totals.total` and
+// `settlement` mirror a bill's so receivables, ageing and payments treat both alike.
+export const OpeningBalance = discriminator('opening_balance', {
+  amount: amountPaid,
+  dueDate: { type: String, required: true },
+  totals: { total: money },
+  settlement: {
+    advanceApplied: money,
+    paid: money,
+    credited: money,
+    balance: money,
+  },
+  note: { type: String, default: '' },
+  legacyRef: { type: String, default: null },
+});
+
+/** Document types that can be owed and paid: bills and opening balances. */
+export const RECEIVABLE_TYPES = Object.freeze(['invoice', 'opening_balance']);
 
 // --- Allocations -----------------------------------------------------------------------------
 

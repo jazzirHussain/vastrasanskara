@@ -9,6 +9,7 @@ import { ResponsiveTable } from '../../components/ResponsiveTable.jsx';
 import { StatusBadge } from '../../components/StatusBadge.jsx';
 import { useCustomerLedger, useCustomerMoney } from './billingApi.js';
 import { MODE_LABELS } from './billStatus.js';
+import { CancelOpeningDialog } from './CancelOpeningDialog.jsx';
 import { CancelReceiptDialog } from './CancelReceiptDialog.jsx';
 import { PdfLinkButton } from './PdfButtons.jsx';
 import { RefundDialog } from './RefundDialog.jsx';
@@ -27,6 +28,8 @@ function Tile({ label, paise, tone }) {
 
 /** "Bill INV/2627/0012", "Payment (UPI)", "Credit note" or "Refund" for a ledger entry. */
 function entryName(e) {
+  // Opening balances carry their own words: "Owed before 5 Nov 2026 (opening balance)".
+  if (e.opening) return e.label.replace(/, cancelled$/, '');
   switch (e.type) {
     case 'invoice':
       return `Bill ${e.number}`;
@@ -46,8 +49,12 @@ function entryName(e) {
 // What a ledger entry's PDF is called; a bill's PDF is on its own page.
 const PDF_NAMES = { receipt: 'receipt', credit_note: 'credit note', refund: 'refund' };
 
-/** The ledger's columns; `onCancelReceipt` (owner only) adds "Cancel payment" under a payment. */
-const columnsFor = (onCancelReceipt) => [
+/**
+ * The ledger's columns. `onCancelReceipt` (owner only) adds "Cancel payment" under a payment and
+ * `onCancelOpening` "Cancel opening balance" under the customer's opening balance (one button for
+ * the balance and its advance: they are cancelled together).
+ */
+const columnsFor = (onCancelReceipt, onCancelOpening, rows) => [
   { key: 'date', header: 'Date', hideOnPhone: true, render: (e) => <DateLabel ymd={e.date} relative={false} /> },
   {
     key: 'entry',
@@ -66,8 +73,13 @@ const columnsFor = (onCancelReceipt) => [
             name
           )}
           {cancelled && <StatusBadge status="cancelled" />}
-          {PDF_NAMES[e.type] && <PdfLinkButton docId={e.id} name={`${PDF_NAMES[e.type]} ${e.number}`} />}
-          {onCancelReceipt && e.type === 'receipt' && !cancelled && (
+          {PDF_NAMES[e.type] && !e.opening && <PdfLinkButton docId={e.id} name={`${PDF_NAMES[e.type]} ${e.number}`} />}
+          {onCancelOpening && e.opening && !cancelled && (e.type === 'opening_balance' || !rows.some((r) => r.type === 'opening_balance' && r.status !== 'cancelled')) && (
+            <Button size="compact-sm" variant="subtle" color="kumkum" onClick={() => onCancelOpening(e)}>
+              Cancel opening balance
+            </Button>
+          )}
+          {onCancelReceipt && e.type === 'receipt' && !e.opening && !cancelled && (
             <Button size="compact-sm" variant="subtle" color="kumkum" onClick={() => onCancelReceipt(e)}>
               Cancel payment
             </Button>
@@ -105,6 +117,7 @@ export function CustomerMoney({ customer }) {
   const [paying, setPaying] = useState(false);
   const [refunding, setRefunding] = useState(false);
   const [cancelling, setCancelling] = useState(null);
+  const [cancellingOpening, setCancellingOpening] = useState(null);
   const canCorrect = can('billing.cancel');
   if (!allowed) return null;
   const rows = ledger.data?.pages.flatMap((p) => p.items) ?? [];
@@ -140,10 +153,11 @@ export function CustomerMoney({ customer }) {
       {ledger.isPending && <Loader size="sm" />}
       {ledger.error && <Alert color="red">{ledger.error.message}</Alert>}
       {ledger.data && rows.length === 0 && <Text c="var(--vs-muted)">No bills or payments yet.</Text>}
-      {rows.length > 0 && <ResponsiveTable label="Ledger" rows={rows} rowKey={(e) => e.id} columns={columnsFor(canCorrect ? setCancelling : null)} />}
+      {rows.length > 0 && <ResponsiveTable label="Ledger" rows={rows} rowKey={(e) => e.id} columns={columnsFor(canCorrect ? setCancelling : null, canCorrect ? setCancellingOpening : null, rows)} />}
       <LoadMore query={ledger} />
       {refunding && <RefundDialog customer={{ id: customer.id, name: customer.name }} held={s.advanceUnassigned} onDone={() => setRefunding(false)} />}
       {cancelling && <CancelReceiptDialog receipt={cancelling} onClose={() => setCancelling(null)} />}
+      {cancellingOpening && <CancelOpeningDialog entry={cancellingOpening} onClose={() => setCancellingOpening(null)} />}
       {paying && (
         <TakePaymentDialog
           customer={{ id: customer.id, name: customer.name }}

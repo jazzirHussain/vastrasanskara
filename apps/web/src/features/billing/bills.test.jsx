@@ -5,7 +5,7 @@ import { http, HttpResponse } from 'msw';
 import { addDaysYmd } from '@vs/shared/fy.js';
 import { server, asDesigner, customerFixture } from '../../test/server.js';
 import { renderApp } from '../../test/setup.js';
-import { asFrontDesk } from '../../test/billing.js';
+import { asFrontDesk, asOwner } from '../../test/billing.js';
 import { todayYmd } from '../../components/DateLabel.jsx';
 
 afterEach(() => vi.restoreAllMocks());
@@ -238,4 +238,38 @@ test('a designer on a customer page makes no billing request', async () => {
   expect(screen.queryByRole('region', { name: 'Money' })).toBeNull();
   expect(billing).toEqual([]);
   server.events.removeAllListeners();
+});
+
+test('opening balance rows show their label and admins can cancel them', async () => {
+  asOwner();
+  let sent = null;
+  const ledgerRows = [
+    { id: 'ob1', type: 'opening_balance', number: 'OB/2627/0001', date: ago(3), label: 'Owed before 15 Nov 2026 (opening balance)', debit: 500000, credit: 0, balance: 300000, status: 'issued', opening: true, version: 0 },
+    { id: 'oa1', type: 'receipt', number: 'OA/2627/0001', date: ago(3), label: 'Advance held before 15 Nov 2026 (opening balance)', debit: 0, credit: 200000, balance: -200000, status: 'issued', opening: true, version: 0 },
+  ];
+  server.use(
+    http.get('/v1/customers/c1', () => HttpResponse.json(customerFixture())),
+    http.get('/v1/customers/c1/measurements', () => HttpResponse.json({ items: [] })),
+    http.get('/v1/billing/customers/c1/summary', () =>
+      HttpResponse.json({ billed: 0, received: 0, credited: 0, refunded: 0, outstanding: 500000, overdue: 500000, advanceHeld: 200000, advanceUnassigned: 0 }),
+    ),
+    http.get('/v1/billing/customers/c1/ledger', () => HttpResponse.json({ items: ledgerRows, nextCursor: null })),
+    http.post('/v1/billing/opening-balances/ob1/cancel', async ({ request }) => {
+      sent = await request.json();
+      return HttpResponse.json({ openingBalance: { id: 'ob1', status: 'cancelled', version: 1 } });
+    }),
+  );
+  renderApp('/customers/c1');
+  const money = await screen.findByRole('region', { name: 'Money' });
+  expect(await within(money).findByText('Owed before 15 Nov 2026 (opening balance)')).toBeInTheDocument();
+  expect(within(money).getByText('Advance held before 15 Nov 2026 (opening balance)')).toBeInTheDocument();
+  // An opening advance is not a payment: no "Cancel payment" and no receipt PDF.
+  expect(within(money).queryByRole('button', { name: 'Cancel payment' })).toBeNull();
+  const cancels = within(money).getAllByRole('button', { name: 'Cancel opening balance' });
+  expect(cancels).toHaveLength(1);
+  await userEvent.click(cancels[0]);
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.type(within(dialog).getByLabelText('Why is it being cancelled?'), 'Wrong amount');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Yes, cancel the opening balance' }));
+  await expect.poll(() => sent).toEqual({ version: 0, reason: 'Wrong amount' });
 });

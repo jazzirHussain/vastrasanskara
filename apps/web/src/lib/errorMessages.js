@@ -5,7 +5,20 @@ import { monthLabel } from './dates.js';
 export const errorMessages = {
   INVALID_CREDENTIALS: 'Email or password is incorrect.',
   ACCOUNT_LOCKED: 'Too many failed attempts. Try again in 15 minutes.',
-  RATE_LIMITED: 'Too many attempts. Please wait and try again.',
+  RATE_LIMITED: 'Too many requests. Please wait a little and try again.',
+  OPENING_EXISTS: 'This customer already has an opening balance.',
+  OPENING_IN_USE: 'Payments are already set against this balance, so it cannot be cancelled.',
+  OPENING_NOT_A_PAYMENT: 'An opening advance is cancelled from the customer’s account, as an opening balance.',
+  IMPORT_BUSY: 'Another import is running. Wait for it to finish.',
+  IMPORT_EXPIRED: 'This check is more than a week old. Upload the file again.',
+  NOTHING_TO_IMPORT: 'There are no rows ready to add.',
+  ORDER_EXISTS: 'An order with this old number is already in the system.',
+  ORDER_DATE_IN_FUTURE: 'The order date cannot be in the future.',
+  DATE_IN_FUTURE: 'The date cannot be in the future.',
+  IMPORT_COLUMNS_MISSING: 'The file is missing a column. Download the template and copy your data into it.',
+  IMPORT_TOO_MANY_ROWS: 'This file has more than 5,000 rows. Split it into smaller files.',
+  IMPORT_FILE_UNREADABLE: 'This file could not be read. Save it as Excel Workbook (.xlsx) or CSV and upload again.',
+  IMPORT_FILE_EMPTY: 'The file has no rows under the headings.',
   SESSION_EXPIRED: 'Your session has expired. Please log in again.',
   NOT_AUTHENTICATED: 'Please log in.',
   FORBIDDEN: 'You do not have access to this.',
@@ -135,6 +148,9 @@ const correctionErrorMessages = {
   },
   receipt: {
     INVALID_STATUS: 'This payment cannot be cancelled in its current state. Reload the page.',
+  },
+  opening: {
+    INVALID_STATUS: 'This opening balance is already cancelled. Reload the page.',
   },
 };
 

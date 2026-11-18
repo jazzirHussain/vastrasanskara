@@ -194,6 +194,16 @@ export function useCancelReceipt() {
   });
 }
 
+/** Cancels a customer's opening balance (and opening advance): `{ id, version, reason }`. */
+export function useCancelOpeningBalance() {
+  const refresh = useRefresh();
+  return useMutation({
+    mutationFn: ({ id, version, reason }) =>
+      apiFetch(`/v1/billing/opening-balances/${id}/cancel`, { method: 'POST', body: { version, reason } }).then((r) => r.openingBalance),
+    onSuccess: () => refresh(),
+  });
+}
+
 /** Gives money back from advance held: `{ body, key }`. Resolves to the refund. */
 export function useIssueRefund() {
   const refresh = useRefresh();

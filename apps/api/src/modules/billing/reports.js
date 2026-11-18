@@ -10,7 +10,7 @@ import { clock } from '../../clock.js';
 import { decodeCursor, paginate } from '../../core/pagination.js';
 import { getCustomerNames } from '../customers/service.js';
 import { receivablesFilter } from './ledger.js';
-import { Allocation, BillingDocument, Invoice } from './model.js';
+import { Allocation, BillingDocument } from './model.js';
 
 const oid = (id) => new mongoose.Types.ObjectId(String(id));
 const todayIst = () => istDate(clock.now());
@@ -35,7 +35,15 @@ const dateRange = (from, to) => ({ $gte: from, $lte: to });
 
 /** Issued money documents dated in [from, to] (`register`). */
 export function periodMatch(branchId, { from, to, customerFilter, types = MONEY_TYPES }) {
-  return { branchId: oid(branchId), type: { $in: types }, status: 'issued', date: dateRange(from, to), ...customerMatch(customerFilter) };
+  // Opening advances are not money collected in the period.
+  return {
+    branchId: oid(branchId),
+    type: { $in: types },
+    status: 'issued',
+    date: dateRange(from, to),
+    opening: { $ne: true },
+    ...customerMatch(customerFilter),
+  };
 }
 
 /** Bills still owed (`receivables`). */
@@ -65,7 +73,14 @@ export function invoicedOrdersMatch(branchId, { from, to }) {
 
 /** Issued and cancelled documents of `types` dated in [from, to] (`register`). */
 export function documentsFilter(branchId, { types, from, to }) {
-  return { branchId: oid(branchId), type: { $in: types }, status: { $in: ['issued', 'cancelled'] }, date: dateRange(from, to) };
+  return {
+    branchId: oid(branchId),
+    type: { $in: types },
+    status: { $in: ['issued', 'cancelled'] },
+    date: dateRange(from, to),
+    // Opening advances belong to the old books: no register, day book or GST file shows them.
+    opening: { $ne: true },
+  };
 }
 
 /** Numbered GST documents dated in [from, to], for the document summary (`register`). */
@@ -138,7 +153,7 @@ export async function monthlyMoney(branchId, { from, to, customerFilter }) {
 export async function receivablesAgeing(branchId, { customerFilter, top = 5 } = {}) {
   const today = todayIst();
   const ago = (n) => addDaysYmd(today, -n);
-  const [facets] = await Invoice.aggregate([
+  const [facets] = await BillingDocument.aggregate([
     { $match: receivablesMatch(branchId, { customerFilter }, today) },
     {
       $facet: {
@@ -580,7 +595,7 @@ export async function moneyRows(branchId, metric, { from, to, customerFilter, bu
   } else {
     const filter = receivablesMatch(branchId, { customerFilter, bucket }, today);
     if (metric === 'overdue_bills') filter.dueDate = { $lt: today };
-    page = await paginate(Invoice, filter, { sort: ['dueDate', 1], cursor, limit });
+    page = await paginate(BillingDocument, filter, { sort: ['dueDate', 1], cursor, limit });
     amountOf = (d) => d.settlement.balance;
   }
   const names = await getCustomerNames(branchId, [...new Set(page.items.map((d) => String(d.customerId)))]);

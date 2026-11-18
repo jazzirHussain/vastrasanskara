@@ -24,6 +24,7 @@ export {
   orderMoney,
 } from './ledger.js';
 export { orderRevenueLines } from './attribution.js';
+export { cancelOpeningBalance, hasOpeningBalance, recordOpeningBalance } from './opening.js';
 export {
   advancesByCustomer,
   advancesHeld,

@@ -67,9 +67,12 @@ async function overdueReminders(branchId, day) {
   return queued;
 }
 
+/** Payments received on `day` (opening advances were not received that day and are left out). */
+export const dayCollectionsFilter = (branchId, day) => ({ branchId, type: 'receipt', status: 'issued', date: day, opening: { $ne: true } });
+
 async function collectionsSummary(branchId, day) {
   const [receipts, refunds] = await Promise.all([
-    Receipt.find({ branchId, type: 'receipt', status: 'issued', date: day }).lean(),
+    Receipt.find(dayCollectionsFilter(branchId, day)).lean(),
     Refund.find({ branchId, type: 'refund', status: 'issued', date: day }).lean(),
   ]);
   const modes = Map.groupBy(receipts, (r) => r.mode);

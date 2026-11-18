@@ -19,10 +19,11 @@ import { getOrderForBilling, getOrderNumbers } from '../orders/service.js';
 import { readSettings } from '../settings/service.js';
 import { suggestedRefund } from './corrections.js';
 import { hasUnbilled } from './invoices.js';
-import { Allocation, BillingDocument, Invoice, Receipt } from './model.js';
+import { Allocation, BillingDocument, Invoice, RECEIVABLE_TYPES, Receipt } from './model.js';
+import { openingLabel } from './opening.js';
 import { orderEstimate } from './payments.js';
 
-const ledgerTypes = ['invoice', 'credit_note', 'receipt', 'refund'];
+const ledgerTypes = ['invoice', 'credit_note', 'receipt', 'refund', 'opening_balance'];
 const ledgerStatuses = ['issued', 'cancelled'];
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const todayIst = () => istDate(clock.now());
@@ -38,12 +39,14 @@ export function ledgerFilter(branchId, customerId) {
 }
 
 const amountOf = (doc) => (doc.type === 'invoice' || doc.type === 'credit_note' ? doc.totals.total : doc.amount);
+const isOpening = (doc) => doc.type === 'opening_balance' || (doc.type === 'receipt' && Boolean(doc.opening));
 
 /** debit / credit of a ledger document: cancelled documents count for nothing. */
 function sides(doc) {
   if (doc.status === 'cancelled') return { debit: 0, credit: 0 };
   const amount = amountOf(doc);
-  return doc.type === 'invoice' || doc.type === 'refund' ? { debit: amount, credit: 0 } : { debit: 0, credit: amount };
+  const debit = doc.type === 'invoice' || doc.type === 'refund' || doc.type === 'opening_balance';
+  return debit ? { debit: amount, credit: 0 } : { debit: 0, credit: amount };
 }
 
 // The same rule as `sides`, as an aggregation expression giving debit − credit.
@@ -55,6 +58,7 @@ const SIGNED = {
         branches: [
           { case: { $eq: ['$type', 'invoice'] }, then: '$totals.total' },
           { case: { $eq: ['$type', 'refund'] }, then: '$amount' },
+          { case: { $eq: ['$type', 'opening_balance'] }, then: '$amount' },
           { case: { $eq: ['$type', 'credit_note'] }, then: { $multiply: ['$totals.total', -1] } },
           { case: { $eq: ['$type', 'receipt'] }, then: { $multiply: ['$amount', -1] } },
         ],
@@ -66,6 +70,7 @@ const SIGNED = {
 };
 
 function labelOf(doc) {
+  if (isOpening(doc)) return openingLabel(doc);
   const base = doc.type === 'receipt' || doc.type === 'refund' ? `${LABELS[doc.type]} (${doc.mode})` : LABELS[doc.type];
   return doc.status === 'cancelled' ? `${base}, cancelled` : base;
 }
@@ -99,6 +104,9 @@ export async function customerLedger(branchId, customerId, { cursor, limit } = {
       credit,
       balance,
       status: doc.status,
+      // Opening balances can be cancelled (and brought in again) by an admin.
+      opening: isOpening(doc),
+      version: doc.__v,
     };
     balance -= debit - credit;
     return item;
@@ -119,10 +127,16 @@ export async function customerMoneySummary(branchId, customerId) {
   const [byType, [owed], [allocated]] = await Promise.all([
     BillingDocument.aggregate([
       { $match: { ...base, type: { $in: ledgerTypes }, status: 'issued' } },
-      { $group: { _id: '$type', total: { $sum: { $ifNull: ['$totals.total', '$amount'] } } } },
+      // Opening advances are held money but not money received: they group apart.
+      {
+        $group: {
+          _id: { $cond: [{ $eq: ['$opening', true] }, 'opening_advance', '$type'] },
+          total: { $sum: { $cond: [{ $eq: ['$type', 'opening_balance'] }, '$amount', { $ifNull: ['$totals.total', '$amount'] }] } },
+        },
+      },
     ]),
-    Invoice.aggregate([
-      { $match: { ...base, status: 'issued', 'settlement.balance': { $gt: 0 } } },
+    BillingDocument.aggregate([
+      { $match: { ...base, type: { $in: RECEIVABLE_TYPES }, status: 'issued', 'settlement.balance': { $gt: 0 } } },
       {
         $group: {
           _id: null,
@@ -149,7 +163,7 @@ export async function customerMoneySummary(branchId, customerId) {
     refunded: total('refund'),
     outstanding: owed?.outstanding ?? 0,
     overdue: owed?.overdue ?? 0,
-    advanceHeld: received - (allocated?.total ?? 0),
+    advanceHeld: received + total('opening_advance') - (allocated?.total ?? 0),
     advanceUnassigned: unassigned.reduce((sum, r) => sum + r.amount, 0) - (unassignedAllocated?.total ?? 0),
   };
 }
@@ -172,7 +186,7 @@ function bucketRange(bucket, today) {
 
 /** The find filter for money owed: issued bills with a balance (the `receivables` index). */
 export function receivablesFilter(branchId, { bucket, customerId } = {}, today = todayIst()) {
-  const filter = { branchId: oid(branchId), type: 'invoice', status: 'issued', 'settlement.balance': { $gt: 0 } };
+  const filter = { branchId: oid(branchId), type: { $in: [...RECEIVABLE_TYPES] }, status: 'issued', 'settlement.balance': { $gt: 0 } };
   if (customerId) filter.customerId = oid(customerId);
   const range = bucketRange(bucket, today);
   if (range) filter.dueDate = range;
@@ -184,8 +198,8 @@ export async function listReceivables(branchId, { bucket, customerId, cursor, li
   const today = todayIst();
   const filter = receivablesFilter(branchId, { bucket, customerId }, today);
   const [page, [sum]] = await Promise.all([
-    paginate(Invoice, filter, { sort: ['dueDate', 1], cursor, limit }),
-    Invoice.aggregate([
+    paginate(BillingDocument, filter, { sort: ['dueDate', 1], cursor, limit }),
+    BillingDocument.aggregate([
       { $match: filter },
       {
         $group: {
@@ -200,6 +214,8 @@ export async function listReceivables(branchId, { bucket, customerId, cursor, li
   const names = await getCustomerNames(branchId, [...new Set(page.items.map((i) => String(i.customerId)))]);
   return {
     items: page.items.map((i) => ({
+      // 'invoice', or 'opening_balance' for money owed before the cut-over date.
+      type: i.type,
       invoice: { id: String(i._id), number: i.number, date: i.date, dueDate: i.dueDate, total: i.totals.total, balance: i.settlement.balance },
       customer: { id: String(i.customerId), name: names.get(String(i.customerId)) ?? '' },
       daysOverdue: Math.max(0, daysBetween(i.dueDate, today)),
@@ -310,7 +326,8 @@ export async function listInvoices(branchId, { status, customerId, orderId, payS
 
 /** Receipts as rows { doc, customer, order }, newest date first (`bills_by_date`). */
 export async function listReceipts(branchId, { customerId, from, to, mode, cursor, limit } = {}) {
-  const filter = { branchId: oid(branchId), type: 'receipt', status: { $in: ledgerStatuses } };
+  // Opening advances were not received in this system: they are not payments.
+  const filter = { branchId: oid(branchId), type: 'receipt', status: { $in: ledgerStatuses }, opening: { $ne: true } };
   if (customerId) filter.customerId = oid(customerId);
   const range = dateRange(from, to);
   if (range) filter.date = range;

@@ -16,7 +16,7 @@ import { PDF_WAIT_MS, pdfFilename } from './invoices.js';
 import './notifications.js';
 import { allocate, availableByReceipt, recomputeSettlement } from './allocations.js';
 import { customerSnapshot, guardCustomerMoney, newPdfKey, sellerSnapshot, takeDocumentNumber, toImmutableError } from './documents.js';
-import { Allocation, Invoice, Receipt, ReceiptVoucher } from './model.js';
+import { Allocation, BillingDocument, Invoice, RECEIVABLE_TYPES, Receipt, ReceiptVoucher } from './model.js';
 
 const NO_SLABS = [{ upToUnitPrice: null, rateBp: 0 }];
 const NOT_BILLABLE = new Set(['rejected', 'cancelled']);
@@ -110,7 +110,7 @@ export async function orderFor(branchId, orderId, customer, session) {
 
 async function invoiceFor(branchId, invoiceId, customer, session) {
   const invoice = mongoose.isValidObjectId(invoiceId)
-    ? await Invoice.findOne({ _id: invoiceId, branchId }).session(session).lean()
+    ? await BillingDocument.findOne({ _id: invoiceId, branchId, type: { $in: [...RECEIVABLE_TYPES] } }).session(session).lean()
     : null;
   if (!invoice || invoice.status !== 'issued' || String(invoice.customerId) !== String(customer._id)) {
     throw fieldError('invoiceId', "This is not one of the customer's issued bills");
@@ -188,7 +188,8 @@ export async function recordPayment(branchId, input, actor) {
         ? [invoice]
         : loaded
           ? await Invoice.find({ branchId, orderId: loaded.order._id, status: 'issued' }).sort({ date: 1, _id: 1 }).session(session).lean()
-          : await Invoice.find({ branchId, customerId: customer._id, status: 'issued', 'settlement.balance': { $gt: 0 } })
+          : // On account: bills and opening balances with a balance, oldest first.
+            await BillingDocument.find({ branchId, customerId: customer._id, type: { $in: [...RECEIVABLE_TYPES] }, status: 'issued', 'settlement.balance': { $gt: 0 } })
               .sort({ date: 1, _id: 1 })
               .session(session)
               .lean();
@@ -402,6 +403,9 @@ export async function cancelReceipt(branchId, id, { reason }, actor) {
     return await withTransaction(async (session) => {
       const now = clock.now();
       const receipt = await loadReceipt(branchId, id, session);
+      if (receipt.opening) {
+        throw businessRule('OPENING_NOT_A_PAYMENT', "An opening advance is cancelled from the customer's account, as an opening balance");
+      }
       await assertPeriodOpen(branchId, receipt.date, session);
       if (receipt.status !== 'issued') throw businessRule('ALREADY_CANCELLED', 'This receipt is already cancelled');
       await guardCustomerMoney(branchId, receipt.customerId, session);
