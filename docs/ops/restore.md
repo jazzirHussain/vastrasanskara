@@ -73,3 +73,54 @@ Look at a few collections (users, settings, auditLog) in the scratch database, t
 
 Anything entered after the backup's timestamp is lost and must be re-entered; tell the team
 which time the data now reflects.
+
+## Restore drill (do before go-live and every 3 months)
+
+A backup is only proven when it has been restored. The drill does steps 1–4 above in one
+command: it restores the newest backup into a scratch database (`<db>_restore_check`), counts
+every collection, re-checks each branch's history (audit) chain, says how old the backup is, and
+then drops the scratch database. Production is never touched.
+
+Run it from the server (or any machine with the MongoDB Database Tools, AWS credentials that can
+read the backups bucket, and network access to Atlas):
+
+```bash
+cd /opt/vastrasanskara
+MONGO_URI="$(aws ssm get-parameter --with-decryption --name /vastrasanskara/prod/MONGO_URI --query Parameter.Value --output text)" \
+BACKUPS_BUCKET=<backups-bucket> \
+node apps/api/src/cli/restore-drill.js
+```
+
+Add `--keep` to leave the scratch database in place for a closer look (drop it afterwards in
+Atlas). The connection string is read from the environment and passed to `mongorestore` in a
+private temporary file; it never appears on the command line or in the report.
+
+A good run ends like this and exits with code 0:
+
+```
+Backup: mongodump/2026/11/18/0600.archive.gz
+Backup is 3 h old
+  auditLog: 1840
+  ...
+  users: 6
+Branch 6a1f…: 1840 history entries, unchanged
+Newest history entry: 2026-11-18T00:28:41.000Z
+The backup restores and its records check out
+```
+
+Write the date and the "Backup is … old" line in the go-live checklist notes (and every 3
+months after).
+
+### When the drill reports a problem (exit code 1)
+
+- **"No backups found"** or **"The newest backup is N h old"** — backups are not running. Check
+  the failed jobs in the admin area and the worker (`pm2 logs vs-worker`), fix, wait for the next
+  6-hourly backup and run the drill again.
+- **"Audit chain broken at entry N of branch …"** — the history in the backup was changed after
+  it was written, or the backup is damaged. Run the admin "Check records" on production: if it
+  also reports a break, treat it as a security incident (who has database access?); if
+  production is fine, run the drill on the previous backup and report the damaged one.
+- **"No users in the backup"** / **"No branches in the backup"** — the backup is empty or of the
+  wrong database. Check `MONGO_URI` points at the production database name.
+- **"The drill could not finish: …"** — usually `mongorestore` missing, wrong AWS credentials or
+  no network access to Atlas. Fix and run again; nothing was changed in production.

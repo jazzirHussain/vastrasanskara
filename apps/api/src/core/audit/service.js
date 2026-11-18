@@ -56,11 +56,11 @@ export async function recordAudit(
 /**
  * Re-hashes the branch's chain in order and reports the first break, if any. The newest seq
  * issued is read first and only entries up to it are checked, so entries committed while the
- * check runs are left for the next one.
+ * check runs are left for the next one. `connection` checks another database (a restored backup).
  */
-export async function verifyAuditChain(branchId) {
+export async function verifyAuditChain(branchId, { connection = mongoose.connection } = {}) {
   const branch = normalize(branchId);
-  const counter = await mongoose.connection.collection('counters').findOne({ _id: counterName(branch) });
+  const counter = await connection.collection('counters').findOne({ _id: counterName(branch) });
   const last = counter?.value ?? 0;
   let checked = 0;
   let prevHash = GENESIS_HASH;
@@ -70,7 +70,8 @@ export async function verifyAuditChain(branchId) {
     firstBreak: { seq, reason, ...(entry ? { entityType: entry.entityType, entityId: entry.entityId } : {}) },
   });
 
-  const cursor = AuditLog.find({ branchId: branch, seq: { $lte: last } }).sort({ seq: 1 }).lean().cursor();
+  // Raw reads (as lean() gives), so a restored copy can be checked on its own connection.
+  const cursor = connection.collection(AuditLog.collection.collectionName).find({ branchId: branch, seq: { $lte: last } }).sort({ seq: 1 });
   for await (const entry of cursor) {
     const expectedSeq = checked + 1;
     if (entry.seq !== expectedSeq) return fail(expectedSeq, 'missing_seq');
