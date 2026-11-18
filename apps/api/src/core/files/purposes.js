@@ -3,6 +3,8 @@ import { canReadBillingPdf } from '../../modules/billing/service.js';
 import { canReadStagePhoto } from '../../modules/production/service.js';
 import { canReadExpenseFile } from '../../modules/expenses/service.js';
 
+import { IMPORT_MAX_BYTES } from '@vs/shared';
+
 export const ALLOWED_TYPES = Object.freeze({
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -10,8 +12,19 @@ export const ALLOWED_TYPES = Object.freeze({
   'image/heic': 'heic',
   'image/heif': 'heif',
   'application/pdf': 'pdf',
+  'text/csv': 'csv',
+  // Windows browsers label .csv files this way (an old .xls is refused when the file is read).
+  'application/vnd.ms-excel': 'csv',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
 });
 export const MAX_UPLOAD_BYTES = 10485760;
+// Pictures and PDFs: what a purpose accepts unless it says otherwise.
+const IMAGES_AND_PDF = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'];
+export const SPREADSHEET_TYPES = Object.freeze([
+  'text/csv',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]);
 
 const purposes = new Map();
 
@@ -21,9 +34,9 @@ const purposes = new Map();
  */
 export function registerFilePurpose(
   name,
-  { allowedTypes = Object.keys(ALLOWED_TYPES), canWrite, canRead },
+  { allowedTypes = IMAGES_AND_PDF, maxBytes = MAX_UPLOAD_BYTES, canWrite, canRead },
 ) {
-  purposes.set(name, { allowedTypes, canWrite, canRead });
+  purposes.set(name, { allowedTypes, maxBytes, canWrite, canRead });
 }
 
 export function getFilePurpose(name) {
@@ -61,4 +74,11 @@ registerFilePurpose('expense_bill', {
   allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'],
   canWrite: (user) => user.permissions.has('expenses.write'),
   canRead: (user, key) => canReadExpenseFile(user, key),
+});
+// Spreadsheets of old records for "Bring in old records": admin only, never shared.
+registerFilePurpose('import_file', {
+  allowedTypes: SPREADSHEET_TYPES,
+  maxBytes: IMPORT_MAX_BYTES,
+  canWrite: (user) => user.permissions.has('imports.run'),
+  canRead: async (user) => user.permissions.has('imports.run'),
 });

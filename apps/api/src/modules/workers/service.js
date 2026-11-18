@@ -1,21 +1,37 @@
 import mongoose from 'mongoose';
+import { recordAudit } from '../../core/audit/service.js';
+import { withTransaction } from '../../core/db.js';
 import { conflict, notFound } from '../../core/errors.js';
 import { Worker } from './model.js';
+
+const auditFields = (w) => ({ name: w.name, skill: w.skill, active: w.active });
 
 /** The branch's workers by name; `active` narrows to active or inactive ones. */
 export function listWorkers(branchId, { active } = {}) {
   return Worker.find({ branchId, ...(active !== undefined && { active }) }).sort({ searchName: 1, _id: 1 }).lean();
 }
 
+/** Creates a worker (audited, so records brought in by an import trace back to it). */
 export async function createWorker(branchId, input, actor) {
-  const worker = await Worker.create({
-    ...input,
-    branchId,
-    searchName: input.name.toLowerCase(),
-    createdBy: actor.userId,
-    updatedBy: actor.userId,
+  return withTransaction(async (session) => {
+    const [worker] = await Worker.create(
+      [{ ...input, branchId, searchName: input.name.toLowerCase(), createdBy: actor.userId, updatedBy: actor.userId }],
+      { session },
+    );
+    await recordAudit(
+      { branchId, entityType: 'worker', entityId: worker._id, action: 'create', before: null, after: auditFields(worker), actor },
+      session,
+    );
+    return worker.toObject();
   });
-  return worker.toObject();
+}
+
+/** The branch's worker with this name, ignoring case and extra spaces, or null. */
+export function findWorkerByName(branchId, name) {
+  const words = String(name).trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return null;
+  const escaped = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return Worker.findOne({ branchId, searchName: new RegExp(`^${escaped.join('\\s+')}$`) }).lean();
 }
 
 /** Updates a worker at `version` (409 when someone else saved first). */

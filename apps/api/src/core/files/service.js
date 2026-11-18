@@ -17,7 +17,10 @@ export async function createUploadUrl(storage, user, { purpose: purposeName, con
   if (!purpose.allowedTypes.includes(contentType) || !ALLOWED_TYPES[contentType]) {
     throw new AppError(400, 'FILE_TYPE_NOT_ALLOWED', 'This file type is not allowed');
   }
-  if (size > MAX_UPLOAD_BYTES) throw new AppError(400, 'FILE_TOO_LARGE', 'Files must be 10 MB or smaller');
+  const maxBytes = purpose.maxBytes ?? MAX_UPLOAD_BYTES;
+  if (size > maxBytes) {
+    throw new AppError(400, 'FILE_TOO_LARGE', `Files must be ${Math.round(maxBytes / 1048576)} MB or smaller`);
+  }
   if (!purpose.canWrite(user)) throw forbidden();
 
   const year = istDate(clock.now()).slice(0, 4);

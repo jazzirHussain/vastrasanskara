@@ -24,6 +24,21 @@ test('rejects bad type, size and permission', async () => {
   const { agent: d } = await loginAs(app, { roles: ['designer'] });
   expect((await d.post('/v1/files/upload-url').send({ purpose: 'branch_logo', contentType: 'image/png', size: 10 })).status).toBe(403);
 });
+test('import files accept Excel and CSV up to 5 MB, admin only', async () => {
+  const { agent, user } = await loginAs(app, { roles: ['admin'] });
+  const ask = (contentType, size) => agent.post('/v1/files/upload-url').send({ purpose: 'import_file', contentType, size });
+  const x = await ask('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 5242880);
+  expect(x.status).toBe(200);
+  expect(x.body.key).toMatch(new RegExp(`^${user.branchId}/import_file/\\d{4}/[0-9a-f-]{36}\\.xlsx$`));
+  expect((await ask('text/csv', 100)).body.key).toMatch(/\.csv$/);
+  expect((await ask('application/vnd.ms-excel', 100)).body.key).toMatch(/\.csv$/);
+  expect((await ask('text/csv', 5242881)).body.error).toMatchObject({ code: 'FILE_TOO_LARGE', message: 'Files must be 5 MB or smaller' });
+  expect((await ask('image/png', 100)).body.error.code).toBe('FILE_TYPE_NOT_ALLOWED');
+  // Other purposes still take only pictures and PDFs.
+  expect((await agent.post('/v1/files/upload-url').send({ purpose: 'branch_logo', contentType: 'text/csv', size: 10 })).body.error.code).toBe('FILE_TYPE_NOT_ALLOWED');
+  const { agent: ops } = await loginAs(app, { roles: ['operations'] });
+  expect((await ops.post('/v1/files/upload-url').send({ purpose: 'import_file', contentType: 'text/csv', size: 10 })).status).toBe(403);
+});
 test('download url hides other branches', async () => {
   const { agent } = await loginAs(app, { roles: ['admin'] });
   expect((await agent.get('/v1/files/url').query({ key: '000000000000000000000000/branch_logo/2026/x.png' })).status).toBe(404);

@@ -6,8 +6,11 @@ import { istDate } from '@vs/shared/fy.js';
 import { clock } from '../../clock.js';
 import { canonicalJson } from '../../core/audit/canonical.js';
 import { withTransaction } from '../../core/db.js';
+import { contentDisposition } from '../../core/http.js';
 import { emit } from '../../core/notify/emit.js';
 import { logger } from '../../logger.js';
+
+export { contentDisposition };
 import { getCustomer } from '../customers/service.js';
 import { getBuilder } from './builders/index.js';
 import { ReportRun } from './model.js';
@@ -61,12 +64,6 @@ const packVars = (run, link) => ({
   link,
 });
 
-/** `attachment; filename="…"`, with an RFC 5987 UTF-8 name beside an ASCII one when needed. */
-export function contentDisposition(filename) {
-  const ascii = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '');
-  const plain = `attachment; filename="${ascii}"`;
-  return ascii === filename ? plain : `${plain}; filename*=UTF-8''${encodeURIComponent(filename)}`;
-}
 
 async function writeFile(run, file, filename, { storage }) {
   const format = file.pdf ? 'pdf' : run.format;
