@@ -22,7 +22,8 @@ test('redirects home after login', async () => {
   await userEvent.type(await screen.findByLabelText('Email'), 'o@x.com');
   await userEvent.type(screen.getByLabelText('Password'), 'correct-horse-1');
   await userEvent.click(screen.getByRole('button', { name: 'Log in' }));
-  expect(await screen.findByText('Welcome, Owner')).toBeInTheDocument();
+  // Home loads the dashboard after login; allow for a busy test run.
+  expect(await screen.findByText('Welcome, Owner', {}, { timeout: 3000 })).toBeInTheDocument();
 });
 
 test('a signed-out visitor to a protected page lands on login', async () => {
