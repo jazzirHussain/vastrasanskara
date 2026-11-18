@@ -10,7 +10,8 @@ import * as auditService from '../src/core/audit/service.js';
 import { AuditLog } from '../src/core/audit/model.js';
 import { withTransaction } from '../src/core/db.js';
 import { Expense, ExpenseImmutableError } from '../src/modules/expenses/model.js';
-import { createExpense } from '../src/modules/expenses/service.js';
+import { createExpense, listAttachmentHashes } from '../src/modules/expenses/service.js';
+import { createHash } from 'node:crypto';
 
 useTestDb();
 const app = buildTestApp();
@@ -264,4 +265,15 @@ test('expenses cannot be deleted', async () => {
   voided.note = 'changed';
   await expect(voided.save()).rejects.toThrow(ExpenseImmutableError);
   expect(await Expense.countDocuments()).toBe(1);
+});
+
+test("a bill photo's checksum is kept with the expense", async () => {
+  const { ops, branchId } = await world();
+  const key = await upload(ops);
+  const r = await add(ops, { attachments: [{ key, name: 'bill.jpg' }] });
+  ok(r);
+  const sha256 = createHash('sha256').update('abc').digest('hex');
+  const stored = await Expense.findById(r.body.expense.id).lean();
+  expect(stored.attachments[0].sha256).toBe(sha256);
+  expect(await listAttachmentHashes(branchId)).toEqual([{ expenseId: r.body.expense.id, number: r.body.expense.number, key, sha256 }]);
 });

@@ -8,6 +8,7 @@ const uploadBody = z.strictObject({
   purpose: z.string().min(1).max(50),
   contentType: z.string().min(1).max(100),
   size: z.int().positive(),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/, 'Use the SHA-256 in lowercase hex').optional(),
 });
 const urlQuery = z.strictObject({ key: z.string().min(1).max(300) });
 

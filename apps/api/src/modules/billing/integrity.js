@@ -5,6 +5,7 @@ import { withTransaction } from '../../core/db.js';
 import { clock } from '../../clock.js';
 import { logger } from '../../logger.js';
 import { Allocation, BillingDocument, CreditNote, IntegrityRun, Invoice } from './model.js';
+import { listAttachmentHashes } from '../expenses/service.js';
 import { settlementOf } from './allocations.js';
 
 const MAX_PROBLEMS = 50;
@@ -45,6 +46,31 @@ async function checkPdfs(branchId, storage) {
       reason = 'missing';
     }
     if (reason) collect(out, { id: String(doc._id), type: doc.type, number: doc.number, reason });
+  }
+  return out;
+}
+
+/** Re-hashes every expense bill photo saved with a SHA-256. */
+async function checkPhotos(branchId, storage) {
+  const out = { checked: 0, problems: [] };
+  let after;
+  for (;;) {
+    const page = await listAttachmentHashes(branchId, { after, limit: 500 });
+    if (page.length === 0) break;
+    for (const photo of page) {
+      out.checked += 1;
+      let reason = null;
+      try {
+        if ((await sha256Of(storage, photo.key)) !== photo.sha256) reason = 'hash_mismatch';
+      } catch (err) {
+        if (!isMissing(err)) throw err;
+        reason = 'missing';
+      }
+      if (reason) {
+        collect(out, { kind: 'expense_photo', id: photo.expenseId, number: photo.number, label: `Bill photo of ${photo.number}`, reason });
+      }
+    }
+    after = page.at(-1).expenseId;
   }
   return out;
 }
@@ -94,17 +120,19 @@ async function auditSection(branchId) {
   return { ok: audit.ok, checked: audit.checked, firstBreak };
 }
 
-/** Checks the audit chain, stored PDFs and bill balances without changing any of them. */
+/** Checks the audit chain, stored PDFs, expense bill photos and bill balances without changing any of them. */
 export async function verifyBillingIntegrity(branchId, storage) {
   const checkedAt = clock.now().toISOString();
   const audit = await auditSection(branchId);
   const pdfs = await checkPdfs(branchId, storage);
+  const photos = await checkPhotos(branchId, storage);
   const balances = await checkBalances(branchId);
   return {
     checkedAt,
-    ok: audit.ok && pdfs.problems.length === 0 && balances.problems.length === 0,
+    ok: audit.ok && pdfs.problems.length === 0 && photos.problems.length === 0 && balances.problems.length === 0,
     audit,
     pdfs,
+    photos,
     balances,
   };
 }

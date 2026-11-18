@@ -11,7 +11,7 @@ const KEY_PATTERN = /^([0-9a-f]{24})\/([a-z0-9_]+)\/\d{4}\/[0-9a-f-]{36}\.[a-z0-
  * Checks an upload against its purpose (type, size, permission) and returns a new key in
  * the user's branch plus a presigned upload URL.
  */
-export async function createUploadUrl(storage, user, { purpose: purposeName, contentType, size }) {
+export async function createUploadUrl(storage, user, { purpose: purposeName, contentType, size, sha256 }) {
   const purpose = getFilePurpose(purposeName);
   if (!purpose) throw validationError([{ path: 'purpose', message: 'Unknown file purpose' }]);
   if (!purpose.allowedTypes.includes(contentType) || !ALLOWED_TYPES[contentType]) {
@@ -25,7 +25,7 @@ export async function createUploadUrl(storage, user, { purpose: purposeName, con
 
   const year = istDate(clock.now()).slice(0, 4);
   const key = `${user.branchId}/${purposeName}/${year}/${randomUUID()}.${ALLOWED_TYPES[contentType]}`;
-  const { url, headers } = await storage.presignPut({ key, contentType, size });
+  const { url, headers } = await storage.presignPut({ key, contentType, size, sha256 });
   return { key, url, headers };
 }
 

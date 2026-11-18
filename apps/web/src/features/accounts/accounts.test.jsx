@@ -218,3 +218,21 @@ test('only the owner sees Accounts', async () => {
   expect(screen.queryByText('Month locks')).toBeNull();
   expect(screen.queryByRole('link', { name: 'Accounts' })).toBeNull();
 });
+
+test('check records names a changed or missing bill photo', async () => {
+  checks({
+    ...CLEAN,
+    ok: false,
+    photos: {
+      checked: 2,
+      problems: [
+        { kind: 'expense_photo', id: 'e1', number: 'EXP/2627/0012', label: 'Bill photo of EXP/2627/0012', reason: 'hash_mismatch' },
+        { kind: 'expense_photo', id: 'e2', number: 'EXP/2627/0013', label: 'Bill photo of EXP/2627/0013', reason: 'missing' },
+      ],
+    },
+  });
+  await openChecks();
+  await userEvent.click(await screen.findByRole('button', { name: 'Check records now' }));
+  expect(await screen.findByText('Bill photo of EXP/2627/0012: it has changed since it was saved')).toBeInTheDocument();
+  expect(screen.getByText('Bill photo of EXP/2627/0013: it is missing')).toBeInTheDocument();
+});

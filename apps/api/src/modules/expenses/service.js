@@ -75,7 +75,7 @@ async function checkAttachments(branchId, storage, attachments, known = new Set(
       if (known.has(a.key)) return a;
       const head = await storage.headObject(a.key);
       if (!head) throw new AppError(400, 'ATTACHMENT_NOT_UPLOADED', 'A photo has not finished uploading', { index });
-      return { key: a.key, name: a.name, contentType: head.contentType, size: head.size };
+      return { key: a.key, name: a.name, contentType: head.contentType, size: head.size, sha256: head.sha256 ?? null };
     }),
   );
 }
@@ -310,7 +310,7 @@ export async function updateExpense(branchId, id, { version, patch }, actor, { s
         const meta = byKey.get(a.key) ?? (a.contentType ? a : null);
         // On the expense when checked but gone now: someone saved in between.
         if (!meta) throw conflict();
-        return { key: a.key, name: a.name, contentType: meta.contentType, size: meta.size };
+        return { key: a.key, name: a.name, contentType: meta.contentType, size: meta.size, sha256: meta.sha256 ?? null };
       });
     }
 
@@ -394,6 +394,23 @@ export async function expenseJsonContext(branchId, expense) {
  * Whether the user may read a bill photo: one on an expense of their branch needs expenses.view;
  * one not on any expense yet (the form's preview) needs expenses.write.
  */
+/**
+ * Bill photos saved with a SHA-256, oldest expense first, a page at a time (`after` = the last
+ * expense id seen): [{ expenseId, number, key, sha256 }].
+ */
+export async function listAttachmentHashes(branchId, { after, limit = 500 } = {}) {
+  const expenses = await Expense.find(
+    { branchId, 'attachments.sha256': { $type: 'string' }, ...(after && { _id: { $gt: new mongoose.Types.ObjectId(String(after)) } }) },
+    { number: 1, attachments: 1 },
+  )
+    .sort({ _id: 1 })
+    .limit(limit)
+    .lean();
+  return expenses.flatMap((e) =>
+    e.attachments.filter((a) => a.sha256).map((a) => ({ expenseId: String(e._id), number: e.number, key: a.key, sha256: a.sha256 })),
+  );
+}
+
 export async function canReadExpenseFile(user, key) {
   const saved = await Expense.exists({ branchId: user.branchId, 'attachments.key': key });
   return user.permissions.has(saved ? 'expenses.view' : 'expenses.write');

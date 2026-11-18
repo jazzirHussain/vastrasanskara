@@ -54,7 +54,8 @@ test('uploading a filled file shows the check, then the preview', async () => {
   const card = await screen.findByRole('region', { name: 'Customers' });
   await userEvent.upload(within(card).getByLabelText('Upload filled file'), file());
   await expect.poll(() => seen.starts.length).toBe(1);
-  expect(seen.uploads[0]).toEqual({ purpose: 'import_file', contentType: XLSX, size: 2048 });
+  // sha256 of the 2048 zero bytes in file().
+  expect(seen.uploads[0]).toEqual({ purpose: 'import_file', contentType: XLSX, size: 2048, sha256: 'e5a00aa9991ac8a5ee3109844d84a55583bd20572ad3ffcd42792f3c36b183ad' });
   expect(seen.starts[0].body).toEqual({ kind: 'customers', fileKey: 'b1/import_file/2026/abc.xlsx', fileName: 'customers.xlsx' });
   expect(seen.starts[0].key).toMatch(/^[0-9a-f-]{36}$/);
   expect(await screen.findByText('Checking your file…')).toBeInTheDocument();

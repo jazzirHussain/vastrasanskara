@@ -1,4 +1,5 @@
 import { test, expect, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { useTestDb } from './helpers/db.js';
 import { buildTestApp, loginAs, fetchLike } from './helpers/app.js';
 import { createS3Storage } from '../src/core/files/storage-s3.js';
@@ -101,4 +102,19 @@ test('nobody can upload a report file', async () => {
     const r = await admin.agent.post('/v1/files/upload-url').send({ purpose: 'reports', contentType, size: 100 });
     expect([r.status, r.body.error?.code], contentType).toEqual([400, 'FILE_TYPE_NOT_ALLOWED']);
   }
+});
+
+test('a file whose bytes do not match its checksum is refused', async () => {
+  const { agent } = await loginAs(app, { roles: ['admin'] });
+  const sha = (s) => createHash('sha256').update(s).digest('hex');
+  const ask = (sha256) => agent.post('/v1/files/upload-url').send({ purpose: 'branch_logo', contentType: 'image/png', size: 3, sha256 });
+  expect((await ask('not-hex')).status).toBe(400);
+  const wrong = (await ask(sha('xyz'))).body;
+  const refused = await fetchLike(app, 'PUT', wrong.url, Buffer.from('abc'), wrong.headers);
+  expect(refused.status).toBe(400);
+  expect(JSON.parse(refused.body.toString()).error.code).toBe('FILE_CHECKSUM_MISMATCH');
+  const right = (await ask(sha('abc'))).body;
+  expect(right.headers['x-amz-checksum-sha256']).toBe(createHash('sha256').update('abc').digest('base64'));
+  expect((await fetchLike(app, 'PUT', right.url, Buffer.from('abc'), right.headers)).status).toBe(200);
+  expect((await app.locals.storage.headObject(right.key)).sha256).toBe(sha('abc'));
 });

@@ -5,6 +5,7 @@ import mongoose from 'mongoose';
 import { useTestDb } from './helpers/db.js';
 import { buildTestApp } from './helpers/app.js';
 import { billingHelpers } from './helpers/billing.js';
+import { expenseHelpers } from './helpers/expenses.js';
 import { AuditLog } from '../src/core/audit/model.js';
 import { Allocation, BillingDocument, IntegrityRun, Invoice } from '../src/modules/billing/model.js';
 import { renderPendingPdfs, runPendingIntegrityChecks } from '../src/modules/billing/service.js';
@@ -194,4 +195,26 @@ test('a changed history entry of a bill names the bill by its number', async () 
   await mongoose.connection.collection('auditLog').updateOne({ _id: entry._id }, { $set: { action: 'tampered' } });
   const r = await verify(admin);
   expect(r.body.audit.firstBreak).toEqual({ seq: entry.seq, reason: 'hash_mismatch', entityType: 'invoice', entityId: first.id, number: first.number });
+});
+
+test('check records finds a changed bill photo', async () => {
+  const { world: expenseWorld, upload, add } = expenseHelpers(app);
+  const { admin, ops } = await expenseWorld();
+  const keys = [await upload(ops), await upload(ops)];
+  const first = (await add(ops, { attachments: [{ key: keys[0], name: 'a.jpg' }] })).body.expense;
+  const second = (await add(ops, { attachments: [{ key: keys[1], name: 'b.jpg' }] })).body.expense;
+  let r = await verify(admin);
+  expect(r.body.photos).toEqual({ checked: 2, problems: [] });
+  expect(r.body.ok).toBe(true);
+
+  await storage.putObject({ key: keys[0], body: Buffer.from('xyz'), contentType: 'image/jpeg' });
+  const root = path.join(app.locals.config.storage.localDir, 'filesBucket');
+  await rm(path.join(root, keys[1]));
+  await rm(path.join(root, `${keys[1]}.meta.json`));
+  r = await verify(admin);
+  expect(r.body.ok).toBe(false);
+  expect(r.body.photos.problems).toEqual(expect.arrayContaining([
+    { kind: 'expense_photo', id: first.id, number: first.number, label: `Bill photo of ${first.number}`, reason: 'hash_mismatch' },
+    { kind: 'expense_photo', id: second.id, number: second.number, label: `Bill photo of ${second.number}`, reason: 'missing' },
+  ]));
 });

@@ -47,10 +47,13 @@ export function createLocalStorage({ dir, apiOrigin, secret }) {
   const urlFor = (key, params) => `${apiOrigin}/v1/dev-files/${key}?${new URLSearchParams(params)}`;
 
   return {
-    async presignPut({ key, contentType, size }) {
+    async presignPut({ key, contentType, size, sha256 }) {
       const exp = nowSeconds() + 300;
-      const sig = sign('PUT', key, exp, contentType, size);
-      return { url: urlFor(key, { exp, ct: contentType, size, sig }), headers: { 'Content-Type': contentType } };
+      const sum = sha256 ?? '';
+      const sig = sign('PUT', key, exp, contentType, size, sum);
+      const headers = { 'Content-Type': contentType };
+      if (sha256) headers['x-amz-checksum-sha256'] = Buffer.from(sha256, 'hex').toString('base64');
+      return { url: urlFor(key, { exp, ct: contentType, size, ...(sha256 && { sum }), sig }), headers };
     },
 
     async presignGet(key, { expiresIn = 300 } = {}) {
@@ -58,10 +61,10 @@ export function createLocalStorage({ dir, apiOrigin, secret }) {
       return urlFor(key, { exp, sig: sign('GET', key, exp) });
     },
 
-    /** Checks a presigned upload link; returns the signed content type and size. */
-    verifyPutLink({ key, exp, ct, size, sig }) {
-      verify(sign('PUT', key, exp, ct, size), sig, exp);
-      return { contentType: ct, size: Number(size) };
+    /** Checks a presigned upload link; returns the signed content type, size and SHA-256 (or null). */
+    verifyPutLink({ key, exp, ct, size, sum = '', sig }) {
+      verify(sign('PUT', key, exp, ct, size, sum), sig, exp);
+      return { contentType: ct, size: Number(size), sha256: sum || null };
     },
 
     /** Checks a presigned download link. */

@@ -83,7 +83,8 @@ export async function renderPendingPdfs({ storage, now = clock.now(), limit = 20
         if (!logo) throw err;
         body = await renderPdf(documentDefinition(doc.snapshot)); // a logo that will not embed never blocks a bill
       }
-      await storage.putObject({ key: doc.pdf.key, body, contentType: 'application/pdf' });
+      // GST records are kept 8 years; with Object Lock on, not even an admin can change them.
+      await storage.putObject({ key: doc.pdf.key, body, contentType: 'application/pdf', retainYears: 8 });
       await BillingDocument.updateOne(
         { _id: doc._id, 'pdf.status': 'rendering', 'pdf.lockedAt': doc.pdf.lockedAt },
         {

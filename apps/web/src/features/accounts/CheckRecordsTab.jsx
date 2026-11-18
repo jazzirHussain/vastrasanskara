@@ -29,6 +29,11 @@ export function problemsOf(result) {
     out.push(`${kind} ${p.number}: ${p.reason === 'missing' ? 'the PDF is missing' : 'the PDF has changed since it was issued'}`);
   }
   if (result.pdfs.truncated) out.push('More PDF problems were found than are listed here');
+  // Checks run before bill photos were checked have no photos section.
+  for (const p of result.photos?.problems ?? []) {
+    out.push(`${p.label}: ${p.reason === 'missing' ? 'it is missing' : 'it has changed since it was saved'}`);
+  }
+  if (result.photos?.truncated) out.push('More bill photo problems were found than are listed here');
   for (const p of result.balances.problems) {
     const what = p.fields.map((f) => FIELD_PROBLEMS[f] ?? 'the figures do not add up');
     out.push(`Bill ${p.number}: ${[...new Set(what)].join('; ')}`);

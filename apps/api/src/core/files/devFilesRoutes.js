@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Router } from 'express';
 import { AppError, notFound } from '../errors.js';
 
@@ -23,13 +24,17 @@ export function devFilesRouter(storage) {
 
   router.put('/*key', async (req, res) => {
     const key = keyOf(req);
-    const { contentType, size } = storage.verifyPutLink({ key, ...req.query });
+    const { contentType, size, sha256 } = storage.verifyPutLink({ key, ...req.query });
     if (req.get('Content-Type') !== contentType) {
       throw new AppError(403, 'FILE_LINK_INVALID', 'This file link is invalid or has expired');
     }
     const data = await readUpTo(req, size);
     if (!data || data.length !== size) {
       throw new AppError(400, 'FILE_SIZE_MISMATCH', 'Uploaded file size does not match');
+    }
+    // As S3 does with x-amz-checksum-sha256: bytes that do not match the signed hash are refused.
+    if (sha256 && createHash('sha256').update(data).digest('hex') !== sha256) {
+      throw new AppError(400, 'FILE_CHECKSUM_MISMATCH', 'The uploaded file does not match its checksum');
     }
     await storage.putObject({ key, body: data, contentType });
     res.status(200).end();

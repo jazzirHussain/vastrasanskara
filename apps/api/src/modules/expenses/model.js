@@ -49,6 +49,8 @@ const attachmentSchema = sub({
   name: { type: String, default: '' },
   contentType: { type: String, required: true },
   size: { type: Number, required: true },
+  // The photo's SHA-256 when it was saved, for "Check records"; null for older photos.
+  sha256: { type: String, default: null },
 });
 
 const linkSchema = sub({
