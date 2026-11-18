@@ -24,6 +24,7 @@ import { BookAppointmentPage } from './features/appointments/BookAppointmentPage
 import { HomePage } from './features/home/HomePage.jsx';
 import { MetricPage } from './features/dashboard/MetricPage.jsx';
 import { ReportsPage } from './features/reports/ReportsPage.jsx';
+import { GoLivePage } from './features/goLive/GoLivePage.jsx';
 import { ImportsPage } from './features/imports/ImportsPage.jsx';
 import { PreviewPage } from './features/imports/PreviewPage.jsx';
 import { NewOrderPage } from './features/orders/NewOrderPage.jsx';
@@ -47,6 +48,9 @@ export default function App() {
           <Route element={<AppLayout />}>
             <Route index element={<HomePage />} />
             <Route path="/home/:metric" element={<MetricPage />} />
+            <Route element={<RequirePermission permission="settings.edit" />}>
+              <Route path="/go-live" element={<GoLivePage />} />
+            </Route>
             <Route element={<RequirePermission permission="imports.run" />}>
               <Route path="/imports" element={<ImportsPage />} />
               <Route path="/imports/:id" element={<PreviewPage />} />

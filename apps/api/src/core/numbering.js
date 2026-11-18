@@ -39,3 +39,13 @@ export async function holdSeries(branchId, docType, fyCode, session) {
     );
   return counter.value >= 1;
 }
+
+/**
+ * The number the series will give out next in that financial year (no number is taken), and
+ * whether it has given any yet.
+ */
+export async function peekNextNumber(branchId, docType, fyCode, start = 1) {
+  const counter = await mongoose.connection.collection('counters').findOne({ _id: counterName(branchId, docType, fyCode) });
+  const taken = counter?.value ?? 0;
+  return { next: start + taken, used: taken >= 1 };
+}

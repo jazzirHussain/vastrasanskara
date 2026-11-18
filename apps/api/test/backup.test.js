@@ -6,7 +6,7 @@ import path from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
 import { useTestDb } from './helpers/db.js';
 import { createTestUser } from './helpers/app.js';
-import { runBackup } from '../src/core/backup/backup.js';
+import { lastBackup, runBackup } from '../src/core/backup/backup.js';
 import { checkStorage } from '../src/core/backup/storageCheck.js';
 import { mongodumpStream } from '../src/core/backup/mongodump.js';
 import { getJobDefinitions } from '../src/core/jobs/registry.js';
@@ -88,4 +88,12 @@ test('backup and storage-check jobs are registered on their schedules', () => {
   const jobs = getJobDefinitions();
   expect(jobs.get('backup').schedule).toBe('0 */6 * * *');
   expect(jobs.get('storage-check').schedule).toBe('0 9 * * 1');
+});
+
+test('a successful backup is remembered', async () => {
+  expect(await lastBackup()).toBeNull();
+  const { key } = await runBackup({ now, dump: () => Readable.from(['abc']), storage: { putObject: async () => {} } });
+  expect(await lastBackup()).toEqual({ at: now, key });
+  await expect(runBackup({ now: new Date(now.getTime() + 60_000), dump: () => { throw new Error('down'); }, storage: {} })).rejects.toThrow();
+  expect(await lastBackup()).toEqual({ at: now, key });
 });

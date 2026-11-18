@@ -1,6 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useMediaQuery } from '@mantine/hooks';
 import { useAuth } from '../auth/AuthContext.js';
+import { useNotLiveYet } from '../features/goLive/goLiveApi.js';
 import { PHONE_QUERY } from '../components/ResponsiveTable.jsx';
 import { NotificationBell } from '../notifications/NotificationBell.jsx';
 import { BottomBar } from './BottomBar.jsx';
@@ -19,7 +20,8 @@ export function AppLayout() {
     navigate('/login', { replace: true });
   }
 
-  const items = navItems.filter((item) => !item.permission || can(item.permission));
+  const notLiveYet = useNotLiveYet({ enabled: can('settings.edit') });
+  const items = navItems.filter((item) => (!item.permission || can(item.permission)) && (!item.untilLive || notLiveYet));
   const active = activePath(items, location.pathname);
 
   if (phone) {

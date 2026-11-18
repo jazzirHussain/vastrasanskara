@@ -14,7 +14,8 @@ export const adminUser = {
   branchId: 'b1',
 };
 
-export const defaultSettings = structuredClone(DEFAULT_SETTINGS);
+// The branch is already live, so the go-live banner and menu item stay out of other tests.
+export const defaultSettings = { ...structuredClone(DEFAULT_SETTINGS), goLive: { numbersConfirmedFy: '2627', testEmailAt: null, liveSince: '2026-04-01' } };
 
 export const defaultBranch = {
   id: 'b1',
@@ -36,6 +37,7 @@ export const server = setupServer(
   http.get('/v1/auth/me', notAuthenticated),
   http.get('/v1/notifications', () => HttpResponse.json({ items: [], unreadCount: 0 })),
   http.get('/v1/settings', () => HttpResponse.json(defaultSettings)),
+  http.get('/v1/go-live', () => HttpResponse.json({ checks: [], done: 0, total: 8, liveSince: '2026-04-01', numbering: { fy: '2627', types: [] } })),
   http.get('/v1/branch', () => HttpResponse.json(defaultBranch)),
   http.get('/v1/orders', () => HttpResponse.json({ items: [], nextCursor: null })),
   // Home: an empty dashboard (nothing to attend to, no tiles).

@@ -150,3 +150,10 @@ export async function itemForGarmentType(branchId, type, session) {
 export async function itemForCharge(branchId, chargeFor, session) {
   return CatalogItem.findOne({ branchId, active: true, chargeFor }).session(session ?? null).lean();
 }
+
+/** Garment types in settings that no active price-list item bills yet (their keys). */
+export async function garmentTypesWithoutItem(branchId) {
+  const { garmentTypes } = await readSettings(branchId);
+  const billed = new Set(await CatalogItem.distinct('garmentTypes', { branchId, active: true }));
+  return garmentTypes.map((t) => t.key).filter((key) => !billed.has(key));
+}

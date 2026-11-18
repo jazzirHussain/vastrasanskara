@@ -13,13 +13,15 @@ import {
   IconPlus,
   IconReceipt2,
   IconReceiptRupee,
+  IconRocket,
   IconTags,
   IconTool,
   IconUsersGroup,
 } from '@tabler/icons-react';
 
 /**
- * Main navigation. `permission` hides an item from users without it. On phones, `phone` places
+ * Main navigation. `permission` hides an item from users without it; `untilLive` hides it once the
+ * branch is live. On phones, `phone` places
  * it in the bottom bar ('bar'; only the first four permitted ones fit, the rest go under More), as the raised centre button ('primary') or under More ('more').
  */
 export const navItems = [
@@ -39,6 +41,7 @@ export const navItems = [
   { label: 'Workshop', path: '/workshop', permission: 'workshop.manage', icon: IconTool, phone: 'more' },
   { label: 'Users', path: '/users', permission: 'users.manage', icon: IconUsersGroup, phone: 'more' },
   { label: 'Settings', path: '/settings', permission: 'settings.edit', icon: IconAdjustmentsHorizontal, phone: 'more' },
+  { label: 'Go live', path: '/go-live', permission: 'settings.edit', icon: IconRocket, phone: 'more', untilLive: true },
   { label: 'Bring in records', path: '/imports', permission: 'imports.run', icon: IconFileImport, phone: 'more' },
 ];
 

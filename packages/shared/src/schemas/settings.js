@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { STAGE_KEYS } from '../stages.js';
 import { DEFAULT_EXPENSE_CATEGORIES } from '../expenses.js';
-import { categoryKey, hhmm, paise } from './common.js';
+import { categoryKey, hhmm, paise, ymd } from './common.js';
 
 const stageKey = z.enum(STAGE_KEYS);
 const stageDays = z.partialRecord(stageKey, z.int().min(0).max(60));
@@ -76,7 +76,14 @@ function checkOpeningHours(value, ctx) {
   }
 }
 
-export const settingsSchema = settingsFields.superRefine(checkOpeningHours);
+// Progress towards going live. Written only by the go-live checklist, never through PUT /v1/settings.
+export const goLiveSchema = z.strictObject({
+  numbersConfirmedFy: z.string().regex(/^\d{4}$/).nullable(),
+  testEmailAt: z.iso.datetime().nullable(),
+  liveSince: ymd.nullable(),
+});
+
+export const settingsSchema = settingsFields.extend({ goLive: goLiveSchema }).superRefine(checkOpeningHours);
 
 /** A PUT /v1/settings body: any subset of top-level settings (each replaced whole). */
 export const settingsPatchSchema = settingsFields.partial().superRefine(checkOpeningHours);
@@ -109,6 +116,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   quietHours: { email: NIGHT, whatsapp: NIGHT, sms: NIGHT, in_app: null },
   b2clThreshold: 10000000,
   numberSeries: {},
+  goLive: { numbersConfirmedFy: null, testEmailAt: null, liveSince: null },
   dailyJobTime: '08:00',
   openingTime: '10:00',
   closingTime: '20:00',

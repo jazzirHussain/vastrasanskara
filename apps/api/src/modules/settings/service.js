@@ -56,7 +56,14 @@ function assertCategoriesKept(before = [], after = []) {
  * audit entry in one transaction.
  */
 export function updateSettings(branchId, patch, actor) {
-  const changes = parseOrThrow(settingsPatchSchema, patch);
+  return saveSettings(branchId, parseOrThrow(settingsPatchSchema, patch), actor);
+}
+
+/**
+ * updateSettings for other modules: `changes` may include keys PUT /v1/settings cannot set
+ * (goLive); the merged result is still checked in full. `action` names the audit entry.
+ */
+export function saveSettings(branchId, changes, actor, { action = 'update' } = {}) {
   return withTransaction(async (session) => {
     await getSettings(branchId, session);
     const doc = await Settings.findOne({ branchId }).session(session);
@@ -70,7 +77,7 @@ export function updateSettings(branchId, patch, actor) {
     doc.updatedBy = actor.userId;
     await doc.save({ session });
     await recordAudit(
-      { branchId, entityType: 'settings', entityId: branchId, action: 'update', before, after, actor },
+      { branchId, entityType: 'settings', entityId: branchId, action, before, after, actor },
       session,
     );
     return after;

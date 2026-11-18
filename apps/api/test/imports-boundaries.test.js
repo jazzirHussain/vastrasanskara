@@ -18,6 +18,9 @@ test('the imports module reads other modules only through their services', () =>
         if (outside && target.includes(`${path.sep}modules${path.sep}`)) {
           expect(path.basename(target), `${path.relative(SRC, file)} imports ${spec}`).toBe('service.js');
         }
+      } else if (path.relative(SRC, file) === path.join('modules', 'setup', 'goLive.js')) {
+        // The go-live checklist reads the import summary, through the service only.
+        if (target.startsWith(imports + path.sep)) expect(path.basename(target)).toBe('service.js');
       } else if (!['jobs.js', 'app.js', 'models.js'].includes(path.relative(SRC, file))) {
         expect(target.startsWith(imports + path.sep), `${path.relative(SRC, file)} imports ${spec}`).toBe(false);
       }
