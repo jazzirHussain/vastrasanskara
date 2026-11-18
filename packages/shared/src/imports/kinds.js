@@ -250,6 +250,21 @@ const stock = {
   key: (d) => [d.name, d.brand ?? '', d.colour ?? ''].map(norm).join('|'),
 };
 
+// A designer by name (case and spacing ignored) or by email; two with one name need the email.
+function parseDesigner(raw, ctx = {}) {
+  const designers = ctx.designers ?? [];
+  const text = String(raw).trim();
+  if (text.includes('@')) {
+    const found = designers.find((d) => d.email && d.email.toLowerCase() === text.toLowerCase());
+    if (found) return { value: found.id };
+  }
+  const named = designers.filter((d) => norm(d.name) === norm(text));
+  if (named.length > 1) return { error: `Two designers are called ${named[0].name} — use their email.` };
+  if (named.length === 1) return { value: named[0].id };
+  const names = [...new Set(designers.map((d) => d.name))];
+  return { error: `'${text}' is not one of your designers. Choose one of: ${names.join(', ')}.` };
+}
+
 const orderRowSchema = z.strictObject({
   legacyRef: z.string().trim().min(1).max(40),
   customerPhone: phone,
@@ -276,7 +291,14 @@ const orders = {
   columns: [
     text('legacyRef', 'Old order no.', 40, { required: true, aliases: ['Order no', 'Order number', 'Old order number', 'Bill no'], textFormat: true, example: '1234', help: 'The number in your old book. Kept as “Old no.” on the order.' }),
     phoneCol('customerPhone', 'Customer phone', { required: true, aliases: ['Phone', 'Mobile', 'Customer mobile'], help: 'Must match a customer already brought in.' }),
-    fromSettings('designer', 'Designer', 'designers', { required: true, path: ['designerId'], example: 'Meera', help: 'The designer’s name as in Staff.' }),
+    col('designer', 'Designer', {
+      required: true,
+      path: ['designerId'],
+      choicesFrom: 'designers',
+      parse: parseDesigner,
+      example: 'Meera',
+      help: 'The designer’s name as in Staff (or their email, when two share a name).',
+    }),
     col('orderDate', 'Order date', { parse: parseDate, example: '01/11/2026', help: 'Day/month/year. Leave blank for today.' }),
     col('pickupDate', 'Pickup date', { required: true, parse: parseDate, aliases: ['Delivery date', 'Due on'], example: '20/12/2026', help: 'Day/month/year.' }),
     choice('priority', 'Priority', PRIORITY_CHOICES, { example: 'Normal', help: 'Normal or Rush. Leave blank for Normal.' }),
@@ -312,6 +334,8 @@ const orders = {
     stage: v.stage,
   }),
   key: (d) => norm(d.legacyRef),
+  // The order a row belongs to, read from the raw cell (also for rows that need fixing).
+  groupOfCells: (cells) => (isBlankCell(cells.legacyRef) ? null : norm(cells.legacyRef)),
 };
 
 const openingRowSchema = z
@@ -458,6 +482,12 @@ export function parseRow(kind, cells, ctx = {}) {
     errors.push({ column: header, message });
   }
   return { data: null, errors };
+}
+
+/** For kinds whose rows add one record together (open orders): the group of a raw row, or null. */
+export function rowGroup(kind, cells) {
+  const def = getImportKind(kind);
+  return def.groupOfCells ? def.groupOfCells(cells) : null;
 }
 
 /** The natural key of a parsed record (Decision 3): equal keys are the same record. */

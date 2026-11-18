@@ -259,4 +259,16 @@ export async function listChargeableEvents(branchId, garmentIds, session) {
   }));
 }
 
+/**
+ * The one stage event of a garment brought in from earlier records ("Brought in at Tailors").
+ * Written inside the order's transaction; never offered as a step.
+ */
+export async function recordImportedStage(branchId, { orderId, garmentId, stage }, actor, session) {
+  if (!session?.inTransaction()) throw new Error('recordImportedStage must be called inside a transaction');
+  await StageEvent.create(
+    [{ branchId, orderId, garmentId, stage, action: 'imported', remarks: 'Brought in from earlier records', by: actor.userId, at: clock.now() }],
+    { session },
+  );
+}
+
 export { qcFailureFilter, qcFailures, vendorOnTime, vendorReturnFilter, vendorSentFilter } from './reports.js';

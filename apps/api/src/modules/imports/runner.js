@@ -2,7 +2,7 @@
 // (every minute) both claim through one atomic update, so a run is never worked twice at once;
 // an interrupted run is reclaimed after 10 minutes and resumes where it stopped.
 import { Readable } from 'node:stream';
-import { cellsByKey, matchHeaders, parseRow, rowKey } from '@vs/shared';
+import { cellsByKey, matchHeaders, parseRow, rowGroup, rowKey } from '@vs/shared';
 import { clock } from '../../clock.js';
 import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
@@ -18,6 +18,7 @@ import './kinds/vendors.js';
 import './kinds/workers.js';
 import './kinds/catalog.js';
 import './kinds/stock.js';
+import './kinds/orders.js';
 
 export const STALE_AFTER_MS = 10 * 60_000;
 export const MAX_ATTEMPTS = 3;
@@ -116,10 +117,11 @@ export async function checkRun(run, { storage }) {
     await ImportRow.deleteMany({ runId: run._id });
     let batch = [];
     for (const { rowNo, cells } of file.rows) {
-      const parsed = parseRow(run.kind, cellsByKey(map, cells), ctx);
+      const keyed = cellsByKey(map, cells);
+      const parsed = parseRow(run.kind, keyed, ctx);
       const row = { runId: run._id, branchId: run.branchId, rowNo, cells, expiresAt, data: null, key: null, groupKey: null, label: '', errors: [] };
       if (parsed.errors.length) {
-        Object.assign(row, { status: 'error', errors: parsed.errors, label: firstText(cells, map) });
+        Object.assign(row, { status: 'error', errors: parsed.errors, label: firstText(cells, map), groupKey: rowGroup(run.kind, keyed) });
       } else {
         const key = rowKey(run.kind, parsed.data);
         const groupKey = adapter.group ? adapter.group(parsed.data) : null;
@@ -140,7 +142,8 @@ export async function checkRun(run, { storage }) {
       }
     }
     if (batch.length) await ImportRow.insertMany(batch, { ordered: true });
-    await finishCheck(run, { counts, rowCount: file.rows.length, headers: file.headers, unusedColumns: unused, fileError: null });
+    const final = adapter.group ? await holdBackBrokenGroups(run._id) : counts;
+    await finishCheck(run, { counts: final, rowCount: file.rows.length, headers: file.headers, unusedColumns: unused, fileError: null });
     log(run, { phase: 'check', counts }, 'import checked');
   } catch (err) {
     logger.error({ runId: String(run._id), kind: run.kind, phase: 'check', code: 'IMPORT_FAILED', errName: err?.name }, 'import check failed');
@@ -157,6 +160,22 @@ function firstText(cells, map) {
   const firstIndex = Object.entries(map).find(([, key]) => key)?.[0];
   const value = firstIndex === undefined ? null : cells[Number(firstIndex)];
   return value === null || value === undefined ? '' : String(value).slice(0, 100);
+}
+
+// A group (one open order) is added whole or not at all: when any of its rows needs fixing,
+// its ready rows wait too, pointing at the row to fix. Answers the new counts.
+async function holdBackBrokenGroups(runId) {
+  const broken = await ImportRow.aggregate([
+    { $match: { runId, status: 'error', groupKey: { $type: 'string' } } },
+    { $group: { _id: '$groupKey', rowNo: { $min: '$rowNo' } } },
+  ]);
+  for (const group of broken) {
+    await ImportRow.updateMany(
+      { runId, groupKey: group._id, status: 'ready' },
+      { $set: { status: 'error', errors: [{ column: null, message: `Another row of this order needs fixing (row ${group.rowNo}).` }] } },
+    );
+  }
+  return recount(runId);
 }
 
 async function recount(runId) {

@@ -46,6 +46,11 @@ export function OrderPage() {
           <Anchor component={Link} to={`/customers/${o.customer.id}`} fw={600}>
             {o.customer.name}
           </Anchor>
+          {o.legacyRef && (
+            <Text size="sm" c="var(--vs-muted)" className="vs-figures">
+              Old no. {o.legacyRef}
+            </Text>
+          )}
           <OrderFlags order={o} />
         </Group>
       </PageHeader>

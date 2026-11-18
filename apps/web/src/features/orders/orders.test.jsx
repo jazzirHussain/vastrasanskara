@@ -172,3 +172,15 @@ test('late filter asks the server', async () => {
   await userEvent.click(screen.getByRole('radio', { name: 'Late' }));
   await expect.poll(() => queries.at(-1)).toEqual({ status: 'active', late: 'true' });
 });
+
+test('the old order number is shown on the order', async () => {
+  asOperations();
+  const imported = orderDetailFixture({ legacyRef: '1234' });
+  server.use(http.get('/v1/orders', () => HttpResponse.json({ items: [{ ...orderSummary(imported), legacyRef: '1234' }], nextCursor: null })));
+  server.use(http.get('/v1/orders/o1', () => HttpResponse.json({ ...imported, legacyRef: '1234' })));
+  renderApp('/orders');
+  expect(await screen.findByText('Old no. 1234')).toBeInTheDocument();
+  await userEvent.click(screen.getByText('VS/ORD/2627/0007'));
+  expect(await screen.findByRole('heading', { name: 'VS/ORD/2627/0007', level: 1 })).toBeInTheDocument();
+  expect(screen.getByText('Old no. 1234')).toBeInTheDocument();
+});

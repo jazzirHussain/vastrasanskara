@@ -104,6 +104,12 @@ export async function listDesigners(branchId) {
   return users.map((u) => ({ id: String(u._id), name: u.name }));
 }
 
+/** Active designers with their email, for matching designers named in an imported file. */
+export async function listDesignerContacts(branchId) {
+  const users = await User.find({ branchId, active: true, roles: 'designer' }, { name: 1, email: 1 }).sort({ name: 1, _id: 1 }).lean();
+  return users.map((u) => ({ id: String(u._id), name: u.name, email: u.email }));
+}
+
 /** Whether the id is an active designer of the branch. */
 export async function isActiveDesigner(branchId, userId) {
   if (!mongoose.isValidObjectId(userId)) return false;

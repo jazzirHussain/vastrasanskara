@@ -50,6 +50,8 @@ export function toOrderSummary({ order, garments, customerName, designerName }, 
   return {
     id: String(order._id),
     orderNo: order.orderNo,
+    // The old paper number, for orders brought in from earlier records.
+    legacyRef: order.legacyRef ?? null,
     status: order.status,
     priority: order.priority,
     pickupDate: order.pickupDate,

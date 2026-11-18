@@ -75,7 +75,7 @@ export async function loadOrderForChange(branchId, orderId, version, session) {
  * measurement set, reference photos uploaded to this branch as garment references (400), and
  * own due dates between today and the pickup date (422).
  */
-export async function checkGarmentInputs(branchId, { customerId, pickupDate, garments }, settings, prefix = 'garments') {
+export async function checkGarmentInputs(branchId, { customerId, pickupDate, garments }, settings, prefix = 'garments', { allowPast = false } = {}) {
   const issues = [];
   const types = new Set(settings.garmentTypes.map((t) => t.key));
   for (const [i, g] of garments.entries()) {
@@ -97,7 +97,7 @@ export async function checkGarmentInputs(branchId, { customerId, pickupDate, gar
     if (g.dueDate && g.dueDate > pickupDate) {
       throw businessRule('DUE_AFTER_PICKUP', 'A garment cannot be due after the pickup date');
     }
-    if (g.dueDate && g.dueDate < today()) throw businessRule('DUE_IN_PAST', 'A garment cannot be due in the past');
+    if (g.dueDate && g.dueDate < today() && !allowPast) throw businessRule('DUE_IN_PAST', 'A garment cannot be due in the past');
   }
 }
 
@@ -106,13 +106,13 @@ export async function checkGarmentInputs(branchId, { customerId, pickupDate, gar
  * N garments sharing a new batchId. Materials are not kept on the garment (the stock module
  * holds them; see planGarmentMaterials).
  */
-export function buildGarments({ branchId, order, garments, startIndex, settings, actor }) {
+export function buildGarments({ branchId, order, garments, startIndex, settings, actor, planFrom = today() }) {
   const docs = [];
   let index = startIndex;
   for (const { quantity, materials, ...line } of garments) {
     const batchId = quantity > 1 ? new ObjectId() : null;
     const dueDate = line.dueDate ?? null;
-    const plan = stagePlanFor({ orderDate: today(), dueDate: dueDate ?? order.pickupDate, settings, type: line.type });
+    const plan = stagePlanFor({ orderDate: planFrom, dueDate: dueDate ?? order.pickupDate, settings, type: line.type });
     for (let n = 0; n < quantity; n++) {
       docs.push({
         ...line,
@@ -144,7 +144,17 @@ export async function planGarmentMaterials(branchId, lines, created, actor, sess
   await planNewGarments(branchId, garments, actor, session);
 }
 
-async function checkParties(branchId, { customerId, designerId }) {
+/** The next order number of today's financial year (inside the order's transaction). */
+export async function allocateOrderNo(branchId, { now, settings, branch }, session) {
+  const fyCode = financialYear(now).code;
+  const { number, fy } = await nextDocumentNumber(
+    { branchId, docType: 'order', now, start: settings.numberSeries[`order:${fyCode}`] ?? 1 },
+    session,
+  );
+  return `${branch.prefixes.order}/${fy.code}/${pad(number, 4)}`;
+}
+
+export async function checkParties(branchId, { customerId, designerId }) {
   const issues = [];
   const customer = await getCustomer(branchId, customerId).catch(() => null);
   if (!customer) issues.push({ path: 'customerId', message: 'Unknown customer' });
@@ -169,18 +179,14 @@ export async function createOrder(branchId, input, actor) {
   const branch = await getBranch(branchId);
 
   return withTransaction(async (session) => {
-    const fyCode = financialYear(now).code;
-    const { number, fy } = await nextDocumentNumber(
-      { branchId, docType: 'order', now, start: settings.numberSeries[`order:${fyCode}`] ?? 1 },
-      session,
-    );
+    const orderNo = await allocateOrderNo(branchId, { now, settings, branch }, session);
     const { garments, enquiryId, ...fields } = input;
     const [order] = await Order.create(
       [
         {
           ...fields,
           branchId,
-          orderNo: `${branch.prefixes.order}/${fy.code}/${pad(number, 4)}`,
+          orderNo,
           orderDate,
           originalPickupDate: input.pickupDate,
           createdBy: actor.userId,
@@ -343,7 +349,12 @@ export async function listOrders(
   const term = q?.trim();
   if (term) {
     const customerIds = await customerIdsByNamePrefix(branchId, term);
-    filter.$or = [{ orderNo: { $regex: `${escapeRegex(term)}$`, $options: 'i' } }, { customerId: { $in: customerIds } }];
+    filter.$or = [
+      { orderNo: { $regex: `${escapeRegex(term)}$`, $options: 'i' } },
+      { customerId: { $in: customerIds } },
+      // The old paper number of an order brought in from earlier records, exactly.
+      { legacyRef: term },
+    ];
   }
 
   const { items: orders, nextCursor } = await paginate(Order, filter, { sort: ['pickupDate', 1], limit, cursor });
@@ -529,3 +540,6 @@ export {
   ordersByStatusMatch,
   ordersPlacedMatch,
 } from './reports.js';
+
+// Open orders brought in from earlier records.
+export { findOrderByLegacyRef, importOrder } from './imports.js';

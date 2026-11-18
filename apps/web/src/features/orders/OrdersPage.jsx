@@ -51,6 +51,11 @@ export function orderColumns({ withCustomer = true } = {}) {
           <Text fw={600} className="vs-figures">
             {o.orderNo}
           </Text>
+          {o.legacyRef && (
+            <Text size="xs" c="var(--vs-muted)" className="vs-figures">
+              Old no. {o.legacyRef}
+            </Text>
+          )}
           {withCustomer && (
             <Text size="sm" c="var(--vs-muted)">
               {o.customer.name}
