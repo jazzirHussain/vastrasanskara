@@ -12,6 +12,8 @@ const common = {
   max_memory_restart: '600M',
   env: { NODE_ENV: 'production' },
   time: true,
+  // One log file per app, not one per instance.
+  merge_logs: true,
 };
 
 module.exports = {
@@ -20,6 +22,8 @@ module.exports = {
       ...common,
       name: 'vs-api',
       script: 'apps/api/src/server.js',
+      // The API stops taking requests and closes the database within a few seconds.
+      kill_timeout: 10000,
     },
     {
       ...common,

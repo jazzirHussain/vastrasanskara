@@ -55,4 +55,11 @@ the state code must match the GSTIN's first two digits.
 npm test            # all workspaces
 npm run test:tz     # shared suite under a non-IST timezone
 npm run lint
+npm run e2e         # phone-sized journeys in Chromium (first: npx playwright install chromium)
 ```
+
+## Production
+
+- [Infrastructure setup](docs/ops/infrastructure.md)
+- [Going live — runbook](docs/ops/go-live.md)
+- [Backups and restoring](docs/ops/restore.md)

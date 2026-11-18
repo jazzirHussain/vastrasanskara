@@ -31,20 +31,35 @@ browser ──► CloudFront (app.<domain>) ──► S3 web bucket (static Reac
      routes such as `/settings` must load the app).
    - Response headers policy:
      - `Strict-Transport-Security: max-age=63072000; includeSubDomains`
-     - `Content-Security-Policy: default-src 'self'; connect-src 'self' https://api.<domain> https://*.s3.ap-south-1.amazonaws.com; img-src 'self' data: https://*.s3.ap-south-1.amazonaws.com; style-src 'self' 'unsafe-inline'`
-       (`style-src 'unsafe-inline'` is needed by Mantine's runtime styles)
+     - `Content-Security-Policy: default-src 'self'; connect-src 'self' https://api.<domain> https://*.s3.ap-south-1.amazonaws.com; img-src 'self' data: https://*.s3.ap-south-1.amazonaws.com; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'`
+       (`style-src 'unsafe-inline'` is needed by Mantine's runtime styles; `frame-ancestors 'none'`
+       stops other sites showing the app inside a frame)
      - `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`
 3. DNS: `app.<domain>` CNAME (or alias) → the CloudFront domain.
 
 ## 3. Storage buckets
 
 1. **Files bucket** (customer photos, logos, PDFs): private, versioning on, default
-   encryption on. CORS:
+   encryption on, and **Object Lock enabled at creation** (it cannot be turned on later)
+   with **no default retention**: the app itself locks each bill, receipt and credit note PDF
+   for 8 years in compliance mode (`FILES_OBJECT_LOCK=true`, step 7); other files stay
+   deletable. CORS (the checksum header is how S3 refuses an upload whose bytes changed on
+   the way):
 
    ```json
    [{ "AllowedOrigins": ["https://app.<domain>"], "AllowedMethods": ["PUT", "GET"],
-      "AllowedHeaders": ["Content-Type"], "MaxAgeSeconds": 3000 }]
+      "AllowedHeaders": ["Content-Type", "x-amz-checksum-sha256"], "MaxAgeSeconds": 3000 }]
    ```
+
+   Lifecycle rules. S3 rules match a key prefix, not a pattern, and keys start with the
+   branch id, so add the first two once per branch (`<branchId>` is printed by `bootstrap.js`
+   and is the first part of every key in the bucket):
+   - prefix `<branchId>/reports/` — expire current versions after **90 days** (generated
+     report files; the report can be run again);
+   - prefix `<branchId>/import_file/` — expire current versions after **30 days** (uploaded
+     import spreadsheets; what they added is in the database);
+   - whole bucket — expire **noncurrent versions after 90 days** (locked PDFs are kept anyway:
+     a version under retention cannot be deleted until it ends).
 
 2. **Backups bucket**: private, versioning on, **Object Lock enabled at creation** (it
    cannot be turned on later) with a default retention in **compliance** mode (e.g. 35 days),
@@ -57,6 +72,14 @@ browser ──► CloudFront (app.<domain>) ──► S3 web bucket (static Reac
 3. Network access: add the EC2 **Elastic IP** (step 5) only — no `0.0.0.0/0`.
 4. Copy the connection string (`mongodb+srv://…/vastrasanskara?retryWrites=true&w=majority`)
    for the SSM parameter `MONGO_URI`.
+5. Check the cluster's MongoDB version is **7.0 or later** (cluster overview). The API and
+   worker refuse to start on an older version or without transactions.
+6. Audit entries that cannot be changed: run `node apps/api/src/cli/atlas-role.js` (from a
+   checkout, any machine) and create its output as a **custom role** under Database Access →
+   Custom Roles, then give the app's database user that role instead of read/write. If the
+   cluster tier does not offer custom roles (M0 may not), keep read/write and write down
+   "custom audit role: not available on M0" in the go-live runbook; the audit hash chain
+   still shows any change (Accounts → Check records).
 
 ## 5. Server (EC2)
 
@@ -66,9 +89,11 @@ browser ──► CloudFront (app.<domain>) ──► S3 web bucket (static Reac
    Manager for shell access).
 3. **IAM instance role** with:
    - `AmazonSSMManagedInstanceCore` (Session Manager and Run Command)
-   - S3 files bucket: `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` on `arn:aws:s3:::<files>/*`
-   - S3 backups bucket: `s3:PutObject` only on `arn:aws:s3:::<backups>/*` (the server can
-     write backups but never read or delete them)
+   - S3 files bucket: `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` and
+     `s3:PutObjectRetention` (to lock bill PDFs) on `arn:aws:s3:::<files>/*`
+   - S3 backups bucket: `s3:PutObject` and `s3:AbortMultipartUpload` only on
+     `arn:aws:s3:::<backups>/*` (the server can write backups, and clean up a failed large
+     upload, but never read or delete them)
    - SES: `ses:SendEmail` and `ses:SendRawEmail` (the app uses the SES v2 SendEmail API)
    - SSM: `ssm:GetParametersByPath` on `arn:aws:ssm:ap-south-1:<account>:parameter/vastrasanskara/prod*`
      plus `kms:Decrypt` for the key used by the SecureString parameters
@@ -124,8 +149,10 @@ browser ──► CloudFront (app.<domain>) ──► S3 web bucket (static Reac
 ## 7. Configuration (SSM Parameter Store)
 
 Create one parameter per key in `.env.example` under `/vastrasanskara/prod/` (SecureString
-for secrets). `remote-deploy.sh` writes them to `/opt/vastrasanskara/.env` on every deploy.
-Values must not contain a double quote.
+for secrets). `remote-deploy.sh` writes them to `/opt/vastrasanskara/.env` on every deploy,
+each value in single quotes, so a value must not contain a single quote (`'`): the deploy
+stops and names the parameter. The deploy also adds `RELEASE_SHA` (the commit being
+deployed) itself; do not create it here.
 
 | Parameter | Value |
 |---|---|
@@ -140,6 +167,7 @@ Values must not contain a double quote.
 | `MAIL_ADAPTER` | `ses` |
 | `MAIL_FROM` | `Vastrasanskara <no-reply@<domain>>` |
 | `STORAGE_ADAPTER` | `s3` |
+| `FILES_OBJECT_LOCK` | `true` (the files bucket was created with Object Lock, step 3) |
 
 ## 8. Monitoring and recovery
 
@@ -147,9 +175,13 @@ Values must not contain a double quote.
 2. **Route 53 health check** (or CloudWatch Synthetics) on `https://api.<domain>/v1/health`
    with an alarm to the owner's email; it fails when the database is down or the worker has
    stopped.
-3. EC2 **status check alarm with auto-recovery**.
-4. **Data Lifecycle Manager**: daily EBS snapshots, keep 7.
-5. Database backups run from the worker every 6 hours to the backups bucket — see
+3. **Failed background jobs**: on the pm2 log group, a metric filter with the pattern
+   `{ $.level = 50 && $.job = * }` (an error line from a job, logged as
+   `job <name> failed: …`), and an alarm on any count in 5 minutes that emails the owner.
+   The app also shows a "Background job failed" notification to admins.
+4. EC2 **status check alarm with auto-recovery**.
+5. **Data Lifecycle Manager**: daily EBS snapshots, keep 7.
+6. Database backups run from the worker every 6 hours to the backups bucket — see
    `docs/ops/restore.md` for restoring.
 
 ## 9. GitHub deployment
@@ -163,8 +195,13 @@ Values must not contain a double quote.
    `ssm:GetCommandInvocation`.
 2. In GitHub: create the `production` environment; secret `AWS_DEPLOY_ROLE_ARN`; variables
    `API_HOST` (`api.<domain>`), `WEB_BUCKET`, `CLOUDFRONT_DISTRIBUTION_ID`, `INSTANCE_ID`.
-3. Push to `main`. The Deploy workflow runs CI, deploys the API (SSM → `remote-deploy.sh`),
-   uploads the web build, invalidates CloudFront and checks health.
+3. Push to `main`. The Deploy workflow runs CI (tests and the phone-sized e2e journeys),
+   then deploys the API over SSM → `remote-deploy.sh`, which records the running release,
+   installs, writes `.env`, migrates the database, reloads pm2 and waits until the new
+   worker reports this commit and health is ok. The workflow polls the SSM command for up
+   to 15 minutes, then uploads the web build, invalidates CloudFront and checks health.
+4. To put the previous release back (on the instance, Session Manager):
+   `sudo -iu deploy bash /opt/vastrasanskara/deploy/scripts/rollback.sh api.<domain>`.
 
 ## 10. First run
 

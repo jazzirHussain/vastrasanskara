@@ -17,7 +17,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
 
   deploy:
-    needs: ci
+    needs: [ci] # both its jobs: test and e2e
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
@@ -59,8 +59,14 @@ jobs:
             --parameters "commands=[\"sudo -iu deploy bash /opt/vastrasanskara/deploy/scripts/remote-deploy.sh ${GITHUB_SHA} ${API_HOST}\"],executionTimeout=[\"900\"]" \
             --query 'Command.CommandId' --output text)
           echo "SSM command: $command_id"
-          aws ssm wait command-executed --command-id "$command_id" --instance-id "$INSTANCE_ID" || true
-          status=$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" --query Status --output text)
+          # Poll every 10 s for up to 15 min: the CLI's built-in waiter gives up after 100 s,
+          # and the remote deploy (install, migrate, wait for the release) can take longer.
+          status=Pending
+          for _ in $(seq 1 90); do
+            sleep 10
+            status=$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)
+            case "$status" in Success | Failed | Cancelled | TimedOut) break ;; esac
+          done
           aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" \
             --query '[StandardOutputContent,StandardErrorContent]' --output text
           if [ "$status" != "Success" ]; then
