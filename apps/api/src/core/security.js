@@ -20,7 +20,10 @@ export function securityMiddleware(config) {
       origin: (origin, callback) => callback(null, origin === config.appOrigin),
       credentials: true,
       maxAge: 7200,
-      allowedHeaders: ['Content-Type', 'X-Requested-With', 'Idempotency-Key'],
+      // x-amz-checksum-sha256: a signed upload to the local file store carries it (S3 has its own CORS).
+      allowedHeaders: ['Content-Type', 'X-Requested-With', 'Idempotency-Key', 'x-amz-checksum-sha256'],
+      // The app is on another origin: without this it cannot read a download's filename.
+      exposedHeaders: ['Content-Disposition'],
     }),
   ];
 }

@@ -81,4 +81,18 @@ describe('M9 hardening', () => {
     expect(ours.headers['access-control-allow-origin']).toBe('https://app.test');
     expect(ours.headers['access-control-allow-credentials']).toBe('true');
   });
+
+  test('the app may read a download’s filename across origins', async () => {
+    const ours = await request(app).get('/v1/health').set('Origin', 'https://app.test');
+    expect(ours.headers['access-control-expose-headers']).toBe('Content-Disposition');
+  });
+
+  test('the app may send an upload’s checksum header (local file uploads)', async () => {
+    const pre = await request(app)
+      .options('/v1/dev-files/x')
+      .set('Origin', 'https://app.test')
+      .set('Access-Control-Request-Method', 'PUT')
+      .set('Access-Control-Request-Headers', 'content-type,x-amz-checksum-sha256');
+    expect(pre.headers['access-control-allow-headers'].toLowerCase().split(',')).toContain('x-amz-checksum-sha256');
+  });
 });
