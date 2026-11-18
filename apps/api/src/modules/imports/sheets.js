@@ -161,7 +161,7 @@ export async function templateXlsx(kind, ctx = {}) {
 /** The CSV template: the header row only. */
 export function templateCsv(kind) {
   const headers = getImportKind(kind).columns.map((c) => (/[",]/.test(c.header) ? `"${c.header.replace(/"/g, '""')}"` : c.header));
-  return Buffer.from(`﻿${headers.join(',')}\r\n`, 'utf8');
+  return Buffer.from(`\uFEFF${headers.join(',')}\r\n`, 'utf8');
 }
 
 /**
