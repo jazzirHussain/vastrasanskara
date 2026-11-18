@@ -1,6 +1,6 @@
 import { loadConfig } from './config.js';
 import { createApp } from './app.js';
-import { connectDb, disconnectDb } from './core/db.js';
+import { assertDatabaseReady, connectDb, disconnectDb } from './core/db.js';
 import { ensureSessionIndexes } from './core/auth/sessions.js';
 import { createStorage } from './core/files/storage.js';
 import { registerConfiguredAdapters } from './core/notify/adapters/configure.js';
@@ -8,7 +8,13 @@ import { logger } from './logger.js';
 
 const config = loadConfig();
 if (config.logLevel) logger.level = config.logLevel;
-await connectDb(config.mongoUri, { dnsServers: config.dnsServers });
+await connectDb(config.mongoUri, { dnsServers: config.dnsServers, autoIndex: config.env !== 'production' });
+try {
+  await assertDatabaseReady();
+} catch (err) {
+  logger.fatal(err.message);
+  process.exit(1);
+}
 await ensureSessionIndexes();
 const storage = createStorage(config);
 registerConfiguredAdapters(config, storage);

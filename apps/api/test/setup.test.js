@@ -21,6 +21,15 @@ test('creates a working admin, the branch and notification rules', async () => {
   expect(await NotificationRule.countDocuments({ branchId })).toBeGreaterThanOrEqual(4);
   expect(String((await authenticate({ email: 'owner@vs.in', password: 'correct-horse-1' }, {}))._id)).toBe(String(adminId));
 });
+test('bootstrap reads the password from standard input when not given', async () => {
+  const { PassThrough } = await import('node:stream');
+  const { inputFromEnv, readPassword } = await import('../src/cli/bootstrap.js');
+  expect(inputFromEnv({ BOOTSTRAP_ADMIN_EMAIL: 'o@vs.in', BOOTSTRAP_ADMIN_PASSWORD: '' }).admin).toEqual({ name: undefined, email: 'o@vs.in', password: undefined });
+  const stdin = new PassThrough();
+  const pending = readPassword({ stdin, isTTY: false });
+  stdin.end('correct-horse-1\r\nignored\n');
+  expect(await pending).toBe('correct-horse-1');
+});
 test('invalid input creates nothing', async () => {
   await expect(bootstrap({ ...input, admin: { ...input.admin, password: 'short' } })).rejects.toThrow();
   await expect(bootstrap({ ...input, branch: { ...input.branch, stateCode: '32' } })).rejects.toThrow(/GSTIN/);
