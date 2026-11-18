@@ -20,13 +20,25 @@ const ok = (result) => {
 };
 
 test('phones in every common form', () => {
-  for (const raw of ['+91 98765 43210', '098765-43210', 9876543210, 9.87654321e9, '9.87654321E+09', '919876543210', '(987) 654-3210']) {
+  for (const raw of ['+91 98765 43210', '098765-43210', 9876543210, 9.87654321e9, '9.876543210E+09', '919876543210', '(987) 654-3210']) {
     expect(ok(parsePhone(raw))).toBe('9876543210');
   }
   expect(parsePhone('98765').error).toBe("'98765' is not a 10-digit mobile number.");
   expect(parsePhone('1234567890').error).toMatch(/is not a 10-digit mobile number/);
   expect(ok(parsePhone(''))).toBeNull();
   expect(ok(parsePhone(null))).toBeNull();
+});
+
+test('a phone that lost digits in scientific notation is refused, never guessed', () => {
+  // Excel shows 919876543210 as 9.19877E+11 and "Save as CSV" writes exactly that.
+  for (const raw of ['9.19877E+11', '9.88E+09', '9.876E+09', '9.8765432E+09', '9.87654321E+09']) {
+    expect(parsePhone(raw).error).toBe(
+      `'${raw}' lost digits when the file was saved. Format the phone column as Text and save again.`,
+    );
+  }
+  // Every digit still there: accepted.
+  expect(ok(parsePhone('9.876543210E+09'))).toBe('9876543210');
+  expect(ok(parsePhone('9.19876543210E+11'))).toBe('9876543210');
 });
 
 test('dates are read day first', () => {

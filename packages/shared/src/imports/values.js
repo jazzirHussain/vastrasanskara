@@ -29,7 +29,16 @@ export function parseText(raw, { max = 200, required = false } = {}) {
 export function parsePhone(raw) {
   if (blank(raw)) return { value: null };
   let text = cellText(raw);
-  if (/^\d(\.\d+)?e\+?\d+$/i.test(text)) text = Number(text).toFixed(0);
+  // Scientific notation as text (a CSV saved from Excel): only when every digit is still there.
+  // '9.19877E+11' stands for some 12-digit number whose last digits are gone — never guess them.
+  const sci = /^(\d)(?:\.(\d+))?e\+?(\d+)$/i.exec(text);
+  if (sci) {
+    const [, whole, fraction = '', exponent] = sci;
+    if (fraction.length < Number(exponent)) {
+      return fail(`${quote(raw)} lost digits when the file was saved. Format the phone column as Text and save again.`);
+    }
+    if (fraction.length === Number(exponent)) text = whole + fraction;
+  }
   let digits = text.replace(/[\s\-().]/g, '');
   if (/^\+?91\d{10}$/.test(digits)) digits = digits.slice(-10);
   else if (/^0\d{10}$/.test(digits)) digits = digits.slice(1);
