@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../test/server.js';
@@ -22,8 +22,8 @@ test('redirects home after login', async () => {
   await userEvent.type(await screen.findByLabelText('Email'), 'o@x.com');
   await userEvent.type(screen.getByLabelText('Password'), 'correct-horse-1');
   await userEvent.click(screen.getByRole('button', { name: 'Log in' }));
-  // Home loads the dashboard after login; allow for a busy test run.
-  expect(await screen.findByText('Welcome, Owner', {}, { timeout: 3000 })).toBeInTheDocument();
+  // Home re-renders as its data arrives; retry the whole check so a replaced heading is found again.
+  await waitFor(() => expect(screen.getByText('Welcome, Owner')).toBeInTheDocument(), { timeout: 3000 });
 });
 
 test('a signed-out visitor to a protected page lands on login', async () => {
