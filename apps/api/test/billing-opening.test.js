@@ -110,7 +110,7 @@ test('one opening balance per customer', async () => {
 });
 
 test('opening balances respect month locks and are dated the cut-over day', async () => {
-  const { bringIn, admin, branchId, actor, customerId } = await world();
+  const { admin, branchId, actor, customerId } = await world();
   const lastMonthEnd = addDaysYmd(`${today().slice(0, 7)}-01`, -1);
   const locked = await admin.agent.post(`/v1/period-locks/${lastMonthEnd.slice(0, 7)}/lock`).send({ note: 'Filed' });
   expect(locked.status, JSON.stringify(locked.body)).toBe(200);
