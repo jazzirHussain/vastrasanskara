@@ -65,3 +65,9 @@ test('designers only have stock.consume.own', () => {
   expect(mine.has('stock.view')).toBe(false);
   expect(mine.has('costing.view')).toBe(false);
 });
+test('imports.run is admin only', () => {
+  expect(PERMISSIONS.IMPORTS_RUN).toBe('imports.run');
+  expect(can(['admin'], 'imports.run')).toBe(true);
+  expect(can(['operations'], 'imports.run')).toBe(false);
+  expect(can(['designer'], 'imports.run')).toBe(false);
+});

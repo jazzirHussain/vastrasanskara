@@ -199,3 +199,10 @@ test('isPickupAtRisk matches the daily job rule', () => {
   expect(isPickupAtRisk({ garment: g({ currentStage: 'final_qc' }), order: order('2026-11-12') }, TODAY)).toBe(false);
   expect(isPickupAtRisk({ garment: g({ status: 'ready' }), order: order('2026-11-12') }, TODAY)).toBe(false);
 });
+test('imported is never offered as an action', () => {
+  expect(ACTIONS).toContain('imported');
+  for (const g of [garment(), garment({ currentStage: 'tailors', stageState: 'in_progress' }), garment({ currentStage: 'ready_for_pickup', status: 'ready' })]) {
+    expect(allowedActions(g)).not.toContain('imported');
+  }
+  expect(codeOf(() => apply(garment(), { action: 'imported' }))).toBe('ACTION_NOT_ALLOWED');
+});

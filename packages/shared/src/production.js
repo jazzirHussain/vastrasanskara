@@ -18,6 +18,8 @@ export const ACTIONS = Object.freeze([
   'alteration',
   'rejected',
   'picked_up',
+  // Written once by an import ("Brought in at Tailors"); never offered or accepted as a step.
+  'imported',
 ]);
 
 // These act on the garment as it stands (`stage` = currentStage), not on the stage being worked.

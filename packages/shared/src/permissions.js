@@ -33,6 +33,7 @@ export const PERMISSIONS = Object.freeze({
   ENQUIRIES_WRITE: 'enquiries.write',
   APPOINTMENTS_WRITE: 'appointments.write',
   APPOINTMENTS_OWN: 'appointments.own',
+  IMPORTS_RUN: 'imports.run',
 });
 
 const ALL = Object.values(PERMISSIONS);
@@ -50,6 +51,7 @@ const NOT_OPERATIONS = new Set([
   P.STOCK_CONSUME_OWN,
   P.CATALOG_MANAGE,
   P.COSTING_VIEW,
+  P.IMPORTS_RUN,
 ]);
 
 export const ROLE_PERMISSIONS = Object.freeze({
