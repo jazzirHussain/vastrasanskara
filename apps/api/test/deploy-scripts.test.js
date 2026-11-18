@@ -88,8 +88,9 @@ describe('deploy files', () => {
   test('the deploy migrates and waits for the new release', () => {
     const text = read(DEPLOY);
     const at = (s) => text.indexOf(s);
-    expect(at('.release-previous')).toBeGreaterThan(-1);
-    expect(at('.release-previous')).toBeLessThan(at('git reset --hard'));
+    expect(at('remember_previous "$sha"')).toBeGreaterThan(-1);
+    expect(at('remember_previous "$sha"')).toBeLessThan(at('git reset --hard'));
+    expect(at('mark_deployed "$sha"')).toBeGreaterThan(at('cli/wait-ready.js'));
     expect(at('cli/migrate.js')).toBeGreaterThan(-1);
     expect(at('cli/migrate.js')).toBeLessThan(at('pm2 startOrReload'));
     expect(at('pm2 install pm2-logrotate')).toBeGreaterThan(-1);
@@ -131,5 +132,29 @@ describe('deploy files', () => {
     const api = apps.find((a) => a.name === 'vs-api');
     expect(api.kill_timeout).toBe(10_000);
     expect(apps.every((a) => a.merge_logs === true)).toBe(true);
+  });
+});
+
+describe.skipIf(!hasBash)('the rollback target', () => {
+  test('a failed deploy never becomes the release to roll back to', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'vs-release-'));
+    const run = (script) =>
+      spawnSync('bash', ['-c', `cd '${posix(dir)}' && source '${posix(file(DEPLOY))}' && ${script}`], { encoding: 'utf8' });
+    const read = (name) => (existsSync(path.join(dir, name)) ? readFileSync(path.join(dir, name), 'utf8').trim() : null);
+
+    // good1 then good2 deploy successfully.
+    expect(run('remember_previous good1 && mark_deployed good1').status).toBe(0);
+    expect(run('remember_previous good2 && mark_deployed good2').status).toBe(0);
+    expect(read('.release-previous')).toBe('good1');
+    // bad3 fails after checkout: it is never marked deployed.
+    expect(run('remember_previous bad3').status).toBe(0);
+    expect(read('.release-previous')).toBe('good2');
+    // The next deploy (fix4) still records good2, the last release that worked.
+    expect(run('remember_previous fix4').status).toBe(0);
+    expect(read('.release-previous')).toBe('good2');
+    expect(read('.release-current')).toBe('good2');
+    // Re-deploying the running release leaves the rollback target alone.
+    expect(run('remember_previous good2').status).toBe(0);
+    expect(read('.release-previous')).toBe('good2');
   });
 });

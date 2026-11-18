@@ -21,12 +21,7 @@ main() {
 
   cd "$app_dir"
 
-  local current
-  current="$(git rev-parse HEAD 2>/dev/null || true)"
-  if [[ -n "$current" && "$current" != "$sha" ]]; then
-    echo "==> Recording the running release $current for rollback"
-    printf '%s\n' "$current" >.release-previous
-  fi
+  remember_previous "$sha"
 
   echo "==> Checking out $sha"
   git fetch --quiet origin
@@ -62,7 +57,29 @@ main() {
   echo "==> Checking https://$api_host/v1/health"
   curl -fsS "https://$api_host/v1/health"
   echo
+  mark_deployed "$sha"
   echo "==> Deployed $sha"
+}
+
+# The last release that deployed successfully becomes the rollback target. It is read from
+# .release-current (written only at the end of a successful deploy), never from the checkout:
+# a failed deploy has already moved HEAD to the release that failed.
+remember_previous() {
+  local sha="$1" current=""
+  if [[ -s .release-current ]]; then
+    current="$(cat .release-current)"
+  else
+    # Before the first deploy that writes .release-current: what is checked out is running.
+    current="$(git rev-parse HEAD 2>/dev/null || true)"
+  fi
+  if [[ -n "$current" && "$current" != "$sha" ]]; then
+    echo "==> Recording the running release $current for rollback"
+    printf '%s\n' "$current" >.release-previous
+  fi
+}
+
+mark_deployed() {
+  printf '%s\n' "$1" >.release-current
 }
 
 # Every parameter under the path becomes KEY='value' (KEY = last path segment), plus
