@@ -16,7 +16,8 @@
     "dev:db": "node apps/api/scripts/dev-db.js",
     "dev:api": "npm run dev --workspace @vs/api",
     "dev:worker": "npm run dev:worker --workspace @vs/api",
-    "dev:web": "npm run dev --workspace @vs/web"
+    "dev:web": "npm run dev --workspace @vs/web",
+    "e2e": "playwright test -c apps/e2e/playwright.config.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

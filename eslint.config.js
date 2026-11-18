@@ -4,7 +4,12 @@ import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 
 export default [
-  { ignores: ['**/node_modules/**', '**/dist/**', '**/coverage/**', '.data/**', '.dev-files/**', '.superpowers/**'] },
+  {
+    ignores: [
+      '**/node_modules/**', '**/dist/**', '**/coverage/**', '.data/**', '.dev-files/**', '.superpowers/**',
+      'apps/e2e/test-results/**', '**/playwright-report/**',
+    ],
+  },
   js.configs.recommended,
   {
     files: ['**/*.{js,jsx,cjs}'],
@@ -17,6 +22,11 @@ export default [
     rules: {
       'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true }],
     },
+  },
+  {
+    // Playwright specs run in Node; their page callbacks run in the browser.
+    files: ['apps/e2e/**/*.js'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
   {
     files: ['**/*.cjs'],
