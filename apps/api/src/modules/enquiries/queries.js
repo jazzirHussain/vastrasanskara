@@ -12,8 +12,10 @@ const VIEW_SORT = { follow_ups: ['followUpDate', 1] };
 const STATUS_VIEWS = new Set(['new', 'appointment_booked', 'converted', 'lost']);
 
 /** The filter of an enquiry list view (exported for the index test). */
-export function enquiryListFilter(branchId, { view = 'open', q } = {}, { today }) {
+export function enquiryListFilter(branchId, { view = 'open', q, source, from, to } = {}, { today }) {
   const filter = { branchId: new mongoose.Types.ObjectId(String(branchId)) };
+  if (source) filter.source = source;
+  if (from || to) filter.enquiryDate = { ...(from && { $gte: from }), ...(to && { $lte: to }) };
   if (view === 'follow_ups') Object.assign(filter, { isOpen: true, followUpDate: { $lte: today } });
   else if (view === 'open') filter.isOpen = true;
   else if (STATUS_VIEWS.has(view)) filter.status = view;
@@ -26,10 +28,11 @@ export function enquiryListFilter(branchId, { view = 'open', q } = {}, { today }
   return filter;
 }
 
-/** One page of a list view: follow-ups oldest call-back first, the others newest enquiry first. */
-export function listEnquiries(branchId, { view = 'open', q, cursor, limit } = {}, { today }) {
+/** One page of a list view: follow-ups oldest call-back first, the others newest enquiry first. `source` and
+ * `from`/`to` (on `enquiryDate`) narrow it (the M8 enquiry sources drill-down). */
+export function listEnquiries(branchId, { view = 'open', q, source, from, to, cursor, limit } = {}, { today }) {
   const sort = VIEW_SORT[view] ?? ['enquiryDate', -1];
-  return paginate(Enquiry, enquiryListFilter(branchId, { view, q }, { today }), { sort, cursor, limit });
+  return paginate(Enquiry, enquiryListFilter(branchId, { view, q, source, from, to }, { today }), { sort, cursor, limit });
 }
 
 /** How many open enquiries are due a call today or earlier, and how many of them are overdue. */

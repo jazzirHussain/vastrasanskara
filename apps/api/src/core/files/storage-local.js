@@ -69,13 +69,13 @@ export function createLocalStorage({ dir, apiOrigin, secret }) {
       verify(sign('GET', key, exp), sig, exp);
     },
 
-    async putObject({ key, body, contentType }) {
+    async putObject({ key, body, contentType, contentDisposition = null }) {
       const data = await readAll(body);
       const file = filePath(key);
       await mkdir(path.dirname(file), { recursive: true });
       await writeFile(file, data);
       const sha256 = createHash('sha256').update(data).digest('hex');
-      await writeFile(`${file}.meta.json`, JSON.stringify({ contentType, size: data.length, sha256 }));
+      await writeFile(`${file}.meta.json`, JSON.stringify({ contentType, size: data.length, sha256, contentDisposition }));
     },
 
     async getObject(key) {
@@ -86,7 +86,12 @@ export function createLocalStorage({ dir, apiOrigin, secret }) {
     async headObject(key) {
       const meta = await readMeta(key);
       if (!meta) return null;
-      return { size: (await stat(filePath(key))).size, sha256: meta.sha256, contentType: meta.contentType };
+      return {
+        size: (await stat(filePath(key))).size,
+        sha256: meta.sha256,
+        contentType: meta.contentType,
+        contentDisposition: meta.contentDisposition ?? null,
+      };
     },
   };
 }

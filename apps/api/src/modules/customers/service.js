@@ -7,6 +7,8 @@ import { paginate } from '../../core/pagination.js';
 import { getBranch } from '../branches/service.js';
 import { Customer } from './model.js';
 
+export { customerIdsOfType, customerTypeFilter } from './filters.js';
+
 // Changes to these fields are recorded in the audit log (they reach GST documents or consent).
 const AUDITED = ['name', 'gstin', 'stateCode', 'billingAddress', 'consent', 'consentNote'];
 const auditFields = (c) => Object.fromEntries(AUDITED.map((f) => [f, c[f] ?? null]));

@@ -30,5 +30,6 @@ const customerSchema = new mongoose.Schema({
 customerSchema.plugin(commonFields);
 customerSchema.index({ branchId: 1, phone: 1 }, { unique: true });
 customerSchema.index({ branchId: 1, searchName: 1 });
+customerSchema.index({ branchId: 1, type: 1 }, { name: 'by_type' });
 
 export const Customer = mongoose.models.Customer ?? mongoose.model('Customer', customerSchema);

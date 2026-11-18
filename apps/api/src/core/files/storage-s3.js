@@ -29,11 +29,11 @@ export function createS3Storage({ region, bucket, client = new S3Client({ region
       return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn });
     },
 
-    async putObject({ key, body, contentType }) {
+    async putObject({ key, body, contentType, contentDisposition }) {
       // Upload handles both Buffers and streams of unknown length (multipart when large).
       await new Upload({
         client,
-        params: { Bucket: bucket, Key: key, Body: body, ContentType: contentType },
+        params: { Bucket: bucket, Key: key, Body: body, ContentType: contentType, ...(contentDisposition && { ContentDisposition: contentDisposition }) },
       }).done();
     },
 
@@ -45,7 +45,12 @@ export function createS3Storage({ region, bucket, client = new S3Client({ region
     async headObject(key) {
       try {
         const result = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
-        return { size: result.ContentLength, sha256: result.Metadata?.sha256, contentType: result.ContentType };
+        return {
+          size: result.ContentLength,
+          sha256: result.Metadata?.sha256,
+          contentType: result.ContentType,
+          contentDisposition: result.ContentDisposition ?? null,
+        };
       } catch (err) {
         if (err?.name === 'NotFound' || err?.$metadata?.httpStatusCode === 404) return null;
         throw err;

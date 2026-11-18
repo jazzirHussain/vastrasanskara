@@ -347,6 +347,11 @@ export async function listOrders(
   }
 
   const { items: orders, nextCursor } = await paginate(Order, filter, { sort: ['pickupDate', 1], limit, cursor });
+  return { items: await orderListItems(branchId, orders), nextCursor };
+}
+
+/** listOrders rows { order, garments, customerName, designerName } for a page of lean orders. */
+export async function orderListItems(branchId, orders) {
   const ids = orders.map((o) => o._id);
   const [garments, customerNames, designerNames] = await Promise.all([
     Garment.find({ orderId: { $in: ids } }).sort({ index: 1 }).lean(),
@@ -354,13 +359,12 @@ export async function listOrders(
     getUserNames(orders.map((o) => o.designerId)),
   ]);
   const byOrder = Map.groupBy(garments, (g) => String(g.orderId));
-  const items = orders.map((order) => ({
+  return orders.map((order) => ({
     order,
     garments: byOrder.get(String(order._id)) ?? [],
     customerName: customerNames.get(String(order.customerId)),
     designerName: designerNames.get(String(order.designerId)),
   }));
-  return { items, nextCursor };
 }
 
 /**
@@ -508,3 +512,20 @@ export async function listCostingGarments(branchId, ids, session) {
     status: g.status,
   }));
 }
+
+export {
+  activeOrderCount,
+  activeOrdersMatch,
+  countOrdersByStatus,
+  garmentsReadyBetween,
+  garmentsReadyFilter,
+  iterateGarmentsReady,
+  listOrdersByStatus,
+  listOrdersPlaced,
+  onHoldOrders,
+  orderCounts,
+  orderLabels,
+  orderNumbersMatching,
+  ordersByStatusMatch,
+  ordersPlacedMatch,
+} from './reports.js';

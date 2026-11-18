@@ -49,6 +49,7 @@ orderSchema.index({ branchId: 1, orderNo: 1 }, { unique: true });
 orderSchema.index({ branchId: 1, status: 1, pickupDate: 1 });
 orderSchema.index({ branchId: 1, designerId: 1, pickupDate: 1 });
 orderSchema.index({ branchId: 1, customerId: 1 });
+orderSchema.index({ branchId: 1, orderDate: 1, _id: 1 }, { name: 'by_order_date' });
 
 export const Order = mongoose.models.Order ?? mongoose.model('Order', orderSchema);
 
@@ -121,6 +122,7 @@ garmentSchema.index({ branchId: 1, garmentNo: 1 }, { unique: true });
 garmentSchema.index({ orderId: 1, index: 1 });
 garmentSchema.index({ branchId: 1, status: 1, dueDate: 1 });
 garmentSchema.index({ branchId: 1, referenceKeys: 1 });
+garmentSchema.index({ branchId: 1, readyDate: 1 }, { name: 'ready', partialFilterExpression: { readyDate: { $type: 'string' } } });
 // Batch members, for expense costing (only garments of a batch carry a batchId).
 garmentSchema.index({ branchId: 1, batchId: 1 }, { name: 'batch', partialFilterExpression: { batchId: { $type: 'objectId' } } });
 
