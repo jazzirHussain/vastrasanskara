@@ -1,11 +1,17 @@
 import pino from 'pino';
 
-// Never log phone numbers, emails, passwords, cookies or measurement values (also one level
-// down, e.g. a Mongo duplicate-key error's err.keyValue.email).
+// Never log phone numbers, emails, passwords, cookies, GSTINs, tokens, measurement values or
+// request bodies, up to three levels down (e.g. a job's data.customer.email).
 const REDACT = [
   'req.headers.cookie',
   'req.headers.authorization',
-  ...['password', 'email', 'phone', 'measurements'].flatMap((field) => [field, `*.${field}`, `*.*.${field}`]),
+  'req.body',
+  ...['password', 'email', 'phone', 'measurements', 'gstin', 'token', 'rawBody'].flatMap((field) => [
+    field,
+    `*.${field}`,
+    `*.*.${field}`,
+    `*.*.*.${field}`,
+  ]),
 ];
 
 /**

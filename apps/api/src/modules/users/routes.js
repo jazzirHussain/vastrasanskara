@@ -10,7 +10,7 @@ import { actorFrom, requireAnyPermission, requirePermission } from '../../core/a
 import { authRateLimiter } from '../../core/auth/rateLimit.js';
 import { notFound } from '../../core/errors.js';
 import { validate } from '../../core/validate.js';
-import { confirmPasswordReset, requestPasswordReset } from './passwordReset.js';
+import { confirmPasswordReset, requestPasswordResetLater } from './passwordReset.js';
 import { createUser, listDesigners, listUsers, updateUser } from './service.js';
 
 function toUserJson(user) {
@@ -46,14 +46,17 @@ export function usersRouter(config) {
 }
 
 /** Public: request a reset link and set a new password with it. */
+const RESET_REQUESTED = Object.freeze({ message: 'If this email has an account, a link to set a new password is on its way.' });
+
 export function passwordResetRouter(config) {
   const router = Router();
   // Same per-IP budget as login, so the request endpoint cannot be used to flood inboxes.
   router.use(authRateLimiter(config));
 
-  router.post('/request', validate({ body: passwordResetRequestSchema }), async (req, res) => {
-    await requestPasswordReset(req.body.email, config);
-    res.status(204).end();
+  // The same answer, at once, for every email; the lookup and the email happen afterwards.
+  router.post('/request', validate({ body: passwordResetRequestSchema }), (req, res) => {
+    res.status(202).json(RESET_REQUESTED);
+    requestPasswordResetLater(req.body.email, config);
   });
 
   router.post('/confirm', validate({ body: passwordResetConfirmSchema }), async (req, res) => {

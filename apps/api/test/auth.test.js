@@ -7,6 +7,7 @@ import { requirePermission } from '../src/core/auth/middleware.js';
 import { ensureSessionIndexes, revokeUserSessions } from '../src/core/auth/sessions.js';
 import mongoose from 'mongoose';
 import { AuditLog } from '../src/core/audit/model.js';
+import { Outbox } from '../src/core/notify/models.js';
 useTestDb();
 const app = buildTestApp({ mount: (a) => a.get('/t/money', requirePermission('money.view'), (req, res) => res.json({ ok: 1 })) });
 const login = (email, password) => api(request(app)).post('/v1/auth/login').send({ email, password });
@@ -97,4 +98,52 @@ test('session expiry index is created at startup (expired sessions are removed b
   await ensureSessionIndexes();
   const indexes = await mongoose.connection.collection('sessions').indexes();
   expect(indexes).toEqual(expect.arrayContaining([expect.objectContaining({ key: { expires: 1 }, expireAfterSeconds: 0 })]));
+});
+
+test('logging out clears a secure cookie in production', async () => {
+  const prod = buildTestApp({ config: { cookie: { name: '__Host-sid', secure: true } } });
+  await createTestUser({ roles: ['admin'], email: 'owner@example.com' });
+  const agent = request.agent(prod);
+  const signedIn = await api(agent).post('/v1/auth/login').set('X-Forwarded-Proto', 'https').send({ email: 'owner@example.com', password: 'correct-horse-1' });
+  expect(signedIn.status).toBe(200);
+  const r = await api(agent).post('/v1/auth/logout').set('X-Forwarded-Proto', 'https');
+  expect(r.status).toBe(204);
+  const cookie = r.headers['set-cookie'].find((c) => c.startsWith('__Host-sid='));
+  expect(cookie).toMatch(/^__Host-sid=;/);
+  expect(cookie).toMatch(/; Secure/i);
+  expect(cookie).toMatch(/; HttpOnly/i);
+  expect(cookie).toMatch(/; SameSite=Strict/i);
+  expect(cookie).toMatch(/; Path=\//i);
+});
+
+test('unknown emails lock exactly like real ones', async () => {
+  await createTestUser({ roles: ['admin'], email: 'real@x.com' });
+  const outcomes = async (email) => {
+    const seen = [];
+    for (let i = 0; i < 11; i++) {
+      const r = await login(email, 'wrong-pass-12');
+      seen.push(`${r.status} ${r.body.error.code}`);
+    }
+    return seen;
+  };
+  const real = await outcomes('real@x.com');
+  expect(real.at(-1)).toBe('423 ACCOUNT_LOCKED');
+  expect(await outcomes('Ghost@X.com')).toEqual(real);
+  // The lock ends after 15 minutes for both.
+  vi.spyOn(clock, 'now').mockReturnValue(new Date(Date.now() + 16 * 60_000));
+  expect((await login('ghost@x.com', 'wrong-pass-12')).body.error.code).toBe('INVALID_CREDENTIALS');
+  vi.restoreAllMocks();
+});
+
+test('asking to reset a password answers the same for any email', async () => {
+  await createTestUser({ roles: ['admin'], email: 'real@x.com' });
+  const ask = (email) => api(request(app)).post('/v1/auth/password-reset/request').send({ email });
+  const unknown = await ask('nobody@x.com');
+  const known = await ask('real@x.com');
+  expect(unknown.status).toBe(202);
+  expect(known.status).toBe(202);
+  expect(known.body).toEqual(unknown.body);
+  expect(Object.keys(known.headers).filter((h) => !['date', 'x-request-id', 'etag', 'ratelimit', 'ratelimit-policy'].includes(h)).sort())
+    .toEqual(Object.keys(unknown.headers).filter((h) => !['date', 'x-request-id', 'etag', 'ratelimit', 'ratelimit-policy'].includes(h)).sort());
+  await expect.poll(() => Outbox.countDocuments({ event: 'auth.password_reset' })).toBe(1);
 });

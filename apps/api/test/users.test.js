@@ -10,6 +10,15 @@ import { registerAdapter, resetAdapters } from '../src/core/notify/adapters/regi
 useTestDb();
 const app = buildTestApp();
 const tokenFromOutbox = async () => new URL((await Outbox.findOne({ event: { $in: ['auth.password_reset', 'auth.invite'] } }).sort({ _id: -1 })).vars.resetUrl).searchParams.get('token');
+// Reset requests are handled just after the answer goes out: wait until the account's email is queued.
+async function askReset(agent, email) {
+  const before = await Outbox.countDocuments({ event: 'auth.password_reset' });
+  const r = await agent.post('/v1/auth/password-reset/request').send({ email });
+  await vi.waitFor(async () => {
+    if ((await Outbox.countDocuments({ event: 'auth.password_reset' })) <= before) throw new Error('reset email not queued yet');
+  });
+  return r;
+}
 
 test('admin creates user and invite is queued', async () => {
   const { agent } = await loginAs(app, { roles: ['admin'] });
@@ -32,9 +41,9 @@ test('guards self-deactivation and last admin', async () => {
 test('password reset flow', async () => {
   const { user } = await loginAs(app, { roles: ['operations'] });
   const anon = api(request(app));
-  expect((await anon.post('/v1/auth/password-reset/request').send({ email: 'nobody@x.com' })).status).toBe(204);
+  expect((await anon.post('/v1/auth/password-reset/request').send({ email: 'nobody@x.com' })).status).toBe(202);
   expect(await Outbox.countDocuments({ event: 'auth.password_reset' })).toBe(0);
-  await anon.post('/v1/auth/password-reset/request').send({ email: user.email });
+  await askReset(anon, user.email);
   const token = await tokenFromOutbox();
   expect((await anon.post('/v1/auth/password-reset/confirm').send({ token, password: 'short' })).status).toBe(400);
   expect((await anon.post('/v1/auth/password-reset/confirm').send({ token, password: 'brand-new-pass-1' })).status).toBe(204);
@@ -44,7 +53,7 @@ test('password reset flow', async () => {
 test('expired reset token', async () => {
   const { user } = await loginAs(app, { roles: ['operations'] });
   const anon = api(request(app));
-  await anon.post('/v1/auth/password-reset/request').send({ email: user.email });
+  await askReset(anon, user.email);
   const token = await tokenFromOutbox();
   vi.spyOn(clock, 'now').mockReturnValue(new Date(Date.now() + 31 * 60_000));
   expect((await anon.post('/v1/auth/password-reset/confirm').send({ token, password: 'brand-new-pass-1' })).body.error.code).toBe('RESET_TOKEN_INVALID');
@@ -82,14 +91,14 @@ test('invite links last 3 days; a reset clears lockout and signs out everywhere'
   const { agent: d, user } = await loginAs(app, { roles: ['designer'] });
   for (let i = 0; i < 10; i++) await anon.post('/v1/auth/login').send({ email: user.email, password: 'wrong-password-1' });
   expect((await anon.post('/v1/auth/login').send({ email: user.email, password: 'correct-horse-1' })).status).toBe(423);
-  await anon.post('/v1/auth/password-reset/request').send({ email: user.email });
+  await askReset(anon, user.email);
   expect((await anon.post('/v1/auth/password-reset/confirm').send({ token: await tokenFromOutbox(), password: 'brand-new-pass-1' })).status).toBe(204);
   expect((await d.get('/v1/auth/me')).status).toBe(401);
   expect((await anon.post('/v1/auth/login').send({ email: user.email, password: 'brand-new-pass-1' })).status).toBe(200);
 });
 test('reset emails are rendered with the user name and link', async () => {
   const { user } = await loginAs(app, { roles: ['operations'], name: 'Asha' });
-  await api(request(app)).post('/v1/auth/password-reset/request').send({ email: user.email });
+  await askReset(api(request(app)), user.email);
   const entry = await Outbox.findOne({ event: 'auth.password_reset' }).lean();
   expect(entry.vars).toEqual({ name: 'Asha', resetUrl: expect.stringMatching(/^https:\/\/app\.test\/reset-password\?token=/), expiresIn: '30 minutes' });
   expect(entry.recipient.address).toBe(user.email);

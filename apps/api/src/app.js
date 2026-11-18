@@ -3,7 +3,8 @@ import express from 'express';
 import { errorHandler, notFound } from './core/errors.js';
 import { requestLogger } from './core/requestLogger.js';
 import { logger as defaultLogger } from './logger.js';
-import { requireAppHeader, securityMiddleware } from './core/security.js';
+import { noStore, requireAppHeader, securityMiddleware } from './core/security.js';
+import { apiRateLimiter } from './core/rateLimit.js';
 import { sessionMiddleware } from './core/auth/sessions.js';
 import { loadUser } from './core/auth/middleware.js';
 import { createStorage } from './core/files/storage.js';
@@ -50,6 +51,7 @@ export function createApp({ config, storage = createStorage(config), mount, logg
   });
   app.use(requestLogger(logger));
   app.use(securityMiddleware(config));
+  app.use('/v1', noStore);
   // rawBody keeps the exact bytes so webhook adapters can verify provider signatures.
   app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 
@@ -62,6 +64,7 @@ export function createApp({ config, storage = createStorage(config), mount, logg
 
   app.use(sessionMiddleware(config));
   app.use(loadUser);
+  app.use(apiRateLimiter(config));
   app.use(requireAppHeader);
 
   app.use('/v1/auth/password-reset', passwordResetRouter(config));

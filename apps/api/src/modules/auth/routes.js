@@ -40,7 +40,8 @@ export function authRouter(config) {
 
   router.post('/logout', async (req, res) => {
     if (req.session) await callback((cb) => req.session.destroy(cb));
-    res.clearCookie(config.cookie.name, { path: '/' });
+    // Same flags as the session cookie, so browsers (and the __Host- prefix rules) accept the removal.
+    res.clearCookie(config.cookie.name, { path: '/', httpOnly: true, secure: config.cookie.secure, sameSite: 'strict' });
     res.status(204).end();
   });
 

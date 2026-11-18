@@ -4,10 +4,17 @@ import { AppError, unsupportedContentType } from './errors.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-/** helmet plus CORS that allows exactly the web app's origin, with credentials. */
+/**
+ * Strict helmet headers (the API serves JSON and file bytes, never pages: nothing may load from
+ * it or frame it) plus CORS that allows exactly the web app's origin, with credentials.
+ */
 export function securityMiddleware(config) {
   return [
-    helmet(),
+    helmet({
+      contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } },
+      strictTransportSecurity: { maxAge: 63072000, includeSubDomains: true },
+      crossOriginResourcePolicy: { policy: 'same-site' },
+    }),
     cors({
       // A function, not a string: with a string, cors echoes that origin to every caller.
       origin: (origin, callback) => callback(null, origin === config.appOrigin),
@@ -16,6 +23,12 @@ export function securityMiddleware(config) {
       allowedHeaders: ['Content-Type', 'X-Requested-With', 'Idempotency-Key'],
     }),
   ];
+}
+
+/** API answers hold personal and money data: no browser or proxy may keep a copy. */
+export function noStore(req, res, next) {
+  res.set('Cache-Control', 'no-store');
+  next();
 }
 
 function hasBody(req) {

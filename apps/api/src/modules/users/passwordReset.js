@@ -6,6 +6,7 @@ import { withTransaction } from '../../core/db.js';
 import { AppError } from '../../core/errors.js';
 import { emit } from '../../core/notify/emit.js';
 import { hashPassword } from '../../core/auth/passwords.js';
+import { logger } from '../../logger.js';
 import { PasswordReset, User } from './model.js';
 
 const LINKS = {
@@ -45,6 +46,18 @@ export async function requestPasswordReset(email, { appOrigin }) {
   const user = await User.findOne({ email, active: true }).lean();
   if (!user) return;
   await withTransaction((session) => issuePasswordLink(user, { purpose: 'reset', appOrigin }, session));
+}
+
+/**
+ * requestPasswordReset after the response has gone out, so neither the answer nor its timing
+ * shows whether the email has an account. Failures are logged without the address.
+ */
+export function requestPasswordResetLater(email, options) {
+  setImmediate(() => {
+    requestPasswordReset(email, options).catch((err) => {
+      logger.error({ err: { name: err.name, code: err.code } }, 'password reset request failed');
+    });
+  });
 }
 
 /**

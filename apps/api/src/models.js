@@ -20,6 +20,7 @@ import * as users from './modules/users/model.js';
 import * as vendors from './modules/vendors/model.js';
 import * as workers from './modules/workers/model.js';
 import * as imports from './modules/imports/model.js';
+import * as auth from './modules/auth/model.js';
 import * as audit from './core/audit/model.js';
 import * as jobsModel from './core/jobs/model.js';
 import * as notify from './core/notify/models.js';
@@ -28,7 +29,7 @@ const isBaseModel = (value) => typeof value === 'function' && value.prototype in
 const modelsOf = (mod) => Object.values(mod).filter(isBaseModel);
 
 export const MODELS = Object.freeze([
-  ...new Set([appointments, billing, branches, catalog, customers, dashboard, enquiries, expenses, measurements, orders, periods, production, reports, settings, stock, users, vendors, workers, imports, audit, jobsModel, notify].flatMap(modelsOf)),
+  ...new Set([appointments, billing, branches, catalog, customers, dashboard, enquiries, expenses, measurements, orders, periods, production, reports, settings, stock, users, vendors, workers, imports, auth, audit, jobsModel, notify].flatMap(modelsOf)),
 ]);
 
 /** Collections the app writes without a Mongoose model. */

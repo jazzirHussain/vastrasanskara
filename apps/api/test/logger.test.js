@@ -20,3 +20,21 @@ test('personal data is redacted, including one level down (e.g. err.keyValue.ema
   for (const secret of ['a@b.c', '+919876543210', 'x@y.z', '"p"']) expect(text).not.toContain(secret);
   expect(text).toContain('[Redacted]');
 });
+
+test('deeply nested personal fields are hidden', () => {
+  const { logger, lines } = captureLogger();
+  logger.error(
+    {
+      job: { data: { customer: { email: 'deep@x.y', phone: '+919811111111' } } },
+      gstin: '29ABCDE1234F1Z5',
+      token: 'reset-token-abc',
+      rawBody: 'raw-bytes-here',
+      req: { body: { name: 'Body Name' } },
+    },
+    'boom',
+  );
+  const text = JSON.stringify(lines[0]);
+  for (const secret of ['deep@x.y', '+919811111111', '29ABCDE1234F1Z5', 'reset-token-abc', 'raw-bytes-here', 'Body Name']) {
+    expect(text).not.toContain(secret);
+  }
+});
