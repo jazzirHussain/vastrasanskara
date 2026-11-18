@@ -3,6 +3,7 @@ import { checkCatalogItemRules } from '@vs/shared/schemas/catalog.js';
 import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
 import { businessRule, conflict, notFound, validationError } from '../../core/errors.js';
+import { searchNameMatcher } from '../../core/text.js';
 import { readSettings } from '../settings/service.js';
 import { getItem as getStockItem } from '../stock/service.js';
 import { CatalogItem } from './model.js';
@@ -82,6 +83,12 @@ export async function getItem(branchId, id) {
   const item = await CatalogItem.findOne({ _id: id, branchId }).lean();
   if (!item) throw notFound();
   return item;
+}
+
+/** The branch's item with this name, ignoring case and extra spaces, or null. */
+export function findItemByName(branchId, name, session) {
+  const searchName = searchNameMatcher(name);
+  return searchName ? CatalogItem.findOne({ branchId, searchName }).session(session ?? null).lean() : null;
 }
 
 export function createItem(branchId, input, actor) {

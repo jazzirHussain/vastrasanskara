@@ -3,6 +3,7 @@ import { diff } from '../../core/audit/diff.js';
 import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
 import { businessRule, conflict, validationError } from '../../core/errors.js';
+import { caseInsensitiveMatcher, searchNameMatcher } from '../../core/text.js';
 import { moveStock } from './ledger.js';
 import { StockItem, StockMovement } from './model.js';
 import { getItem } from './queries.js';
@@ -45,6 +46,15 @@ const auditView = (item) => Object.fromEntries(EDITABLE.map((f) => [f, item[f] ?
  * Adds a stock item; `opening` stock (quantity at a cost per usage unit) goes in as its first
  * movement. Creating an item never sends a low-stock alert: `low` starts as the empty item's.
  */
+/** The branch's item with this name, brand and colour (case and spacing ignored), or null. */
+export function findStockItem(branchId, { name, brand = '', colour = '' }, session) {
+  const searchName = searchNameMatcher(name);
+  if (!searchName) return null;
+  return StockItem.findOne({ branchId, searchName, brand: caseInsensitiveMatcher(brand), colour: caseInsensitiveMatcher(colour) })
+    .session(session ?? null)
+    .lean();
+}
+
 export function createItem(branchId, input, actor) {
   const { opening, ...fields } = input;
   return withTransaction(async (session) => {

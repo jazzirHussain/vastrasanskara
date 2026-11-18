@@ -13,7 +13,11 @@ import { listDesigners } from '../users/service.js';
 import { getKindAdapter } from './kinds/index.js';
 import { COUNT_KEYS, ImportRow, ImportRun } from './model.js';
 import { ImportFileError, readImportFile } from './sheets.js';
+import './kinds/customers.js';
+import './kinds/vendors.js';
 import './kinds/workers.js';
+import './kinds/catalog.js';
+import './kinds/stock.js';
 
 export const STALE_AFTER_MS = 10 * 60_000;
 export const MAX_ATTEMPTS = 3;

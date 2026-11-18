@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
 import { conflict, notFound } from '../../core/errors.js';
+import { searchNameMatcher } from '../../core/text.js';
 import { Worker } from './model.js';
 
 const auditFields = (w) => ({ name: w.name, skill: w.skill, active: w.active });
@@ -28,10 +29,8 @@ export async function createWorker(branchId, input, actor) {
 
 /** The branch's worker with this name, ignoring case and extra spaces, or null. */
 export function findWorkerByName(branchId, name) {
-  const words = String(name).trim().toLowerCase().split(/\s+/).filter(Boolean);
-  if (!words.length) return null;
-  const escaped = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  return Worker.findOne({ branchId, searchName: new RegExp(`^${escaped.join('\\s+')}$`) }).lean();
+  const searchName = searchNameMatcher(name);
+  return searchName ? Worker.findOne({ branchId, searchName }).lean() : null;
 }
 
 /** Updates a worker at `version` (409 when someone else saved first). */

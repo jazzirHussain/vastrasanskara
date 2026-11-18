@@ -3,6 +3,7 @@ import { checkVendorRules } from '@vs/shared/schemas/workshop.js';
 import { recordAudit } from '../../core/audit/service.js';
 import { withTransaction } from '../../core/db.js';
 import { conflict, notFound, validationError } from '../../core/errors.js';
+import { searchNameMatcher } from '../../core/text.js';
 import { getBranch } from '../branches/service.js';
 import { Vendor } from './model.js';
 
@@ -20,6 +21,12 @@ function assertVendorRules(vendor) {
 /** The branch's vendors by name; `active` narrows to active or inactive ones. */
 export function listVendors(branchId, { active } = {}) {
   return Vendor.find({ branchId, ...(active !== undefined && { active }) }).sort({ searchName: 1, _id: 1 }).lean();
+}
+
+/** The branch's vendor with this name, ignoring case and extra spaces, or null. */
+export function findVendorByName(branchId, name, session) {
+  const searchName = searchNameMatcher(name);
+  return searchName ? Vendor.findOne({ branchId, searchName }).session(session ?? null).lean() : null;
 }
 
 /** Creates a vendor; the branch's state is used when no state code is given. */
