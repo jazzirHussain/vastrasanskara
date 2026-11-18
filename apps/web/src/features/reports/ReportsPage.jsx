@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Button, Group, Paper, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Button, Group, Paper, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { REPORTS } from '@vs/shared/reports/catalog.js';
 import { PageHeader } from '../../components/PageHeader.jsx';
 import { RecentFiles } from './RecentFiles.jsx';
 import { ReportCard, lastMonthYm } from './ReportCard.jsx';
-import { useRequestReport, withKey } from './reportsApi.js';
+import { reportErrorText, useRequestReport, withKey } from './reportsApi.js';
 
 const GROUPS = ['GST', 'Registers', 'Ledgers', 'Business'];
 
@@ -30,6 +30,11 @@ function GstFilesCard() {
             Get files
           </Button>
         </Group>
+        {request.error && (
+          <Alert color="red" variant="filled" role="alert">
+            {reportErrorText(request.error)}
+          </Alert>
+        )}
       </Stack>
     </Paper>
   );

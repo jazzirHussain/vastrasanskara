@@ -15,6 +15,8 @@ export function toRunJson(run, { names = new Map() } = {}) {
     status: run.status,
     filename: run.file?.filename ?? null,
     size: run.file?.size ?? null,
+    // Every file of the run (the GST pack has two); download one with ?file=<index>.
+    files: [run.file, ...(run.extraFiles ?? [])].filter(Boolean).map((f, index) => ({ index, filename: f.filename, size: f.size })),
     rows: run.rows ?? null,
     error: run.error ? { code: run.error.code, message: run.error.message } : null,
     requestedBy: run.requestedBy

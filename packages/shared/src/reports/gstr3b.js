@@ -8,7 +8,8 @@ function heads(obj) {
 }
 
 /**
- * Sets input tax credit off against output tax. IGST credit goes first (IGST, then CGST, then SGST);
+ * Sets input tax credit off against output tax. IGST credit goes first: IGST, then what CGST and
+ * SGST credit cannot cover, then any CGST and SGST still due;
  * CGST credit then pays CGST, then IGST; SGST credit pays SGST, then IGST. CGST credit never pays
  * SGST and vice versa. Negative liability (credit notes above sales) is treated as zero.
  */
@@ -25,6 +26,15 @@ export function gstSetOff({ liability, credit }) {
   };
 
   use('igst', 'igst');
+  // Rule 88A: IGST credit is used first, on CGST and SGST in any proportion. Give it to what each
+  // head's own credit cannot cover, so no tax is paid in cash while credit is carried forward.
+  const shortfall = (h) => Math.max(0, due[h] - left[h]);
+  for (const h of ['cgst', 'sgst']) {
+    const n = Math.min(left.igst, shortfall(h));
+    left.igst -= n;
+    due[h] -= n;
+    creditUsed.igst[h] += n;
+  }
   use('igst', 'cgst');
   use('igst', 'sgst');
   use('cgst', 'cgst');

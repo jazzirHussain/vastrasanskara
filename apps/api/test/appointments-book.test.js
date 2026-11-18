@@ -184,7 +184,8 @@ test('a move into a slot booked meanwhile is refused', async () => {
   // At the same moment: exactly one wins.
   const b = await bookAt('15:00');
   const [m, n] = await Promise.all([move(b, { time: '16:00' }), book(ops, at('16:00'))]);
-  expect([m.status, n.status].sort()).toEqual([200, 422].sort());
+  // Either may win: the move (200) or the new booking (201); the loser is refused.
+  expect([[200, 422], [201, 422]]).toContainEqual([m.status, n.status].sort());
   expect(await Appointment.countDocuments({ status: 'booked', date: D, start: new Date('2026-12-01T10:30:00.000Z') })).toBe(1);
 });
 

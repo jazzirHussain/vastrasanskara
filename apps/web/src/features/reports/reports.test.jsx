@@ -122,3 +122,42 @@ test('front desk has no Reports', async () => {
   const nav = await screen.findByRole('navigation', { name: 'Main' });
   expect(within(nav).queryByRole('link', { name: 'Reports' })).toBeNull();
 });
+
+test('a GST pack offers both of its files', async () => {
+  asOwner();
+  reportsAre(() => [run({
+    id: 'p1', kind: 'gst_pack', label: 'All GST files for a month', params: { month: '2026-10' }, filename: 'GST files October 2026.xlsx',
+    files: [{ index: 0, filename: 'GST files October 2026.xlsx', size: 4096 }, { index: 1, filename: 'GST summary and registers October 2026.xlsx', size: 8192 }],
+  })]);
+  const asked = [];
+  server.use(http.get('/v1/reports/p1/download', ({ request }) => {
+    asked.push(new URL(request.url).searchParams.get('file'));
+    return HttpResponse.json({ url: 'https://files.test/p1', filename: 'x.xlsx' });
+  }));
+  vi.spyOn(browser, 'assign').mockImplementation(() => {});
+  renderApp('/reports');
+  const recent = await screen.findByRole('region', { name: 'Recent files' });
+  await userEvent.click(await within(recent).findByRole('button', { name: 'Download GST summary and registers October 2026.xlsx' }));
+  await userEvent.click(within(recent).getByRole('button', { name: 'Download GST files October 2026.xlsx' }));
+  await expect.poll(() => asked).toEqual(['1', '0']);
+});
+
+test('a request the server refuses says why', async () => {
+  asOwner();
+  reportsAre();
+  server.use(http.post('/v1/reports', () => HttpResponse.json({ error: { code: 'VALIDATION_FAILED', message: 'Choose a month that has started', details: [] } }, { status: 400 })));
+  renderApp('/reports');
+  const card = await screen.findByRole('region', { name: 'Last month’s GST files' });
+  await userEvent.click(within(card).getByRole('button', { name: 'Get files' }));
+  expect(await within(card).findByRole('alert')).toHaveTextContent('Choose a month that has started');
+});
+
+test('a download that fails says so', async () => {
+  asOwner();
+  reportsAre(() => [run()]);
+  server.use(http.get('/v1/reports/r1/download', () => HttpResponse.json({ error: { code: 'REPORT_NOT_READY', message: 'x' } }, { status: 422 })));
+  renderApp('/reports');
+  const recent = await screen.findByRole('region', { name: 'Recent files' });
+  await userEvent.click(await within(recent).findByRole('button', { name: 'Download' }));
+  expect(await within(recent).findByRole('alert')).toHaveTextContent('This file is still being prepared.');
+});

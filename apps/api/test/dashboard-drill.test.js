@@ -148,3 +148,19 @@ test('an unpermitted metric is not found', async () => {
   expect(r.body.metric).toEqual({ id: 'billed', label: 'Billed', count: expect.any(Number), amount: expect.any(Number) });
   expect(r.body.columns.map((c) => c.key)).toEqual(['title', 'subtitle', 'date', 'amount']);
 });
+
+test('one bar\'s list is headed by that bar\'s figure and name, not the whole metric\'s', async () => {
+  const w = await richWorld();
+  const body = (await w.admin.agent.get('/v1/dashboard').query({ preset: 'fy' })).body;
+  const stage = body.tiles.production.metrics.stage_garments.breakdown.find((b) => b.count > 0);
+  const r = await w.admin.agent.get('/v1/dashboard/metrics/stage_garments/rows').query({ preset: 'fy', key: stage.key });
+  ok(r, 200);
+  expect(r.body.metric).toEqual({ id: 'stage_garments', label: 'Garments by stage', count: stage.count, keyLabel: stage.label });
+  const month = body.tiles.money.metrics.month_money.breakdown.at(-1);
+  const m = await w.admin.agent.get('/v1/dashboard/metrics/month_money/rows').query({ preset: 'fy', key: month.key });
+  expect(m.body.metric).toMatchObject({ amount: month.billed, keyLabel: month.label });
+  const bucket = body.tiles.money.metrics.receivables_ageing.breakdown.find((b) => b.key === 'not_due');
+  const a = await w.admin.agent.get('/v1/dashboard/metrics/receivables_ageing/rows').query({ preset: 'fy', key: 'not_due' });
+  expect(a.body.metric).toMatchObject({ amount: bucket.amount, keyLabel: 'Not due yet' });
+  expect(a.body.items.reduce((s, i) => s + i.amount, 0)).toBe(bucket.amount);
+});

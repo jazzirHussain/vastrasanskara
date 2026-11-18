@@ -126,3 +126,39 @@ test('a pack made by hand does not stop the scheduled one, and is not emailed', 
   expect(await Outbox.countDocuments({ event: 'reports.gst_pack', channel: 'email' })).toBe(1);
   expect(typeof gst.gstMonthDocs).toBe('function');
 });
+
+test('both files of a pack can be downloaded, each audited', async () => {
+  const { admin } = await setup();
+  const { AuditLog } = await import('../src/core/audit/model.js');
+  const r = await admin.agent.post('/v1/reports').set('Idempotency-Key', 'pack-files').send({ kind: 'gst_pack', format: 'xlsx', params: { month: '2026-10' } });
+  expect(r.status, JSON.stringify(r.body)).toBe(202);
+  let report;
+  for (let i = 0; i < 100; i += 1) {
+    report = (await admin.agent.get(`/v1/reports/${r.body.report.id}`)).body.report;
+    if (report.status === 'done') break;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  }
+  expect(report.files.map((f) => f.filename)).toEqual(['GST files October 2026.xlsx', 'GST summary and registers October 2026.xlsx']);
+  const second = await admin.agent.get(`/v1/reports/${report.id}/download`).query({ file: 1 });
+  expect(second.status, JSON.stringify(second.body)).toBe(200);
+  expect(second.body.filename).toBe('GST summary and registers October 2026.xlsx');
+  expect((await admin.agent.get(`/v1/reports/${report.id}/download`).query({ file: 2 })).status).toBe(404);
+  const audits = await AuditLog.find({ entityType: 'report', entityId: report.id, action: 'download' }).lean();
+  expect(audits.map((a) => JSON.stringify(a.changes).includes('GST summary and registers October 2026.xlsx'))).toEqual([true]);
+  expect(audits).toHaveLength(1);
+});
+
+test('a scheduled pack that got stuck twice tells the owner', async () => {
+  const { branchId } = await setup();
+  at('2026-11-02', '11:00');
+  const longAgo = new Date(clock.now().getTime() - 31 * 60_000);
+  await ReportRun.create({ branchId, kind: 'gst_pack', format: 'xlsx', params: { month: '2026-10' }, source: 'schedule', status: 'running', attempts: 2, claimedAt: longAgo });
+  await ReportRun.create({ branchId, kind: 'sales_register', format: 'xlsx', params: { from: '2026-10-01', to: '2026-10-31' }, source: 'manual', status: 'running', attempts: 2, claimedAt: longAgo });
+  await runPendingReports({ storage });
+  expect((await packs())[0]).toMatchObject({ status: 'failed', error: { code: 'STUCK' } });
+  const failed = await Outbox.find({ event: 'reports.gst_pack_failed' }).lean();
+  expect(failed.map((r) => r.channel).sort()).toEqual(['email', 'in_app']);
+  expect(failed[0].vars).toMatchObject({ month: 'October 2026', link: '/reports' });
+  await runPendingReports({ storage });
+  expect(await Outbox.countDocuments({ event: 'reports.gst_pack_failed' })).toBe(2);
+});

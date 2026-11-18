@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Button, Group, Paper, Radio, Select, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Button, Group, Paper, Radio, Select, Stack, Text, TextInput } from '@mantine/core';
 import { useCustomers } from '../customers/customersApi.js';
-import { useRequestReport, withKey } from './reportsApi.js';
+import { reportErrorText, useRequestReport, withKey } from './reportsApi.js';
 
 export const FORMAT_LABELS = { xlsx: 'Excel', csv: 'CSV', pdf: 'PDF' };
 // Excel first (the default), then CSV, then PDF.
@@ -104,6 +104,11 @@ export function ReportCard({ report }) {
               ))}
             </Group>
           </Radio.Group>
+        )}
+        {request.error && (
+          <Alert color="kumkum" variant="light" role="alert">
+            {reportErrorText(request.error)}
+          </Alert>
         )}
         <Group>
           <Button size="md" disabled={!ready} loading={request.isPending} onClick={() => request.mutate(withKey({ kind: report.kind, format, params: params() }))}>

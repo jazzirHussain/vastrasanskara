@@ -55,7 +55,7 @@ export function MetricPage() {
   const chips = [
     ...['priority', 'customerType'].filter((k) => filters[k]).map((k) => ({ name: k, label: CHIP_LABELS[k][filters[k]] ?? filters[k] })),
     ...(filters.designerId ? [{ name: 'designerId', label: 'One designer' }] : []),
-    ...(key ? [{ name: 'key', label: `Only: ${key}` }] : []),
+    ...(key ? [{ name: 'key', label: first?.metric.keyLabel ?? 'One part' }] : []),
   ];
 
   return (

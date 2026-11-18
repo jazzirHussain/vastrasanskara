@@ -50,11 +50,12 @@ registerFilePurpose('billing_pdf', {
   canWrite: () => false,
   canRead: (user, key) => canReadBillingPdf(user, key),
 });
-// Report files are written by the reports builder only; reading one needs reports.export.
+// Report files are written by the reports builder only, and read only through the audited
+// /v1/reports/:id/download (which presigns directly): the general files route never gives a link.
 registerFilePurpose('reports', {
   allowedTypes: [],
   canWrite: () => false,
-  canRead: (user) => user.permissions.has('reports.export'),
+  canRead: async () => false,
 });
 registerFilePurpose('expense_bill', {
   allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf'],

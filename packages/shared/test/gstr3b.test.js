@@ -143,3 +143,11 @@ test('a refund drawn on a two-rate voucher reduces outward tax by every part', (
   expect(out.outward).toEqual({ taxable: -30000, igst: 0, cgst: -750, sgst: -750 });
   expect(out.nilRated).toEqual({ taxable: -5000 });
 });
+
+test('IGST credit goes to whichever head its own credit cannot cover, so no tax is paid in cash needlessly', () => {
+  const out = gstSetOff({ liability: { igst: 0, cgst: 100, sgst: 100 }, credit: { igst: 100, cgst: 100, sgst: 0 } });
+  expect(out.cash).toEqual({ igst: 0, cgst: 0, sgst: 0 });
+  expect(out.creditUsed.igst).toEqual({ igst: 0, cgst: 0, sgst: 100 });
+  expect(out.creditUsed.cgst).toEqual({ cgst: 100, igst: 0 });
+  expect(out.carriedForward).toEqual({ igst: 0, cgst: 0, sgst: 0 });
+});

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../lib/api.js';
+import { messageFor } from '../../lib/errorMessages.js';
 
 const REPORTS_KEY = ['reports'];
 const BUSY = new Set(['queued', 'running']);
@@ -33,8 +34,14 @@ export function useRequestReport() {
 /** Asks for a report with a fresh key per click. */
 export const withKey = (body) => ({ ...body, key: crypto.randomUUID() });
 
-/** Follows a fresh 5-minute download link for a finished file. */
-export async function downloadReport(id) {
-  const { url } = await apiFetch(`/v1/reports/${id}/download`);
+/** Follows a fresh 5-minute download link for one file of a finished report (`file` index). */
+export async function downloadReport(id, file) {
+  const { url } = await apiFetch(`/v1/reports/${id}/download`, { query: file === undefined ? undefined : { file: String(file) } });
   browser.assign(url);
+}
+
+/** Why a request or download failed, in plain words (a field message for a refused request). */
+export function reportErrorText(error) {
+  if (error?.code === 'VALIDATION_FAILED') return error.details?.[0]?.message ?? error.message;
+  return messageFor(error?.code, error?.message);
 }

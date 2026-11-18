@@ -1,12 +1,23 @@
+import { useState } from 'react';
 import { Button, Group, Loader, Paper, Stack, Text } from '@mantine/core';
 import { messageFor } from '../../lib/errorMessages.js';
-import { downloadReport, useReportRuns, useRequestReport, withKey } from './reportsApi.js';
+import { downloadReport, reportErrorText, useReportRuns, useRequestReport, withKey } from './reportsApi.js';
 
 const sizeText = (bytes) => (bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 const periodText = (p) => p.month ?? (p.from && p.to ? `${p.from} to ${p.to}` : '');
 
 function RunRow({ run }) {
   const again = useRequestReport();
+  const [downloadError, setDownloadError] = useState(null);
+  const files = run.files?.length ? run.files : [{ index: 0, filename: run.filename, size: run.size }];
+  const download = async (index) => {
+    setDownloadError(null);
+    try {
+      await downloadReport(run.id, index);
+    } catch (err) {
+      setDownloadError(err);
+    }
+  };
   return (
     <Paper withBorder radius="md" p="sm">
       <Stack gap={4}>
@@ -28,10 +39,27 @@ function RunRow({ run }) {
                 {sizeText(run.size ?? 0)} · asked by {run.requestedBy?.name ?? 'Automatic'}
               </Text>
             </span>
-            <Button size="sm" style={{ minHeight: 44 }} onClick={() => downloadReport(run.id)}>
-              Download
-            </Button>
+            {files.length === 1 && (
+              <Button size="sm" style={{ minHeight: 44 }} onClick={() => download(0)}>
+                Download
+              </Button>
+            )}
           </Group>
+        )}
+        {run.status === 'done' && files.length > 1 && (
+          <Stack gap={6}>
+            {/* The GST pack: GSTR-1, and the GST summary with registers. */}
+            {files.map((f) => (
+              <Button key={f.index} size="sm" variant="light" style={{ minHeight: 44 }} aria-label={`Download ${f.filename}`} onClick={() => download(f.index)}>
+                {f.filename}
+              </Button>
+            ))}
+          </Stack>
+        )}
+        {downloadError && (
+          <Text size="sm" c="var(--vs-kumkum)" role="alert">
+            {reportErrorText(downloadError)}
+          </Text>
         )}
         {run.status === 'failed' && (
           <Group justify="space-between" wrap="nowrap">

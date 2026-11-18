@@ -30,10 +30,19 @@ const FAILED_MESSAGE = 'This report could not be made. Ask for it again.';
 export async function claimRun({ id } = {}) {
   const now = clock.now();
   const stuck = { status: 'running', claimedAt: { $lt: new Date(now.getTime() - STUCK_AFTER_MS) } };
-  await ReportRun.updateMany(
-    { ...stuck, attempts: { $gte: MAX_ATTEMPTS } },
-    { $set: { status: 'failed', finishedAt: now, error: { code: 'STUCK', message: 'This report took too long. Ask for it again.' } } },
-  );
+  // Out of attempts: failed, one at a time, so a scheduled GST pack can tell the owner in the same transaction.
+  const hopeless = await ReportRun.find({ ...stuck, attempts: { $gte: MAX_ATTEMPTS } }, { kind: 1, source: 1, params: 1, branchId: 1 }).lean();
+  for (const run of hopeless) {
+    await withTransaction(async (session) => {
+      const { modifiedCount } = await ReportRun.updateOne(
+        { _id: run._id, ...stuck },
+        { $set: { status: 'failed', finishedAt: now, error: { code: 'STUCK', message: 'This report took too long. Ask for it again.' } } },
+      ).session(session);
+      if (modifiedCount && isScheduledPack(run)) {
+        await emit('reports.gst_pack_failed', { branchId: run.branchId, refId: packRef(run), vars: packVars(run, '/reports') }, { session });
+      }
+    });
+  }
   await ReportRun.updateMany({ ...stuck, attempts: { $lt: MAX_ATTEMPTS } }, { $set: { status: 'queued' } });
   return ReportRun.findOneAndUpdate(
     { ...(id && { _id: id }), status: 'queued' },

@@ -110,8 +110,12 @@ export async function metricRows(user, metricId, query) {
   const ctx = await buildContext(user, query, { today: istDate(clock.now()) });
   const [figure, page] = await Promise.all([figureOf(def, ctx), def.rows(ctx, { cursor: query.cursor, limit: query.limit, key: query.key })]);
   const metric = { id: def.id, label: METRICS[def.id].label };
-  if (figure.count !== undefined) metric.count = figure.count;
-  if (figure.amount !== undefined) metric.amount = figure.amount;
+  // One bar's list is headed by that bar: its count or amount (a month bar's is what was billed) and its name.
+  const bar = query.key ? (figure.breakdown ?? []).find((b) => String(b.key) === query.key) : null;
+  const head = bar ? { count: bar.count, amount: bar.amount ?? bar.billed } : figure;
+  if (head.count !== undefined) metric.count = head.count;
+  if (head.amount !== undefined) metric.amount = head.amount;
+  if (bar) metric.keyLabel = bar.label;
   const money = ctx.money && METRICS[def.id].money;
   const body = { metric, items: page.items, nextCursor: page.nextCursor, columns: money ? [...COLUMNS, { key: 'amount', label: 'Amount' }] : COLUMNS };
   return ctx.money ? body : stripMoney(body);

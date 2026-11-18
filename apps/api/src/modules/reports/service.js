@@ -71,15 +71,17 @@ export function listRuns(branchId, { cursor, limit } = {}) {
   return paginate(ReportRun, recentRunsFilter(branchId), { sort: ['createdAt', -1], cursor, limit });
 }
 
-/** A 5-minute link to a finished report file, audited each time it is given. */
-export async function downloadLink(branchId, id, actor, { storage }) {
+/** A 5-minute link to one file of a finished report (`file` index, 0 = the report), audited each time it is given. */
+export async function downloadLink(branchId, id, actor, { storage, file: index = 0 }) {
   const run = await getRun(branchId, id);
   if (run.status !== 'done' || !run.file) throw businessRule('REPORT_NOT_READY', 'This report is not ready yet');
+  const file = [run.file, ...(run.extraFiles ?? [])][index];
+  if (!file) throw notFound();
   await withTransaction((session) =>
-    recordAudit({ branchId, entityType: 'report', entityId: run._id, action: 'download', after: { filename: run.file.filename }, actor }, session),
+    recordAudit({ branchId, entityType: 'report', entityId: run._id, action: 'download', after: { filename: file.filename }, actor }, session),
   );
-  const url = await storage.presignGet(run.file.key, { expiresIn: LINK_SECONDS });
-  return { url, filename: run.file.filename, expiresIn: LINK_SECONDS };
+  const url = await storage.presignGet(file.key, { expiresIn: LINK_SECONDS });
+  return { url, filename: file.filename, expiresIn: LINK_SECONDS };
 }
 
 /** The worker: builds up to `limit` queued runs, oldest first. */

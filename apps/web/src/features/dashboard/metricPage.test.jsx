@@ -93,3 +93,17 @@ test('a list that is not there says so', async () => {
   renderApp('/home/no_such_list');
   expect((await screen.findAllByText('This list is not available.')).length).toBeGreaterThan(0);
 });
+
+test('one bar\'s list names the bar, not its code', async () => {
+  asOwner();
+  rowsAre('receivables_ageing', {
+    metric: { id: 'receivables_ageing', label: 'Who owes what', amount: 1200000, keyLabel: '31–60 days late' },
+    items: [{ id: 'b9', title: 'INV/2627/0009', subtitle: 'Asha Rao', amount: 1200000, date: '2026-09-20', link: '/bills/b9' }],
+    nextCursor: null,
+    columns: [],
+  });
+  renderApp('/home/receivables_ageing?preset=month&key=d31_60');
+  expect(await screen.findByText(formatINR(1200000), { selector: 'p' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Remove 31–60 days late' })).toBeInTheDocument();
+  expect(screen.queryByText(/d31_60/)).toBeNull();
+});

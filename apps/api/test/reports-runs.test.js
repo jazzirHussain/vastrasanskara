@@ -148,7 +148,8 @@ test('report files are admin only, even by key', async () => {
     const byKey = await who.agent.get('/v1/files/url').query({ key: run.file.key });
     expect(byKey.status).toBe(404);
   }
-  ok(await admin.agent.get('/v1/files/url').query({ key: run.file.key }), 200);
+  // Only the audited report download gives a link; the general files route never does.
+  expect((await admin.agent.get('/v1/files/url').query({ key: run.file.key })).status).toBe(404);
   expect(run.file.key).toMatch(new RegExp(`^${run.branchId}/reports/\\d{4}/[0-9a-f-]{36}\\.xlsx$`));
 });
 

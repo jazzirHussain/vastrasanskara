@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { REPORTS, reportListQuery, reportRequestSchema } from '@vs/shared';
 import { actorFrom, requirePermission } from '../../core/auth/middleware.js';
 import { idempotent } from '../../core/idempotency.js';
@@ -9,6 +10,7 @@ import { toRunJson } from './json.js';
 import { downloadLink, getRun, listRuns, requestReport } from './service.js';
 
 const EXPORT = 'reports.export';
+const downloadQuery = z.strictObject({ file: z.coerce.number().int().min(0).max(9).optional() });
 
 const jsonOf = async (run) => toRunJson(run, { names: await getUserNames([run.requestedBy].filter(Boolean)) });
 
@@ -47,8 +49,8 @@ export function reportsRouter(storage) {
     res.json({ report: await jsonOf(await getRun(req.user.branchId, req.params.id)) });
   });
 
-  router.get('/:id/download', requirePermission(EXPORT), async (req, res) => {
-    const { url, filename } = await downloadLink(req.user.branchId, req.params.id, actorFrom(req), { storage });
+  router.get('/:id/download', requirePermission(EXPORT), validate({ query: downloadQuery }), async (req, res) => {
+    const { url, filename } = await downloadLink(req.user.branchId, req.params.id, actorFrom(req), { storage, file: req.validatedQuery.file });
     res.json({ url, filename });
   });
 
