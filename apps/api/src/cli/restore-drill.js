@@ -32,9 +32,14 @@ function backupTime(key) {
 
 /**
  * Restores an archive into `<db>_restore_check` with mongorestore; the URI goes in a 0600
- * config file. Resolves to mongorestore's last output; rejects when it fails.
+ * config file. Only `<db>.*` is restored (renamed), so with --drop it can never replace a live
+ * collection, whatever else the archive holds. Resolves to mongorestore's last output; rejects when it fails.
  */
 export function restoreArchive(uri, { archive, spawnFn = spawn }) {
+  // Without a name the drill cannot tell the live database from others in the archive.
+  if (!/^mongodb(?:\+srv)?:\/\/[^/]+\/[^?/]+/.test(uri)) {
+    return Promise.reject(new Error('MONGO_URI must name the database (…mongodb.net/vastrasanskara?…)'));
+  }
   const db = databaseName(uri);
   const dir = mkdtempSync(path.join(os.tmpdir(), 'vs-restore-'));
   const configPath = path.join(dir, 'config.yaml');
@@ -46,7 +51,7 @@ export function restoreArchive(uri, { archive, spawnFn = spawn }) {
     try {
       child = spawnFn(
         'mongorestore',
-        [`--config=${configPath}`, `--archive=${archive}`, '--gzip', '--drop', `--nsFrom=${db}.*`, `--nsTo=${db}_restore_check.*`],
+        [`--config=${configPath}`, `--archive=${archive}`, '--gzip', '--drop', `--nsInclude=${db}.*`, `--nsFrom=${db}.*`, `--nsTo=${db}_restore_check.*`],
         { stdio: ['ignore', 'pipe', 'pipe'] },
       );
     } catch (err) {

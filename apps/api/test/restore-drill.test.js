@@ -137,3 +137,23 @@ test('the database password never appears in the drill output or command line', 
   expect(seen[0].config).toContain('s3cret-pass');
   expect(String(output)).not.toContain('s3cret-pass');
 });
+
+test('the drill only ever writes to the scratch database', async () => {
+  const seen = [];
+  const spawnFn = (cmd, args) => {
+    seen.push(args);
+    const child = new EventEmitter();
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    setImmediate(() => child.emit('close', 0));
+    return child;
+  };
+  await restoreArchive('mongodb+srv://ops:pw@cluster.example.net/vastrasanskara', { archive: '/tmp/b.archive.gz', spawnFn });
+  // Collections from any other database in the archive are skipped, never restored in place.
+  expect(seen[0]).toContain('--nsInclude=vastrasanskara.*');
+
+  // Without a database name in the address, the drill cannot know what to keep away from.
+  await expect(restoreArchive('mongodb+srv://ops:pw@cluster.example.net/?retryWrites=true', { archive: '/tmp/b.archive.gz', spawnFn }))
+    .rejects.toThrow('MONGO_URI must name the database (…mongodb.net/vastrasanskara?…)');
+  expect(seen).toHaveLength(1);
+});
