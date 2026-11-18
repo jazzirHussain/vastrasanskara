@@ -4,10 +4,10 @@ import { ApiError, apiFetch } from './api.js';
  * Uploads a file for a purpose (e.g. 'branch_logo'): asks the API for a signed URL, then
  * sends the file straight to storage. Resolves to the stored file's key.
  */
-export async function uploadFile(file, purpose) {
+export async function uploadFile(file, purpose, { contentType = file.type } = {}) {
   const { key, url, headers } = await apiFetch('/v1/files/upload-url', {
     method: 'POST',
-    body: { purpose, contentType: file.type, size: file.size },
+    body: { purpose, contentType, size: file.size },
   });
   const response = await fetch(url, { method: 'PUT', headers, body: file });
   if (!response.ok) {

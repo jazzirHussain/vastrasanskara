@@ -3,6 +3,7 @@ import {
   IconAdjustmentsHorizontal,
   IconBuildingBank,
   IconCalendarEvent,
+  IconFileImport,
   IconFileSpreadsheet,
   IconHome2,
   IconLayoutKanban,
@@ -38,6 +39,7 @@ export const navItems = [
   { label: 'Workshop', path: '/workshop', permission: 'workshop.manage', icon: IconTool, phone: 'more' },
   { label: 'Users', path: '/users', permission: 'users.manage', icon: IconUsersGroup, phone: 'more' },
   { label: 'Settings', path: '/settings', permission: 'settings.edit', icon: IconAdjustmentsHorizontal, phone: 'more' },
+  { label: 'Bring in records', path: '/imports', permission: 'imports.run', icon: IconFileImport, phone: 'more' },
 ];
 
 /** The item the current page belongs to: the longest path that the location starts with. */
